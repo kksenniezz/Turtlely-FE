@@ -4,11 +4,12 @@ import 'style.dart';    // TColor, TText 등이 정의된 파일
 import 'exercise.dart'; 
 import 'report.dart';
 import 'mypage.dart';
+import 'splash.dart';
 
-void main() => runApp(const TurtlyApp());
+void main() => runApp(const TurtlelyApp());
 
-class TurtlyApp extends StatelessWidget {
-  const TurtlyApp({super.key});
+class TurtlelyApp extends StatelessWidget {
+  const TurtlelyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -18,19 +19,19 @@ class TurtlyApp extends StatelessWidget {
         fontFamily: 'Pretendard', 
         scaffoldBackgroundColor: TColor.white
       ),
-      home: const TurtlyMainPage(),
+      home: const Splash(),
     );
   }
 }
 
-class TurtlyMainPage extends StatefulWidget {
-  const TurtlyMainPage({super.key});
+class TurtlelyMainPage extends StatefulWidget {
+  const TurtlelyMainPage({super.key});
 
   @override
-  _TurtlyMainPageState createState() => _TurtlyMainPageState();
+  _TurtlelyMainPageState createState() => _TurtlelyMainPageState();
 }
 
-class _TurtlyMainPageState extends State<TurtlyMainPage> {
+class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
   int _selectedIndex = 0; // 하단 탭 선택 인덱스
 
   // 이동할 페이지 목록
@@ -41,9 +42,9 @@ class _TurtlyMainPageState extends State<TurtlyMainPage> {
     super.initState();
     // 페이지 구성 (0: 홈, 2: 운동)
     _pages = [
-      const HomeViewContent(),     // 아래에 정의된 홈 화면 클래스
+      const HomeViewContent(),    // 아래에 정의된 홈 화면 클래스
       const ReportView(), 
-      ExerciseView(),              // exercise.dart에서 가져온 클래스
+      ExerciseView(),             // exercise.dart에서 가져온 클래스
       const MyPageView(),
     ];
   }
@@ -56,7 +57,7 @@ class _TurtlyMainPageState extends State<TurtlyMainPage> {
         backgroundColor: TColor.white,
         elevation: 0,
         centerTitle: true,
-        title: Text("Turtly", style: TText.logo),
+        title: Text("Turtlely", style: TText.logo),
         actions: [
           IconButton(
             onPressed: () {}, 

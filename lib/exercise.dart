@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'style.dart';
+import 'collection.dart'; // 별도로 분리한 파일 연결
 
 class ExerciseView extends StatefulWidget {
+  const ExerciseView({super.key});
+
   @override
   _ExerciseViewState createState() => _ExerciseViewState();
 }
@@ -46,30 +49,23 @@ class _ExerciseViewState extends State<ExerciseView> {
                     children: [
                       Text("EXERCISE ZONE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: TColor.black)),
                       const SizedBox(height: 4),
-                      Text("@@님의 거북목 완화에 도움이 되는 영상이에요!", style: TextStyle(color: TColor.gray, fontSize: 12)),
+                      Text("Turtlely님의 거북목 완화에 도움이 되는 영상이에요!", style: TextStyle(color: TColor.gray, fontSize: 12)),
                     ],
                   ),
-                  // 상단 북마크: 민영님 요청대로 항상 색칠된(Icons.bookmark) 상태로 고정!
                   GestureDetector(
                     onTap: () {
-                      // 누르면 '저장한 영상' 페이지(CollectionView)로 이동
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (context) => const CollectionView()),
                       );
                     },
-                    child: const Icon(
-                      Icons.bookmark, // 항상 채워진 아이콘
-                      color: TColor.darkGreen, 
-                      size: 28
-                    ),
+                    child: const Icon(Icons.bookmark, color: TColor.darkGreen, size: 28),
                   ),
                 ],
               ),
-              
               const SizedBox(height: 20),
               
-              // 2. 검색창 (생략)
+              // 2. 검색창
               TextField(
                 decoration: InputDecoration(
                   hintText: '검색어를 입력하세요',
@@ -81,7 +77,7 @@ class _ExerciseViewState extends State<ExerciseView> {
               ),
               const SizedBox(height: 16),
 
-              // 3. 필터 영역 (생략)
+              // 3. 필터 영역
               Row(
                 children: [
                   _buildDropdownFilter("거북목 유형", ["전체", "거북목", "일자목", "역C자목"], selectedType, (val) => setState(() => selectedType = val)),
@@ -95,14 +91,12 @@ class _ExerciseViewState extends State<ExerciseView> {
 
               // 4. 영상 리스트
               ..._exerciseVideos.asMap().entries.map((entry) {
-                int index = entry.key;
-                var video = entry.value;
                 return _buildExerciseCard(
-                  index: index,
-                  title: video['title'],
-                  subtitle: video['subtitle'],
-                  imagePath: video['image'],
-                  isBookmarked: video['isBookmarked'],
+                  index: entry.key,
+                  title: entry.value['title'],
+                  subtitle: entry.value['subtitle'],
+                  imagePath: entry.value['image'],
+                  isBookmarked: entry.value['isBookmarked'],
                 );
               }).toList(),
             ],
@@ -173,29 +167,6 @@ class _ExerciseViewState extends State<ExerciseView> {
           ],
         ),
       ),
-    );
-  }
-}
-
-// --- 새 파일로 만드셔도 되고, exercise.dart 맨 아래 붙여넣으셔도 됩니다 ---
-class CollectionView extends StatelessWidget {
-  const CollectionView({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text("저장한 영상", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        centerTitle: true,
-      ),
-      body: const Center(child: Text("저장된 영상이 여기에 나타납니다!")),
     );
   }
 }
