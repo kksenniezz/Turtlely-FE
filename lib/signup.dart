@@ -140,26 +140,29 @@ class _SignupState extends State<Signup> {
                         ? null
                         : () {
                             if (_step == 1) {
-                              // [비밀번호 일치 검증]
-                              if (_pwController.text !=
-                                  _pwConfirmController.text) {
-                                setState(() {
-                                  _pwMessage = "비밀번호가 일치하지 않습니다. 다시 확인해 주세요.";
-                                  _pwColor = Colors.red;
-                                });
-                              } else if (_pwController.text.length < 8) {
-                                setState(() {
+                              setState(() {
+                                final pwPattern =
+                                    r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$';
+                                final regExp = RegExp(pwPattern);
+
+                                if (!regExp.hasMatch(_pwController.text)) {
+                                  // 1. 형식 검사 (8자 미만일 때)
                                   _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상을 입력해 주세요";
                                   _pwColor = Colors.red;
-                                });
-                              } else {
-                                // 모든 조건 통과 시 다음 단계로
-                                setState(() {
-                                  _step++;
-                                });
-                              }
+                                } else if (_pwController.text !=
+                                    _pwConfirmController.text) {
+                                  // 2. 일치 검사 (형식은 맞지만 서로 다를 때)
+                                  _pwMessage = "비밀번호가 일치하지 않습니다. 다시 확인해 주세요.";
+                                  _pwColor = Colors.red;
+                                } else {
+                                  // 3. 통과 (성공)
+                                  _pwMessage = "비밀번호가 일치합니다."; // 선택 사항
+                                  _pwColor = Colors.blue;
+                                  _step++; // 다음 단계(닉네임 설정)로 이동
+                                }
+                              });
                             } else {
-                              // 0단계(전화번호)나 2단계(닉네임)일 때는 바로 다음으로
+                              // 0단계나 2단계는 바로 통과
                               setState(() => _step++);
                             }
                           },
