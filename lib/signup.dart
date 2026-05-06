@@ -88,11 +88,23 @@ class _SignupState extends State<Signup> {
       appBar: AppBar(
         backgroundColor: TColor.white,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          onPressed: () {
+            if (_step == 0) {
+              Navigator.pop(context);
+            } else {
+              setState(() {
+                _step--;
+              });
+            }
+          },
+        ),
         title: const Text(
           "회원가입",
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
+        centerTitle: true,
       ),
       body: SingleChildScrollView(
         // 키보드가 올라올 때 화면 스크롤이 가능하게 함
