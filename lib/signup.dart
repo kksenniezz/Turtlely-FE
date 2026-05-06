@@ -24,11 +24,17 @@ class _SignupState extends State<Signup> {
   bool _isObscurePw = true;
   bool _isObscurePwConfirm = true;
   bool _isAuthSent = false;
+
   String _authStatusMessage = "";
+
   String _idMessage = "영문, 숫자 포함 6-20자";
+  Color _idColor = TColor.gray; // 초기 색상 회색
+
+  String _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상";
+  Color _pwColor = TColor.gray; // 초기 색상 회색
+
   Timer? _timer;
   int _secondsRemaining = 300;
-  Color _idColor = TColor.gray;
 
   @override
   void dispose() {
@@ -74,9 +80,10 @@ class _SignupState extends State<Signup> {
         _idColor = Colors.red;
         _idCheckStatus = 0;
       } else {
+        // 성공 시 파란색으로 나오게 하고 싶다고 하셨으니 Colors.blue로 변경!
         _idMessage = "사용 가능한 아이디입니다.";
-        _idColor = Colors.green;
-        _idCheckStatus = 2; // 성공 상태로 변경 -> 여기서 색상 변경 발생
+        _idColor = Colors.blue;
+        _idCheckStatus = 2;
       }
     });
   }
@@ -122,13 +129,50 @@ class _SignupState extends State<Signup> {
 
               const SizedBox(height: 40),
 
+              // [수정된 다음 버튼 섹션]
               if (_step < 3)
                 SizedBox(
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    style: T_MainButtonStyle,
-                    onPressed: () => setState(() => _step++),
+                    // 1. 조건부 활성화: 1단계(ID/PW)일 때는 중복확인이 완료(_idCheckStatus == 2)되어야만 클릭 가능
+                    onPressed: (_step == 1 && _idCheckStatus != 2)
+                        ? null
+                        : () {
+                            if (_step == 1) {
+                              // [비밀번호 일치 검증]
+                              if (_pwController.text !=
+                                  _pwConfirmController.text) {
+                                setState(() {
+                                  _pwMessage = "비밀번호가 일치하지 않습니다. 다시 확인해 주세요.";
+                                  _pwColor = Colors.red;
+                                });
+                              } else if (_pwController.text.length < 8) {
+                                setState(() {
+                                  _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상을 입력해 주세요";
+                                  _pwColor = Colors.red;
+                                });
+                              } else {
+                                // 모든 조건 통과 시 다음 단계로
+                                setState(() {
+                                  _step++;
+                                });
+                              }
+                            } else {
+                              // 0단계(전화번호)나 2단계(닉네임)일 때는 바로 다음으로
+                              setState(() => _step++);
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      // 2. 배경색: 1단계에서 중복확인이 안 됐으면 gray, 됐으면 buttonGreen
+                      backgroundColor: (_step == 1 && _idCheckStatus != 2)
+                          ? TColor.gray
+                          : TColor.buttonGreen,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
                     child: const Text("다음", style: TText.button),
                   ),
                 ),
@@ -246,94 +290,133 @@ class _SignupState extends State<Signup> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _idCheckStatus == 1
-                        ? Colors.red
-                        : (_idCheckStatus == 2 ? Colors.green : TColor.gray),
-                    width: 1.5,
+        // 1. 아이디 입력칸 (전화번호 인증칸과 동일한 스타일)
+        TextField(
+          controller: _idController,
+          keyboardType: TextInputType.emailAddress,
+          decoration: InputDecoration(
+            hintText: "아이디",
+            hintStyle: const TextStyle(color: TColor.gray),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
+            suffixIcon: Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: _checkIdDuplicate, // 여기서 함수 이름을 써줘야 비로소 '사용'되는 것입니다!
+                    child: Container(
+                      width: 75,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0x4D235E26),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        "중복 확인",
+                        style: TextStyle(
+                          color: Color(0xFF235E26),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                child: TextField(
-                  controller: _idController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: "아이디",
-                  ),
-                ),
+                ],
               ),
             ),
-            const SizedBox(width: 10),
-            SizedBox(
-              height: 50,
-              // [핵심] 중복 확인 완료(2)면 연회색(Colors.grey)으로 변경, 아니면 기존색
-              child: ElevatedButton(
-                onPressed: _idCheckStatus == 2 ? null : _checkIdDuplicate,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _idCheckStatus == 2
-                      ? Colors.grey
-                      : TColor.buttonGreen,
-                  foregroundColor: Colors.white,
-                ),
-                // [핵심] 완료되면 글자 없애고 체크 아이콘으로 대체
-                child: _idCheckStatus == 2
-                    ? const Icon(Icons.check, size: 20)
-                    : const Text("중복 확인"),
-              ),
-            ),
-          ],
+          ),
         ),
         Padding(
-          padding: const EdgeInsets.only(top: 8, left: 4),
+          padding: const EdgeInsets.only(top: 8, left: 4, bottom: 20),
           child: Text(
             _idMessage,
             style: TextStyle(color: _idColor, fontSize: 12),
           ),
         ),
 
-        const SizedBox(height: 20),
+        // 2. 비밀번호 입력칸
         TextField(
           controller: _pwController,
-          obscureText: true, // 비밀번호 숨김 처리
           keyboardType: TextInputType.visiblePassword,
+          obscureText: _isObscurePw,
           decoration: InputDecoration(
             hintText: "비밀번호",
+            hintStyle: const TextStyle(color: TColor.gray),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
             suffixIcon: IconButton(
               icon: Icon(
-                _isObscurePw ? Icons.visibility_off : Icons.visibility,
+                _isObscurePw
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: TColor.gray,
               ),
               onPressed: () => setState(() => _isObscurePw = !_isObscurePw),
             ),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 16),
+
+        // 3. 비밀번호 확인 입력칸
         TextField(
           controller: _pwConfirmController,
-          obscureText: true,
           keyboardType: TextInputType.visiblePassword,
+          obscureText: _isObscurePwConfirm,
           decoration: InputDecoration(
             hintText: "비밀번호 확인",
+            hintStyle: const TextStyle(color: TColor.gray),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
             suffixIcon: IconButton(
               icon: Icon(
-                _isObscurePwConfirm ? Icons.visibility_off : Icons.visibility,
+                _isObscurePwConfirm
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: TColor.gray,
               ),
               onPressed: () =>
                   setState(() => _isObscurePwConfirm = !_isObscurePwConfirm),
             ),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.only(top: 8, left: 4),
+        Padding(
+          padding: const EdgeInsets.only(top: 8, left: 4),
           child: Text(
-            "영문, 숫자, 특수문자 포함 8자 이상",
-            style: TextStyle(color: Colors.grey, fontSize: 12),
+            _pwMessage,
+            style: TextStyle(color: _pwColor, fontSize: 12),
           ),
         ),
       ],
