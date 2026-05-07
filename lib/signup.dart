@@ -24,6 +24,7 @@ class _SignupState extends State<Signup> {
   bool _isObscurePw = true;
   bool _isObscurePwConfirm = true;
   bool _isAuthSent = false;
+  bool _isTimeOut = false;
 
   String _authStatusMessage = "";
 
@@ -44,13 +45,17 @@ class _SignupState extends State<Signup> {
 
   void _startTimer() {
     _secondsRemaining = 300;
+    _isTimeOut = false; // 타이머 시작 시 초기화
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
-        if (_secondsRemaining > 0)
+        if (_secondsRemaining > 0) {
           _secondsRemaining--;
-        else
+        } else {
           _timer?.cancel();
+          _isTimeOut = true; // 시간 초과
+          _authStatusMessage = "인증 시간이 초과되었습니다 다시 시도해 주세요"; // 빨간 메시지로 활용
+        }
       });
     });
   }
@@ -58,6 +63,7 @@ class _SignupState extends State<Signup> {
   void _handleAuthRequest() {
     setState(() {
       _isAuthSent = true;
+      _isTimeOut = false; // 재발송 시 타임아웃 해제
       _authStatusMessage = "인증번호가 발송되었습니다";
       _startTimer();
     });
@@ -135,42 +141,51 @@ class _SignupState extends State<Signup> {
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    // 1. 조건부 활성화: 1단계(ID/PW)일 때는 중복확인이 완료(_idCheckStatus == 2)되어야만 클릭 가능
-                    onPressed: (_step == 1 && _idCheckStatus != 2)
-                        ? null
-                        : () {
-                            if (_step == 1) {
-                              setState(() {
-                                final pwPattern =
-                                    r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$';
-                                final regExp = RegExp(pwPattern);
+                    onPressed: () {
+                      // 활성화 조건 변수화 (가독성)
+                      bool isStep0Valid =
+                          _step == 0 &&
+                          _authCodeController.text.length == 6 &&
+                          !_isTimeOut;
+                      bool isStep1Valid = _step == 1 && _idCheckStatus == 2;
 
-                                if (!regExp.hasMatch(_pwController.text)) {
-                                  // 1. 형식 검사 (8자 미만일 때)
-                                  _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상을 입력해 주세요";
-                                  _pwColor = Colors.red;
-                                } else if (_pwController.text !=
-                                    _pwConfirmController.text) {
-                                  // 2. 일치 검사 (형식은 맞지만 서로 다를 때)
-                                  _pwMessage = "비밀번호가 일치하지 않습니다. 다시 확인해 주세요.";
-                                  _pwColor = Colors.red;
-                                } else {
-                                  // 3. 통과 (성공)
-                                  _pwMessage = "비밀번호가 일치합니다."; // 선택 사항
-                                  _pwColor = Colors.blue;
-                                  _step++; // 다음 단계(닉네임 설정)로 이동
-                                }
-                              });
-                            } else {
-                              // 0단계나 2단계는 바로 통과
-                              setState(() => _step++);
-                            }
-                          },
+                      // 현재 단계가 유효하지 않으면 클릭 차단
+                      if (_step == 0 && !isStep0Valid) return;
+                      if (_step == 1 && !isStep1Valid) return;
+
+                      if (_step == 1) {
+                        setState(() {
+                          final pwPattern =
+                              r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$';
+                          final regExp = RegExp(pwPattern);
+
+                          if (!regExp.hasMatch(_pwController.text)) {
+                            _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상을 입력해 주세요";
+                            _pwColor = Colors.red;
+                          } else if (_pwController.text !=
+                              _pwConfirmController.text) {
+                            _pwMessage = "비밀번호가 일치하지 않습니다. 다시 확인해 주세요.";
+                            _pwColor = Colors.red;
+                          } else {
+                            _pwMessage = "비밀번호가 일치합니다.";
+                            _pwColor = Colors.blue;
+                            _step++;
+                          }
+                        });
+                      } else {
+                        setState(() => _step++);
+                      }
+                    },
                     style: ElevatedButton.styleFrom(
-                      // 2. 배경색: 1단계에서 중복확인이 안 됐으면 gray, 됐으면 buttonGreen
-                      backgroundColor: (_step == 1 && _idCheckStatus != 2)
-                          ? TColor.gray
-                          : TColor.buttonGreen,
+                      // 배경색 결정 로직
+                      backgroundColor:
+                          (_step == 0 &&
+                                  _authCodeController.text.length == 6 &&
+                                  !_isTimeOut) ||
+                              (_step == 1 && _idCheckStatus == 2) ||
+                              (_step == 2)
+                          ? TColor.buttonGreen
+                          : TColor.gray,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -257,7 +272,10 @@ class _SignupState extends State<Signup> {
           padding: const EdgeInsets.only(top: 8, left: 4),
           child: Text(
             _authStatusMessage,
-            style: const TextStyle(color: Color(0xFF235E26), fontSize: 12),
+            style: TextStyle(
+              color: _isTimeOut ? Colors.red : const Color(0xFF235E26),
+              fontSize: 12,
+            ),
           ),
         ),
 
@@ -267,6 +285,10 @@ class _SignupState extends State<Signup> {
         TextField(
           controller: _authCodeController,
           keyboardType: TextInputType.phone,
+          maxLength: 6, // 인증번호 길이
+          onChanged: (value) {
+            setState(() {});
+          },
           decoration: InputDecoration(
             hintText: "인증번호",
             hintStyle: const TextStyle(color: TColor.gray),
