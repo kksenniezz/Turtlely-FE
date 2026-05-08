@@ -125,6 +125,16 @@ class _SignupState extends State<Signup> {
 
   @override
   Widget build(BuildContext context) {
+    // 활성화 조건: 0단계(인증4자리), 1단계(중복체크2 & 비번/비번확인 칸 안 비어있음)
+    bool isStep0Valid =
+        _step == 0 && _authCodeController.text.length == 4 && !_isTimeOut;
+    bool isStep1Valid =
+        _step == 1 &&
+        _idCheckStatus == 2 &&
+        _pwController.text.isNotEmpty &&
+        _pwConfirmController.text.isNotEmpty;
+    bool isStep2Valid = _step == 2 && _nicknameController.text.isNotEmpty;
+
     return Scaffold(
       backgroundColor: TColor.white,
       appBar: AppBar(
@@ -179,25 +189,15 @@ class _SignupState extends State<Signup> {
                   height: 56,
                   child: ElevatedButton(
                     onPressed: () {
-                      // 활성화 조건: 0단계(인증4자리), 1단계(중복체크2 & 비번/비번확인 칸 안 비어있음)
-                      bool isStep0Valid =
-                          _step == 0 &&
-                          _authCodeController.text.length == 4 &&
-                          !_isTimeOut;
-                      bool isStep1Valid =
-                          _step == 1 &&
-                          _idCheckStatus == 2 &&
-                          _pwController.text.isNotEmpty &&
-                          _pwConfirmController.text.isNotEmpty;
-
-                      // 2. 현재 단계 유효성 검사 (기존 코드와 동일)
+                      // 현재 단계 유효성 검사 (기존 코드와 동일)
                       if (_step == 0 && !isStep0Valid) return;
                       if (_step == 1 && !isStep1Valid) return;
+                      if (_step == 2 && !isStep2Valid) return;
 
-                      // 3. 실제 단계 이동 및 초기화 로직
+                      // 실제 단계 이동 및 초기화 로직
                       if (_step == 0) {
                         setState(() {
-                          _clearStep1(); // 0단계에서 1단계로 가기 전에 1단계(ID/PW) 내용을 청소!
+                          _clearStep1();
                           _step = 1;
                         });
                       } else if (_step == 1) {
@@ -208,36 +208,30 @@ class _SignupState extends State<Signup> {
 
                           if (!regExp.hasMatch(_pwController.text)) {
                             _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상을 입력해 주세요";
-                            _pwColor = Colors.red;
+                            _pwColor = TColor.red;
                           } else if (_pwController.text !=
                               _pwConfirmController.text) {
                             _pwMessage = "비밀번호가 일치하지 않습니다 다시 확인해 주세요";
-                            _pwColor = Colors.red;
+                            _pwColor = TColor.red;
                           } else {
-                            // 비밀번호 검증 성공 시
                             _pwMessage = "비밀번호가 일치합니다";
                             _pwColor = TColor.blue;
 
-                            _clearStep2(); // 1단계에서 2단계로 가기 전에 2단계(닉네임) 내용을 청소!
+                            _clearStep2();
                             _step = 2;
                           }
                         });
                       } else {
-                        // 2단계에서 3단계로 갈 때 등 그 외 단계 이동
+                        // 2단계에서 가입하기를 누르면 3단계(완료)로 이동
                         setState(() => _step++);
                       }
                     },
                     style: ElevatedButton.styleFrom(
-                      // 배경색 결정 로직
+                      // [수정] 배경색 결정 로직: 2단계 조건 추가
                       backgroundColor:
-                          ((_step == 0 &&
-                                  _authCodeController.text.length == 4 &&
-                                  !_isTimeOut) ||
-                              (_step == 1 &&
-                                  _idCheckStatus == 2 &&
-                                  _pwController.text.isNotEmpty &&
-                                  _pwConfirmController.text.isNotEmpty) ||
-                              (_step == 2))
+                          ((_step == 0 && isStep0Valid) ||
+                              (_step == 1 && isStep1Valid) ||
+                              (_step == 2 && isStep2Valid))
                           ? TColor.buttonGreen
                           : TColor.gray,
                       shape: RoundedRectangleBorder(
@@ -245,7 +239,11 @@ class _SignupState extends State<Signup> {
                       ),
                       elevation: 0,
                     ),
-                    child: const Text("다음", style: TText.button),
+                    // [수정] 버튼 텍스트: 2단계일 때만 '가입하기'
+                    child: Text(
+                      _step == 2 ? "가입하기" : "다음",
+                      style: TText.button,
+                    ),
                   ),
                 ),
               const SizedBox(height: 20), // 하단 여백
@@ -524,7 +522,25 @@ class _SignupState extends State<Signup> {
         TextField(
           controller: _nicknameController,
           keyboardType: TextInputType.text,
-          decoration: const InputDecoration(hintText: "닉네임"),
+          onChanged: (value) {
+            setState(() {});
+          },
+          decoration: InputDecoration(
+            hintText: "닉네임",
+            hintStyle: const TextStyle(color: TColor.gray),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
+          ),
         ),
       ],
     );
