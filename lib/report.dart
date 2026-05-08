@@ -18,7 +18,7 @@ class _ReportViewState extends State<ReportView> {
   PageController? _calendarPageController;
   final ScrollController _scrollController = ScrollController();
 
-  // 샘플 데이터
+  // 샘플 데이터: 기록이 있는 날짜들
   final List<DateTime> _recordedDays = [
     DateTime.utc(2026, 5, 1), 
     DateTime.utc(2026, 5, 4), 
@@ -51,11 +51,17 @@ class _ReportViewState extends State<ReportView> {
 
   bool _hasRecord(DateTime day) => _recordedDays.any((d) => isSameDay(d, day));
 
-  // 💡 [추가] 다음 주로 넘어갈 수 있는지 체크 (미래 날짜 방지)
+  // 💡 [핵심 로직] 현재 보고 있는 '주'의 토요일이 오늘 이후인지 체크
   bool _canGoNext() {
-    // 현재 보고 있는 주(Week)에 오늘 날짜가 포함되어 있으면 더 이상 미래로 못 가게 설정
     DateTime now = DateTime.now();
-    return _focusedDay.isBefore(DateTime(now.year, now.month, now.day));
+    // 현재 focusedDay가 속한 주의 토요일 계산 (weekday: 월1 ~ 일7)
+    // 토요일(6) 기준으로 계산
+    int daysUntilSaturday = DateTime.saturday - _focusedDay.weekday;
+    DateTime endOfCurrentWeek = _focusedDay.add(Duration(days: daysUntilSaturday));
+    
+    // 이번 주의 토요일이 오늘 자정보다 이전이어야만 다음 주로 갈 수 있음
+    DateTime today = DateTime(now.year, now.month, now.day);
+    return endOfCurrentWeek.isBefore(today);
   }
 
   @override
@@ -76,146 +82,149 @@ class _ReportViewState extends State<ReportView> {
         : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: SafeArea(
-        child: _viewIndex == 1 
-        ? Column( // [화면 2] 세로 스크롤 달력
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                child: Row(
-                  children: [
-                    IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => setState(() => _viewIndex = 0)),
-                    const Spacer(), 
-                    const SizedBox(width: 48), 
-                  ],
-                ),
-              ),
-              _buildDayOfWeekHeader(),
-              Expanded(
-                child: ListView.builder(
-                  controller: _scrollController,
-                  reverse: true,
-                  itemCount: 24, 
-                  itemBuilder: (context, index) {
-                    final DateTime monthToShow = DateTime(DateTime.now().year, DateTime.now().month - index);
-                    return Container(
-                      height: 400, 
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(left: 24, top: 24, bottom: 8),
-                            child: Text("${monthToShow.year}년 ${monthToShow.month}월", 
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          ),
-                          TableCalendar(
-                            locale: 'ko_KR',
-                            firstDay: DateTime(monthToShow.year, monthToShow.month, 1),
-                            lastDay: DateTime(monthToShow.year, monthToShow.month + 1, 0),
-                            focusedDay: monthToShow,
-                            calendarFormat: CalendarFormat.month,
-                            headerVisible: false,
-                            daysOfWeekVisible: false,
-                            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                            onDaySelected: (selectedDay, focusedDay) {
-                              setState(() {
-                                _selectedDay = selectedDay;
-                                _focusedDay = focusedDay;
-                                _viewIndex = 0; 
-                              });
-                            },
-                            calendarBuilders: _customBuilders(),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          )
-        : SingleChildScrollView( // [화면 1] 메인 주간 리포트
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 16.0, bottom: 8.0, left: 16.0, right: 16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const SizedBox(width: 40),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 💡 왼쪽 화살표 (과거로는 계속 갈 수 있음)
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.arrow_left, size: 28),
-                            onPressed: () => _calendarPageController?.previousPage(
-                              duration: const Duration(milliseconds: 300), curve: Curves.easeOut
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            "${_focusedDay.year}년 ${_focusedDay.month}월", 
-                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: TColor.darkGreen)
-                          ),
-                          const SizedBox(width: 8),
-                          // 💡 오른쪽 화살표 (미래라면 회색 처리)
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            // 상태에 따라 색상 변경 (활성: 검정, 비활성: 회색)
-                            icon: Icon(
-                              Icons.arrow_right, 
-                              size: 28, 
-                              color: _canGoNext() ? Colors.black : Colors.grey.shade400
-                            ),
-                            // 상태에 따라 기능 작동 여부 변경
-                            onPressed: _canGoNext() 
-                              ? () => _calendarPageController?.nextPage(
-                                  duration: const Duration(milliseconds: 300), curve: Curves.easeOut
-                                )
-                              : null, // null을 주면 버튼이 자동으로 비활성화(회색 느낌) 됩니다.
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        icon: const Icon(Icons.calendar_month_outlined, size: 24),
-                        onPressed: () => setState(() { _viewIndex = 1; _focusedDay = DateTime.now(); }),
-                      ),
-                    ],
-                  ),
-                ),
-                TableCalendar(
-                  locale: 'ko_KR',
-                  firstDay: DateTime.utc(2024, 1, 1),
-                  lastDay: DateTime.now(),
-                  focusedDay: _focusedDay,
-                  calendarFormat: CalendarFormat.week,
-                  headerVisible: false, 
-                  onCalendarCreated: (controller) => _calendarPageController = controller,
-                  selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-                  onDaySelected: (selectedDay, focusedDay) {
-                    setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; });
-                  }, 
-                  onPageChanged: (focusedDay) => setState(() => _focusedDay = focusedDay),
-                  calendarBuilders: _customBuilders(),
-                ),
-                const Divider(thickness: 1, color: Color(0xFFEEEEEE), height: 40),
-                
-                if (_hasRecord(_selectedDay!)) 
-                   _buildActiveContent()
-                else 
-                  _buildEmptyContent(),
-                const SizedBox(height: 100), 
-              ],
-            ),
-          ),
+        child: _viewIndex == 1 ? _buildMonthlyView() : _buildWeeklyView(),
       ),
     );
   }
 
-  // --- UI 컴포넌트들 (기존과 동일) ---
+  // --- [화면 1] 주간 리포트 메인 뷰 ---
+  Widget _buildWeeklyView() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // 상단 헤더: 화살표 비활성화 로직 적용
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const SizedBox(width: 40),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_left, size: 28),
+                      onPressed: () => _calendarPageController?.previousPage(
+                        duration: const Duration(milliseconds: 300), curve: Curves.easeOut
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      "${_focusedDay.year}년 ${_focusedDay.month}월", 
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: TColor.darkGreen)
+                    ),
+                    const SizedBox(width: 8),
+                    // 💡 이번 주를 보고 있다면 회색으로 비활성화됨
+                    IconButton(
+                      icon: Icon(
+                        Icons.arrow_right, 
+                        size: 28, 
+                        color: _canGoNext() ? Colors.black : Colors.grey.shade300
+                      ),
+                      onPressed: _canGoNext() 
+                        ? () => _calendarPageController?.nextPage(
+                            duration: const Duration(milliseconds: 300), curve: Curves.easeOut
+                          )
+                        : null,
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.calendar_month_outlined, size: 24),
+                  onPressed: () => setState(() { _viewIndex = 1; _focusedDay = DateTime.now(); }),
+                ),
+              ],
+            ),
+          ),
+
+          // 주간 달력: 오늘 이후 날짜 선택 제한
+          TableCalendar(
+            locale: 'ko_KR',
+            firstDay: DateTime.utc(2024, 1, 1),
+            lastDay: DateTime.now(), 
+            focusedDay: _focusedDay,
+            calendarFormat: CalendarFormat.week,
+            headerVisible: false, 
+            onCalendarCreated: (controller) => _calendarPageController = controller,
+            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+            onDaySelected: (selectedDay, focusedDay) {
+              setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; });
+            }, 
+            onPageChanged: (focusedDay) => setState(() => _focusedDay = focusedDay),
+            calendarBuilders: _customBuilders(),
+          ),
+
+          const Divider(thickness: 1, color: Color(0xFFEEEEEE), height: 40),
+          
+          if (_hasRecord(_selectedDay!)) 
+             _buildActiveContent()
+          else 
+            _buildEmptyContent(),
+          const SizedBox(height: 100), 
+        ],
+      ),
+    );
+  }
+
+  // --- [화면 2] 세로 스크롤 월간 뷰 ---
+  Widget _buildMonthlyView() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            children: [
+              IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => setState(() => _viewIndex = 0)),
+              const Spacer(),
+            ],
+          ),
+        ),
+        _buildDayOfWeekHeader(),
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            reverse: true,
+            itemCount: 24, 
+            itemBuilder: (context, index) {
+              final DateTime monthToShow = DateTime(DateTime.now().year, DateTime.now().month - index);
+              return Container(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 24, top: 24, bottom: 8),
+                      child: Text("${monthToShow.year}년 ${monthToShow.month}월", 
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                    TableCalendar(
+                      locale: 'ko_KR',
+                      firstDay: DateTime(monthToShow.year, monthToShow.month, 1),
+                      lastDay: DateTime(monthToShow.year, monthToShow.month + 1, 0),
+                      focusedDay: monthToShow,
+                      calendarFormat: CalendarFormat.month,
+                      headerVisible: false,
+                      daysOfWeekVisible: false,
+                      selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                      onDaySelected: (selectedDay, focusedDay) {
+                        setState(() {
+                          _selectedDay = selectedDay;
+                          _focusedDay = focusedDay;
+                          _viewIndex = 0; 
+                        });
+                      },
+                      calendarBuilders: _customBuilders(),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- UI 컴포넌트 위젯들 ---
   Widget _buildActiveContent() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -228,11 +237,19 @@ class _ReportViewState extends State<ReportView> {
           const SizedBox(height: 40),
           const Text("평균 고개 각도", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
-          Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: TColor.lightGreen, borderRadius: BorderRadius.circular(15)), child: const Center(child: Text("이미지 영역"))),
+          Container(
+            height: 220, width: double.infinity, 
+            decoration: BoxDecoration(color: TColor.lightGreen, borderRadius: BorderRadius.circular(15)),
+            child: const Center(child: Text("이미지 영역"))
+          ),
           const SizedBox(height: 40),
           const Text("타임라인 히트맵", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), 
           const SizedBox(height: 16),
-          Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(20)), child: const Center(child: Text("히트맵 영역"))),
+          Container(
+            width: double.infinity, padding: const EdgeInsets.all(16), 
+            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(20)),
+            child: const Center(child: Text("히트맵 영역"))
+          ),
         ],
       ),
     );
