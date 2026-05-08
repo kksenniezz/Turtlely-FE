@@ -77,21 +77,36 @@ class _SignupState extends State<Signup> {
 
   void _checkIdDuplicate() {
     setState(() {
+      final idPattern = r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,20}$';
+      final regExp = RegExp(idPattern);
+
       if (_idController.text == "admin") {
         _idMessage = "이미 존재하는 아이디입니다.";
-        _idColor = Colors.red;
+        _idColor = TColor.red;
         _idCheckStatus = 1;
-      } else if (_idController.text.isEmpty) {
-        _idMessage = "아이디를 입력해주세요.";
-        _idColor = Colors.red;
-        _idCheckStatus = 0;
+      } else if (!regExp.hasMatch(_idController.text)) {
+        // 영문, 숫자 조합 6-20자 조건 미달 시
+        _idMessage = "영문, 숫자 포함 6-20자를 입력해 주세요";
+        _idColor = TColor.red;
+        _idCheckStatus = 1;
       } else {
-        // 성공 시 파란색으로 나오게 하고 싶다고 하셨으니 Colors.blue로 변경!
+        // 성공 시 (#5151F8)
         _idMessage = "사용 가능한 아이디입니다.";
-        _idColor = Colors.blue;
+        _idColor = TColor.blue;
         _idCheckStatus = 2;
       }
     });
+  }
+
+  // 3. 상태 초기화 함수 (뒤로 가기 시 호출)
+  void _resetPhoneAuth() {
+    _phoneController.clear();
+    _authCodeController.clear();
+    _isAuthSent = false;
+    _isTimeOut = false;
+    _authStatusMessage = "";
+    _timer?.cancel();
+    _secondsRemaining = 300;
   }
 
   @override
@@ -106,10 +121,13 @@ class _SignupState extends State<Signup> {
           onPressed: () {
             if (_step == 0) {
               Navigator.pop(context);
-            } else {
+            } else if (_step == 1) {
               setState(() {
-                _step--;
+                _resetPhoneAuth(); // 1단계에서 0단계로 갈 때 데이터 초기화
+                _step = 0;
               });
+            } else {
+              setState(() => _step--);
             }
           },
         ),
@@ -142,12 +160,16 @@ class _SignupState extends State<Signup> {
                   height: 56,
                   child: ElevatedButton(
                     onPressed: () {
-                      // 활성화 조건 변수화 (가독성)
+                      // 활성화 조건: 0단계(인증4자리), 1단계(중복체크2 & 비번/비번확인 칸 안 비어있음)
                       bool isStep0Valid =
                           _step == 0 &&
                           _authCodeController.text.length == 4 &&
                           !_isTimeOut;
-                      bool isStep1Valid = _step == 1 && _idCheckStatus == 2;
+                      bool isStep1Valid =
+                          _step == 1 &&
+                          _idCheckStatus == 2 &&
+                          _pwController.text.isNotEmpty &&
+                          _pwConfirmController.text.isNotEmpty;
 
                       // 현재 단계가 유효하지 않으면 클릭 차단
                       if (_step == 0 && !isStep0Valid) return;
@@ -168,7 +190,7 @@ class _SignupState extends State<Signup> {
                             _pwColor = Colors.red;
                           } else {
                             _pwMessage = "비밀번호가 일치합니다.";
-                            _pwColor = Colors.blue;
+                            _pwColor = TColor.blue;
                             _step++;
                           }
                         });
@@ -179,11 +201,14 @@ class _SignupState extends State<Signup> {
                     style: ElevatedButton.styleFrom(
                       // 배경색 결정 로직
                       backgroundColor:
-                          (_step == 0 &&
+                          ((_step == 0 &&
                                   _authCodeController.text.length == 4 &&
                                   !_isTimeOut) ||
-                              (_step == 1 && _idCheckStatus == 2) ||
-                              (_step == 2)
+                              (_step == 1 &&
+                                  _idCheckStatus == 2 &&
+                                  _pwController.text.isNotEmpty &&
+                                  _pwConfirmController.text.isNotEmpty) ||
+                              (_step == 2))
                           ? TColor.buttonGreen
                           : TColor.gray,
                       shape: RoundedRectangleBorder(
@@ -318,6 +343,14 @@ class _SignupState extends State<Signup> {
         // 1. 아이디 입력칸 (전화번호 인증칸과 동일한 스타일)
         TextField(
           controller: _idController,
+          onChanged: (value) {
+            setState(() {
+              // 아이디 수정 시 중복 확인 상태 초기화
+              _idCheckStatus = 0;
+              _idMessage = "영문, 숫자 포함 6-20자";
+              _idColor = TColor.gray;
+            });
+          },
           keyboardType: TextInputType.emailAddress,
           decoration: InputDecoration(
             hintText: "아이디",
@@ -375,6 +408,7 @@ class _SignupState extends State<Signup> {
         // 2. 비밀번호 입력칸
         TextField(
           controller: _pwController,
+          onChanged: (value) => setState(() {}),
           keyboardType: TextInputType.visiblePassword,
           obscureText: _isObscurePw,
           decoration: InputDecoration(
@@ -408,6 +442,7 @@ class _SignupState extends State<Signup> {
         // 3. 비밀번호 확인 입력칸
         TextField(
           controller: _pwConfirmController,
+          onChanged: (value) => setState(() {}),
           keyboardType: TextInputType.visiblePassword,
           obscureText: _isObscurePwConfirm,
           decoration: InputDecoration(
