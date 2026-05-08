@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'style.dart';
-import 'collection.dart';
 import 'guide.dart';
+import 'collection.dart'; // 에러가 난다면 이 파일 내 클래스 이름을 확인하세요!
 
 class ExerciseView extends StatefulWidget {
   const ExerciseView({super.key});
@@ -50,12 +49,28 @@ class _ExerciseViewState extends State<ExerciseView> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      // --- 💡 하단 고정 네모 버튼 (사람 아이콘) ---
+      floatingActionButton: SizedBox(
+        width: 60,
+        height: 60,
+        child: FloatingActionButton(
+          onPressed: () {
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const GuideView()));
+          },
+          backgroundColor: const Color(0xFFE8F1DE),
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: const Icon(Icons.accessibility_new, color: Color(0xFF3B5524), size: 30),
+        ),
+      ),
+
       body: SafeArea(
         child: Column(
           children: [
-            // --- 상단 완전 고정 영역 (타이틀 & 가이드 가기 버튼) ---
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+            // --- 📌 [고정 영역] 타이틀 + 검색창 + 메뉴바 ---
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 15),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -72,71 +87,51 @@ class _ExerciseViewState extends State<ExerciseView> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.bookmark, color: Color(0xFF3B5524), size: 28),
-                        onPressed: () async {
-                          await Navigator.push(
-                            context, 
-                            MaterialPageRoute(builder: (context) => CollectionView(savedVideos: ExerciseView.exerciseVideos))
-                          );
-                          setState(() {}); 
-                        },
+                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => CollectionView(savedVideos: ExerciseView.exerciseVideos))),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  GestureDetector(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const GuideView())),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFEDF1E9)),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
-                      ),
-                      child: const Text("거북목 교정 스트레칭 가이드 >", style: TextStyle(color: Color(0xFF3B5524), fontSize: 11, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8), // 💡 간격 줄임
+                  
+                  // 검색창
+                  TextField(
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                    decoration: InputDecoration(
+                      hintText: '검색어를 입력하세요',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true, fillColor: const Color(0xFFF5F5F5),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // 드롭다운 메뉴바
+                  Row(
+                    children: [
+                      _buildFilter(["전체", "거북목", "일자목", "역C자목"], selectedType, 115, (v) => setState(() => selectedType = v!)),
+                      const SizedBox(width: 8),
+                      _buildFilter(["전체", "스트레칭", "도수치료", "헬스"], selectedBody, 105, (v) => setState(() => selectedBody = v!)),
+                      const SizedBox(width: 8),
+                      _buildFilter(["전체", "3분", "10분", "20분"], selectedTime, 85, (v) => setState(() => selectedTime = v!)),
+                    ],
                   ),
                 ],
               ),
             ),
 
-            // --- 하단 스크롤 영역 (검색창 + 필터 + 영상 리스트) ---
+            // --- 📌 [스크롤 영역] 영상 리스트 ---
             Expanded(
               child: SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20.0),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 10),
-                      // 💡 검색창 (리스트와 함께 스크롤되어 올라감)
-                      TextField(
-                        onChanged: (v) => setState(() => _searchQuery = v),
-                        decoration: InputDecoration(
-                          hintText: '검색어를 입력하세요',
-                          prefixIcon: const Icon(Icons.search),
-                          filled: true, fillColor: const Color(0xFFF5F5F5),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // 💡 필터 영역 (리스트와 함께 스크롤되어 올라감)
-                      Row(
-                        children: [
-                          _buildFilter(["전체", "거북목", "일자목", "역C자목"], selectedType, 115, (v) => setState(() => selectedType = v!)),
-                          const SizedBox(width: 8),
-                          _buildFilter(["전체", "스트레칭", "도수치료", "헬스"], selectedBody, 105, (v) => setState(() => selectedBody = v!)),
-                          const SizedBox(width: 8),
-                          _buildFilter(["전체", "3분", "10분", "20분"], selectedTime, 85, (v) => setState(() => selectedTime = v!)),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      // 영상 리스트들
                       if (_filteredVideos.isEmpty)
                         const Center(child: Padding(padding: EdgeInsets.only(top: 40), child: Text("해당하는 영상이 없습니다.")))
                       else
                         ..._filteredVideos.map((v) => _buildVideoCard(v)).toList(),
-                      const SizedBox(height: 50),
+                      const SizedBox(height: 100),
                     ],
                   ),
                 ),
@@ -148,7 +143,6 @@ class _ExerciseViewState extends State<ExerciseView> {
     );
   }
 
-  // --- 기존 필터 및 카드 위젯 함수들 동일 ---
   Widget _buildFilter(List<String> items, String current, double width, Function(String?) onSelect) {
     return PopupMenuButton<String>(
       onSelected: onSelect,

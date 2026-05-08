@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'style.dart'; 
 import 'monthly_report.dart'; 
+import 'today_report.dart'; // 💡 상세 리포트 페이지 import
 
 class ReportView extends StatefulWidget {
   const ReportView({super.key});
@@ -51,17 +52,22 @@ class _ReportViewState extends State<ReportView> {
 
   bool _hasRecord(DateTime day) => _recordedDays.any((d) => isSameDay(d, day));
 
-  // 💡 [핵심 로직] 현재 보고 있는 '주'의 토요일이 오늘 이후인지 체크
   bool _canGoNext() {
     DateTime now = DateTime.now();
-    // 현재 focusedDay가 속한 주의 토요일 계산 (weekday: 월1 ~ 일7)
-    // 토요일(6) 기준으로 계산
     int daysUntilSaturday = DateTime.saturday - _focusedDay.weekday;
     DateTime endOfCurrentWeek = _focusedDay.add(Duration(days: daysUntilSaturday));
-    
-    // 이번 주의 토요일이 오늘 자정보다 이전이어야만 다음 주로 갈 수 있음
     DateTime today = DateTime(now.year, now.month, now.day);
     return endOfCurrentWeek.isBefore(today);
+  }
+
+  // 💡 상세 페이지로 이동하는 공통 함수
+  void _goToTodayReport(DateTime date) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TodayReportView(date: date),
+      ),
+    );
   }
 
   @override
@@ -92,7 +98,6 @@ class _ReportViewState extends State<ReportView> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // 상단 헤더: 화살표 비활성화 로직 적용
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             child: Row(
@@ -113,7 +118,6 @@ class _ReportViewState extends State<ReportView> {
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: TColor.darkGreen)
                     ),
                     const SizedBox(width: 8),
-                    // 💡 이번 주를 보고 있다면 회색으로 비활성화됨
                     IconButton(
                       icon: Icon(
                         Icons.arrow_right, 
@@ -136,7 +140,6 @@ class _ReportViewState extends State<ReportView> {
             ),
           ),
 
-          // 주간 달력: 오늘 이후 날짜 선택 제한
           TableCalendar(
             locale: 'ko_KR',
             firstDay: DateTime.utc(2024, 1, 1),
@@ -205,12 +208,14 @@ class _ReportViewState extends State<ReportView> {
                       headerVisible: false,
                       daysOfWeekVisible: false,
                       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                      // 💡 [수정됨] 날짜 클릭 시 상세 페이지로 즉시 이동
                       onDaySelected: (selectedDay, focusedDay) {
                         setState(() {
                           _selectedDay = selectedDay;
                           _focusedDay = focusedDay;
-                          _viewIndex = 0; 
                         });
+                        // 상세 리포트로 이동
+                        _goToTodayReport(selectedDay);
                       },
                       calendarBuilders: _customBuilders(),
                     ),
@@ -224,7 +229,7 @@ class _ReportViewState extends State<ReportView> {
     );
   }
 
-  // --- UI 컴포넌트 위젯들 ---
+  // --- UI 컴포넌트 위젯들 (기존 코드 유지) ---
   Widget _buildActiveContent() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
