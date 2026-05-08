@@ -81,7 +81,7 @@ class _SignupState extends State<Signup> {
       final regExp = RegExp(idPattern);
 
       if (_idController.text == "admin") {
-        _idMessage = "이미 존재하는 아이디입니다.";
+        _idMessage = "이미 존재하는 아이디입니다";
         _idColor = TColor.red;
         _idCheckStatus = 1;
       } else if (!regExp.hasMatch(_idController.text)) {
@@ -91,15 +91,14 @@ class _SignupState extends State<Signup> {
         _idCheckStatus = 1;
       } else {
         // 성공 시 (#5151F8)
-        _idMessage = "사용 가능한 아이디입니다.";
+        _idMessage = "사용 가능한 아이디입니다";
         _idColor = TColor.blue;
         _idCheckStatus = 2;
       }
     });
   }
 
-  // 3. 상태 초기화 함수 (뒤로 가기 시 호출)
-  void _resetPhoneAuth() {
+  void _clearStep0() {
     _phoneController.clear();
     _authCodeController.clear();
     _isAuthSent = false;
@@ -107,6 +106,21 @@ class _SignupState extends State<Signup> {
     _authStatusMessage = "";
     _timer?.cancel();
     _secondsRemaining = 300;
+  }
+
+  void _clearStep1() {
+    _idController.clear();
+    _pwController.clear();
+    _pwConfirmController.clear();
+    _idCheckStatus = 0;
+    _idMessage = "영문, 숫자 포함 6-20자";
+    _idColor = TColor.gray;
+    _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상";
+    _pwColor = TColor.gray;
+  }
+
+  void _clearStep2() {
+    _nicknameController.clear();
   }
 
   @override
@@ -119,16 +133,21 @@ class _SignupState extends State<Signup> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
           onPressed: () {
-            if (_step == 0) {
-              Navigator.pop(context);
-            } else if (_step == 1) {
-              setState(() {
-                _resetPhoneAuth(); // 1단계에서 0단계로 갈 때 데이터 초기화
+            setState(() {
+              if (_step == 0) {
+                Navigator.pop(context);
+              } else if (_step == 1) {
+                _clearStep1();
+                _clearStep0();
                 _step = 0;
-              });
-            } else {
-              setState(() => _step--);
-            }
+              } else if (_step == 2) {
+                _clearStep2();
+                _clearStep1();
+                _step = 1;
+              } else {
+                _step--;
+              }
+            });
           },
         ),
         title: const Text(
@@ -171,11 +190,17 @@ class _SignupState extends State<Signup> {
                           _pwController.text.isNotEmpty &&
                           _pwConfirmController.text.isNotEmpty;
 
-                      // 현재 단계가 유효하지 않으면 클릭 차단
+                      // 2. 현재 단계 유효성 검사 (기존 코드와 동일)
                       if (_step == 0 && !isStep0Valid) return;
                       if (_step == 1 && !isStep1Valid) return;
 
-                      if (_step == 1) {
+                      // 3. 실제 단계 이동 및 초기화 로직
+                      if (_step == 0) {
+                        setState(() {
+                          _clearStep1(); // 0단계에서 1단계로 가기 전에 1단계(ID/PW) 내용을 청소!
+                          _step = 1;
+                        });
+                      } else if (_step == 1) {
                         setState(() {
                           final pwPattern =
                               r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$';
@@ -186,15 +211,19 @@ class _SignupState extends State<Signup> {
                             _pwColor = Colors.red;
                           } else if (_pwController.text !=
                               _pwConfirmController.text) {
-                            _pwMessage = "비밀번호가 일치하지 않습니다. 다시 확인해 주세요.";
+                            _pwMessage = "비밀번호가 일치하지 않습니다 다시 확인해 주세요";
                             _pwColor = Colors.red;
                           } else {
-                            _pwMessage = "비밀번호가 일치합니다.";
+                            // 비밀번호 검증 성공 시
+                            _pwMessage = "비밀번호가 일치합니다";
                             _pwColor = TColor.blue;
-                            _step++;
+
+                            _clearStep2(); // 1단계에서 2단계로 가기 전에 2단계(닉네임) 내용을 청소!
+                            _step = 2;
                           }
                         });
                       } else {
+                        // 2단계에서 3단계로 갈 때 등 그 외 단계 이동
                         setState(() => _step++);
                       }
                     },
