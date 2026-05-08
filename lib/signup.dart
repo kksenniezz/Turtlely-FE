@@ -180,7 +180,7 @@ class _SignupState extends State<Signup> {
                       // 배경색 결정 로직
                       backgroundColor:
                           (_step == 0 &&
-                                  _authCodeController.text.length == 6 &&
+                                  _authCodeController.text.length == 4 &&
                                   !_isTimeOut) ||
                               (_step == 1 && _idCheckStatus == 2) ||
                               (_step == 2)
@@ -285,7 +285,7 @@ class _SignupState extends State<Signup> {
         TextField(
           controller: _authCodeController,
           keyboardType: TextInputType.phone,
-          maxLength: 6, // 인증번호 길이
+          maxLength: 4, // 인증번호 길이
           onChanged: (value) {
             setState(() {});
           },
