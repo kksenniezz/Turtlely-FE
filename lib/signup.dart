@@ -145,7 +145,7 @@ class _SignupState extends State<Signup> {
                       // 활성화 조건 변수화 (가독성)
                       bool isStep0Valid =
                           _step == 0 &&
-                          _authCodeController.text.length == 6 &&
+                          _authCodeController.text.length == 4 &&
                           !_isTimeOut;
                       bool isStep1Valid = _step == 1 && _idCheckStatus == 2;
 
