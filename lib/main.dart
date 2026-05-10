@@ -66,7 +66,10 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
               actions: [
                 IconButton(
                   onPressed: () {},
-                  icon: const Icon(Icons.notifications_none, color: TColor.black),
+                  icon: const Icon(
+                    Icons.notifications_none,
+                    color: TColor.black,
+                  ),
                 ),
               ],
             ),
@@ -102,13 +105,17 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
           children: [
             Icon(
               icon,
-              color: isSelected ? TColor.buttonGreen : TColor.black.withOpacity(0.4),
+              color: isSelected
+                  ? TColor.buttonGreen
+                  : TColor.black.withOpacity(0.4),
               size: 28,
             ),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? TColor.buttonGreen : TColor.black.withOpacity(0.4),
+                color: isSelected
+                    ? TColor.buttonGreen
+                    : TColor.black.withOpacity(0.4),
                 fontSize: 12,
               ),
             ),
@@ -136,21 +143,37 @@ class _HomeViewContentState extends State<HomeViewContent> {
   String _getTodayDate() => "${DateTime.now().month}월 ${DateTime.now().day}일";
 
   void startCalibration() {
-    setState(() { isCalibrating = true; calibrationTimer = 3; });
+    setState(() {
+      isCalibrating = true;
+      calibrationTimer = 3;
+    });
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (calibrationTimer > 1) setState(() => calibrationTimer--);
-      else { timer.cancel(); startMonitoring(); }
+      if (calibrationTimer > 1)
+        setState(() => calibrationTimer--);
+      else {
+        timer.cancel();
+        startMonitoring();
+      }
     });
   }
 
   void startMonitoring() {
-    setState(() { isCalibrating = false; isMonitoring = true; monitoringSeconds = 0; });
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) => setState(() => monitoringSeconds++));
+    setState(() {
+      isCalibrating = false;
+      isMonitoring = true;
+      monitoringSeconds = 0;
+    });
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      (timer) => setState(() => monitoringSeconds++),
+    );
   }
 
   void stopMonitoring() {
     _timer?.cancel();
-    setState(() { isMonitoring = false; });
+    setState(() {
+      isMonitoring = false;
+    });
   }
 
   @override
@@ -163,13 +186,41 @@ class _HomeViewContentState extends State<HomeViewContent> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(_getTodayDate(), style: TText.title.copyWith(fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(
+                _getTodayDate(),
+                style: TText.title.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const VisionPage())),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const VisionPage()),
+                ),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [const BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]),
-                  child: Text("월간 거북목 측정하러 가기 >", style: TText.caption.copyWith(color: TColor.darkGreen, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      const BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    "월간 거북목 측정하러 가기 >",
+                    style: TText.caption.copyWith(
+                      color: TColor.darkGreen,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -181,8 +232,20 @@ class _HomeViewContentState extends State<HomeViewContent> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("${(monitoringSeconds ~/ 60).toString().padLeft(2, '0')}:${(monitoringSeconds % 60).toString().padLeft(2, '0')}", style: TText.title.copyWith(fontSize: 32, fontWeight: FontWeight.bold)),
-                  const Row(children: [Icon(Icons.battery_3_bar, color: TColor.gray, size: 20), SizedBox(width: 4), Text("85%", style: TText.caption)]),
+                  Text(
+                    "${(monitoringSeconds ~/ 60).toString().padLeft(2, '0')}:${(monitoringSeconds % 60).toString().padLeft(2, '0')}",
+                    style: TText.title.copyWith(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Row(
+                    children: [
+                      Icon(Icons.battery_3_bar, color: TColor.gray, size: 20),
+                      SizedBox(width: 4),
+                      Text("85%", style: TText.caption),
+                    ],
+                  ),
                 ],
               ),
               Row(
@@ -192,9 +255,23 @@ class _HomeViewContentState extends State<HomeViewContent> {
                     onTap: () => setState(() => selectedDifficulty = level),
                     child: Container(
                       margin: const EdgeInsets.only(left: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(color: isSelected ? TColor.buttonGreen : TColor.lightGreen, borderRadius: BorderRadius.circular(15)),
-                      child: Text(level, style: TextStyle(color: isSelected ? TColor.white : TColor.gray, fontSize: 13)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? TColor.buttonGreen
+                            : TColor.lightGreen,
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Text(
+                        level,
+                        style: TextStyle(
+                          color: isSelected ? TColor.white : TColor.gray,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   );
                 }).toList(),
@@ -205,13 +282,41 @@ class _HomeViewContentState extends State<HomeViewContent> {
           Expanded(
             child: Center(
               child: isCalibrating
-                  ? Stack(alignment: Alignment.center, children: [SizedBox(width: 200, height: 200, child: CircularProgressIndicator(value: 1 - (calibrationTimer / 3), color: TColor.buttonGreen, strokeWidth: 8)), Text("$calibrationTimer", style: TText.logo.copyWith(fontSize: 48))])
-                  : Image.asset('assets/normal_turtle.png', width: 280, errorBuilder: (c, e, s) => const Text("이미지 없음")),
+                  ? Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 200,
+                          height: 200,
+                          child: CircularProgressIndicator(
+                            value: 1 - (calibrationTimer / 3),
+                            color: TColor.buttonGreen,
+                            strokeWidth: 8,
+                          ),
+                        ),
+                        Text(
+                          "$calibrationTimer",
+                          style: TText.logo.copyWith(fontSize: 48),
+                        ),
+                      ],
+                    )
+                  : Image.asset(
+                      'assets/normal_turtle.png',
+                      width: 280,
+                      errorBuilder: (c, e, s) => const Text("이미지 없음"),
+                    ),
             ),
           ),
           Text("거북목을 교정을 하는 동안 터틀훅을 꼭 착용해 주세요", style: TText.caption),
           const SizedBox(height: 16),
-          ElevatedButton(style: T_MainButtonStyle, onPressed: isMonitoring ? stopMonitoring : startCalibration, child: Text(isMonitoring ? "자세 교정 종료하기" : "자세 교정 시작하기", style: TText.button)),
+          ElevatedButton(
+            style: T_MainButtonStyle,
+            onPressed: isMonitoring ? stopMonitoring : startCalibration,
+            child: Text(
+              isMonitoring ? "자세 교정 종료하기" : "자세 교정 시작하기",
+              style: TText.button,
+            ),
+          ),
           const SizedBox(height: 40),
         ],
       ),
@@ -222,5 +327,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
 class VisionPage extends StatelessWidget {
   const VisionPage({super.key});
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text("월간 거북목 측정")), body: const Center(child: Text("카메라 연동 화면")));
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text("월간 거북목 측정")),
+    body: const Center(child: Text("카메라 연동 화면")),
+  );
 }

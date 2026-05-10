@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'style.dart';
 
 class FindId extends StatefulWidget {
@@ -9,152 +10,264 @@ class FindId extends StatefulWidget {
 }
 
 class _FindIdState extends State<FindId> {
-  bool _isCodeSent = false;
-  bool _isVerified = false; // 인증 완료 여부
-  
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _codeController = TextEditingController();
-  
-  String _message = "";
-  Color _messageColor = Colors.red;
+  int _step = 0; // 0: 전화번호 입력, 1: 아이디 확인 결과
 
-  void _sendVerificationCode() {
-    setState(() {
-      if (_phoneController.text.length >= 10) {
-        _isCodeSent = true;
-        _message = "인증번호가 전송되었습니다.";
-        _messageColor = Colors.green;
-      } else {
-        _message = "올바른 전화번호를 입력해주세요.";
-        _messageColor = Colors.red;
-      }
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _authCodeController = TextEditingController();
+
+  bool _isAuthSent = false;
+  bool _isTimeOut = false;
+  String _authStatusMessage = "";
+
+  Timer? _timer;
+  int _secondsRemaining = 300;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _secondsRemaining = 300;
+    _isTimeOut = false;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
+        } else {
+          _timer?.cancel();
+          _isTimeOut = true;
+          _authStatusMessage = "인증 시간이 초과되었습니다 다시 시도해 주세요";
+        }
+      });
     });
   }
 
-  void _verifyCode() {
+  void _handleAuthRequest() {
+    if (_phoneController.text.isEmpty) {
+      setState(() {
+        _isAuthSent = false;
+        _authStatusMessage = "전화번호를 확인해 주세요";
+      });
+      return;
+    }
     setState(() {
-      if (_codeController.text == "123456") {
-        _isVerified = true;
-        _message = "인증이 완료되었습니다.";
-        _messageColor = Colors.green;
-      } else {
-        _message = "인증번호가 일치하지 않습니다.";
-        _messageColor = Colors.red;
-      }
+      _isAuthSent = true;
+      _isTimeOut = false;
+      _authStatusMessage = "인증번호가 발송되었습니다";
+      _startTimer();
     });
+  }
+
+  String _formatTime(int seconds) {
+    int min = seconds ~/ 60;
+    int sec = seconds % 60;
+    return "${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}";
   }
 
   @override
   Widget build(BuildContext context) {
+    bool isStep0Valid =
+        _step == 0 &&
+        _phoneController.text.isNotEmpty &&
+        _authCodeController.text.length == 4 &&
+        !_isTimeOut;
+
     return Scaffold(
       backgroundColor: TColor.white,
       appBar: AppBar(
-        backgroundColor: TColor.white, elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
-        title: const Text("아이디 찾기", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        backgroundColor: TColor.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          "아이디 찾기",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("전화번호", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            
-            // [1단계] 전화번호 입력 및 인증 버튼
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: TColor.lightGreen.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: TextField(
-                      controller: _phoneController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(border: InputBorder.none, hintText: "'-' 없이 숫자만 입력"),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            children: [
+              // 0단계: 기존 간격 유지, 1단계: 56px 적용
+              SizedBox(height: _step == 0 ? 60 : 56),
+
+              if (_step == 0) _buildPhoneAuthStep(),
+              if (_step == 1) _buildIdResultStep(),
+
+              const SizedBox(height: 40),
+
+              // 하단 버튼 섹션
+              if (_step < 2)
                 SizedBox(
-                  height: 50,
-                  // [인증 버튼 디자인 통일]
+                  width: double.infinity,
+                  height: 56,
                   child: ElevatedButton(
-                    onPressed: _isVerified ? null : _sendVerificationCode,
+                    onPressed: () {
+                      if (_step == 0) {
+                        if (!isStep0Valid) return;
+                        setState(() {
+                          _timer?.cancel();
+                          _step = 1;
+                        });
+                      } else {
+                        // STEP 1: 로그인하러 가기 클릭 시
+                        Navigator.pop(context); // login.dart로 이동
+                      }
+                    },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isVerified ? Colors.grey : TColor.buttonGreen,
-                      foregroundColor: Colors.white,
+                      backgroundColor: _step == 1
+                          ? TColor.buttonGreen
+                          : (isStep0Valid ? TColor.buttonGreen : TColor.gray),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
                     ),
-                    child: _isVerified ? const Icon(Icons.check, size: 20) : const Text("인증"),
+                    child: Text(
+                      _step == 0 ? "다음" : "로그인하러 가기",
+                      style: TText.button,
+                    ),
                   ),
                 ),
-              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- STEP 0: 휴대폰 인증 위젯 ---
+  Widget _buildPhoneAuthStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. 전화번호 입력칸
+        TextField(
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          onChanged: (value) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: "전화번호",
+            hintStyle: const TextStyle(color: TColor.gray),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
             ),
-            
-            // [2단계] 인증번호 입력칸
-            if (_isCodeSent) ...[
-              const SizedBox(height: 20),
-              const Text("인증번호", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Row(
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
+            // 우측 인증 버튼 섹션
+            suffixIcon: Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: TColor.lightGreen.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: TextField(
-                        controller: _codeController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(border: InputBorder.none, hintText: "인증번호 6자리"),
-                      ),
+                  if (_isAuthSent)
+                    Text(
+                      _formatTime(_secondsRemaining),
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    height: 50,
-                    // [확인 버튼 디자인 통일]
-                    child: ElevatedButton(
-                      onPressed: _isVerified ? null : _verifyCode,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _isVerified ? Colors.grey : TColor.buttonGreen,
-                        foregroundColor: Colors.white,
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _handleAuthRequest,
+                    child: Container(
+                      width: 64,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0x4D235E26),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: _isVerified ? const Icon(Icons.check, size: 20) : const Text("확인"),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _isAuthSent ? "재발송" : "인증",
+                        style: const TextStyle(
+                          color: Color(0xFF235E26),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
-            ],
+            ),
+          ),
+        ),
 
-            if (_message.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8, left: 4),
-                child: Text(_message, style: TextStyle(color: _messageColor, fontSize: 12)),
-              ),
-            
-            const Spacer(),
-            
-            // 다음 버튼
-            SizedBox(
-              width: double.infinity, height: 56,
-              child: ElevatedButton(
-                style: _isVerified ? T_MainButtonStyle : T_MainButtonStyle.copyWith(
-                  backgroundColor: MaterialStateProperty.all(Colors.grey)
-                ),
-                onPressed: _isVerified ? () { /* 다음 화면 연결 */ } : null,
-                child: const Text("다음", style: TText.button),
+        // 안내 메시지
+        if (_authStatusMessage.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(
+              _authStatusMessage,
+              style: TextStyle(
+                color: (_isTimeOut || _authStatusMessage == "전화번호를 확인해 주세요")
+                    ? Colors.red
+                    : const Color(0xFF235E26),
+                fontSize: 12,
               ),
             ),
-            const SizedBox(height: 50),
-          ],
+          ),
+
+        const SizedBox(height: 16),
+
+        // 2. 인증번호 입력칸
+        TextField(
+          controller: _authCodeController,
+          keyboardType: TextInputType.phone,
+          maxLength: 4, // 인증번호 길이
+          onChanged: (value) {
+            setState(() {});
+          },
+          decoration: InputDecoration(
+            hintText: "인증번호",
+            counterText: "",
+            hintStyle: const TextStyle(color: TColor.gray),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
+          ),
         ),
-      ),
+      ],
+    );
+  }
+
+  // --- STEP 1: 아이디 확인 결과 위젯 (요청 디자인 반영) ---
+  Widget _buildIdResultStep() {
+    return Column(
+      children: [
+        const Text(
+          "전화번호와 일치하는 아이디입니다",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 96), // 96px 간격
+        const Text(
+          "(아이디)",
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 128), // 128px 간격
+      ],
     );
   }
 }
