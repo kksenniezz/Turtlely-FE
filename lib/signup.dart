@@ -99,7 +99,7 @@ class _SignupState extends State<Signup> {
       } else {
         // 성공 시 (#5151F8)
         _idMessage = "사용 가능한 아이디입니다";
-        _idColor = TColor.blue;
+        _idColor = const Color(0xFF235E26);
         _idCheckStatus = 2;
       }
     });
@@ -224,7 +224,7 @@ class _SignupState extends State<Signup> {
                             _pwColor = TColor.red;
                           } else {
                             _pwMessage = "비밀번호가 일치합니다";
-                            _pwColor = TColor.blue;
+                            _pwColor = const Color(0xFF235E26);
 
                             _clearStep2();
                             _step = 2;
