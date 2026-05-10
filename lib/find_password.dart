@@ -18,6 +18,7 @@ class _FindPasswordState extends State<FindPassword> {
 
   bool _isAuthSent = false;
   bool _isTimeOut = false;
+  bool _isAuthConfirmed = false;
   String _authStatusMessage = "";
 
   Timer? _timer;
@@ -60,6 +61,7 @@ class _FindPasswordState extends State<FindPassword> {
     setState(() {
       _isAuthSent = true;
       _isTimeOut = false;
+      _isAuthConfirmed = true;
       _authStatusMessage = "인증번호가 발송되었습니다";
       _startTimer();
     });
@@ -90,6 +92,7 @@ class _FindPasswordState extends State<FindPassword> {
             if (_step == 1) {
               setState(() {
                 _step = 0;
+                _isAuthConfirmed = false;
                 _idController.clear();
                 _phoneController.clear();
                 _authCodeController.clear();
@@ -124,8 +127,6 @@ class _FindPasswordState extends State<FindPassword> {
                   height: 56,
                   child: ElevatedButton(
                     onPressed: () {
-                      if (!isStep0Valid) return;
-
                       if (_idController.text.isEmpty ||
                           _authCodeController.text.isEmpty) {
                         setState(() {
@@ -133,8 +134,18 @@ class _FindPasswordState extends State<FindPassword> {
                         });
                         return;
                       }
+
+                      if (!isStep0Valid) {
+                        setState(() {
+                          _authStatusMessage = "아이디 또는 인증번호를 다시 확인해 주세요";
+                        });
+                        return;
+                      }
+
                       setState(() {
                         _timer?.cancel();
+                        _isAuthConfirmed = true;
+                        _authStatusMessage = "인증이 완료되었습니다";
                         _step = 1; // 다음 단계로 이동
                       });
                     },
@@ -186,51 +197,75 @@ class _FindPasswordState extends State<FindPassword> {
         ),
         const SizedBox(height: 16),
 
-        // 2. 전화번호 입력칸
+        // 2. 전화번호 입력+ 인증
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
+          readOnly: _isAuthConfirmed,
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
             hintText: "전화번호",
             hintStyle: const TextStyle(color: TColor.gray),
+
             contentPadding: const EdgeInsets.symmetric(
               vertical: 16,
               horizontal: 20,
             ),
+            filled: _isAuthConfirmed,
+            fillColor: _isAuthConfirmed
+                ? const Color(0xFFF5F5F5)
+                : Colors.white,
+
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+              borderSide: BorderSide(
+                color: _isAuthConfirmed
+                    ? const Color(0xFFF5F5F5)
+                    : const Color(0xFFE0E0E0),
+              ),
             ),
+
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Colors.black),
+              borderSide: BorderSide(
+                color: _isAuthConfirmed
+                    ? const Color(0xFFF5F5F5)
+                    : Colors.black,
+              ),
             ),
+
             suffixIcon: Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_isAuthSent)
+                  if (_isAuthSent && !_isAuthConfirmed)
                     Text(
                       _formatTime(_secondsRemaining),
                       style: const TextStyle(color: Colors.red, fontSize: 12),
                     ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: _handleAuthRequest,
+                    onTap: _isAuthConfirmed ? null : _handleAuthRequest,
                     child: Container(
                       width: 64,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: const Color(0x4D235E26),
+                        color: _isAuthConfirmed
+                            ? const Color(0xFFF5F5F5)
+                            : const Color(0x4D235E26),
                         borderRadius: BorderRadius.circular(10),
+                        border: _isAuthConfirmed
+                            ? Border.all(color: const Color(0xFFE0E0E0))
+                            : null,
                       ),
                       alignment: Alignment.center,
                       child: Text(
                         _isAuthSent ? "재발송" : "인증",
-                        style: const TextStyle(
-                          color: Color(0xFF235E26),
+                        style: TextStyle(
+                          color: _isAuthConfirmed
+                              ? TColor.gray
+                              : const Color(0xFF235E26),
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                         ),
