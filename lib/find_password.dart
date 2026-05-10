@@ -101,11 +101,12 @@ class _FindPasswordState extends State<FindPassword> {
             children: [
               const SizedBox(height: 60),
               if (_step == 0) _buildAuthStep(),
+              if (_step == 1) _buildResetResultStep(),
 
-              // if (_step == 1) _buildNewPasswordStep(), // 다음 단계 작업 예정
               const SizedBox(height: 40),
 
-              if (_step == 0)
+              if (_step == 0) ...[
+                const SizedBox(height: 40),
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -137,6 +138,7 @@ class _FindPasswordState extends State<FindPassword> {
                     child: const Text("다음", style: TText.button),
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -144,6 +146,7 @@ class _FindPasswordState extends State<FindPassword> {
     );
   }
 
+  // --- Step 0: 인증 화면 ---
   Widget _buildAuthStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,6 +272,58 @@ class _FindPasswordState extends State<FindPassword> {
               borderRadius: BorderRadius.circular(14),
               borderSide: const BorderSide(color: Colors.black),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- STEP 1: 결과 및 안내 화면 ---
+  Widget _buildResetResultStep() {
+    return Column(
+      children: [
+        const Text(
+          "입력한 전화번호로 임시 비밀번호를 전송했습니다",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        Image.asset(
+          'assets/normal_turtle.png',
+          width: 150,
+          errorBuilder: (context, error, stackTrace) {
+            return const Text("이미지 로드 실패 (assets 경로 확인)");
+          },
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          "로그인 후 비밀번호를 재설정하세요",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          "MyPage → 비밀번호 재설정",
+          style: TextStyle(
+            fontSize: 14,
+            color: TColor.buttonGreen,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 40),
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: TColor.buttonGreen,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+            child: const Text("로그인하러 가기", style: TText.button),
           ),
         ),
       ],
