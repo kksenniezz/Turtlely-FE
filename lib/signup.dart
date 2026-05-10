@@ -330,18 +330,19 @@ class _SignupState extends State<Signup> {
         ),
 
         // 안내 메시지
-        Padding(
-          padding: const EdgeInsets.only(top: 8, left: 4),
-          child: Text(
-            _authStatusMessage,
-            style: TextStyle(
-              color: (_isTimeOut || _authStatusMessage == "전화번호를 확인해 주세요")
-                  ? Colors.red
-                  : const Color(0xFF235E26),
-              fontSize: 12,
+        if (_authStatusMessage.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(
+              _authStatusMessage,
+              style: TextStyle(
+                color: (_isTimeOut || _authStatusMessage == "전화번호를 확인해 주세요")
+                    ? Colors.red
+                    : const Color(0xFF235E26),
+                fontSize: 12,
+              ),
             ),
           ),
-        ),
 
         const SizedBox(height: 16),
 
