@@ -103,8 +103,6 @@ class _FindPasswordState extends State<FindPassword> {
               if (_step == 0) _buildAuthStep(),
               if (_step == 1) _buildResetResultStep(),
 
-              const SizedBox(height: 40),
-
               if (_step == 0) ...[
                 const SizedBox(height: 40),
                 SizedBox(
