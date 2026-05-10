@@ -266,7 +266,7 @@ class _FindIdState extends State<FindId> {
           "(아이디)",
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 156), // 156px 간격
+        const SizedBox(height: 96), // 96px 간격
       ],
     );
   }
