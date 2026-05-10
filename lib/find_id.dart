@@ -17,6 +17,7 @@ class _FindIdState extends State<FindId> {
 
   bool _isAuthSent = false;
   bool _isTimeOut = false;
+  bool _isAuthConfirmed = false;
   String _authStatusMessage = "";
 
   Timer? _timer;
@@ -24,6 +25,8 @@ class _FindIdState extends State<FindId> {
 
   @override
   void dispose() {
+    _phoneController.dispose();
+    _authCodeController.dispose();
     _timer?.cancel();
     super.dispose();
   }
@@ -56,6 +59,7 @@ class _FindIdState extends State<FindId> {
     setState(() {
       _isAuthSent = true;
       _isTimeOut = false;
+      _isAuthConfirmed = true;
       _authStatusMessage = "인증번호가 발송되었습니다";
       _startTimer();
     });
@@ -72,6 +76,7 @@ class _FindIdState extends State<FindId> {
     bool isStep0Valid =
         _step == 0 &&
         _phoneController.text.isNotEmpty &&
+        _isAuthSent &&
         _authCodeController.text.length == 4 &&
         !_isTimeOut;
 
@@ -86,6 +91,7 @@ class _FindIdState extends State<FindId> {
             if (_step == 1) {
               setState(() {
                 _step = 0;
+                _isAuthConfirmed = false;
                 _phoneController.clear();
                 _authCodeController.clear();
                 _authStatusMessage = "";
@@ -131,7 +137,7 @@ class _FindIdState extends State<FindId> {
                         });
                       } else {
                         // STEP 1: 로그인하러 가기 클릭 시
-                        Navigator.pop(context); // login.dart로 이동
+                        Navigator.pop(context);
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -165,6 +171,7 @@ class _FindIdState extends State<FindId> {
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
+          readOnly: _isAuthConfirmed,
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
             hintText: "전화번호",
@@ -173,13 +180,25 @@ class _FindIdState extends State<FindId> {
               vertical: 16,
               horizontal: 20,
             ),
+            filled: _isAuthConfirmed,
+            fillColor: _isAuthConfirmed
+                ? const Color(0xFFF5F5F5)
+                : Colors.white,
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+              borderSide: BorderSide(
+                color: _isAuthConfirmed
+                    ? const Color(0xFFF5F5F5)
+                    : const Color(0xFFE0E0E0),
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Colors.black),
+              borderSide: BorderSide(
+                color: _isAuthConfirmed
+                    ? const Color(0xFFF5F5F5)
+                    : Colors.black,
+              ),
             ),
             // 우측 인증 버튼 섹션
             suffixIcon: Padding(
@@ -187,26 +206,33 @@ class _FindIdState extends State<FindId> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_isAuthSent)
+                  if (_isAuthSent && !_isAuthConfirmed)
                     Text(
                       _formatTime(_secondsRemaining),
                       style: const TextStyle(color: Colors.red, fontSize: 12),
                     ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: _handleAuthRequest,
+                    onTap: _isAuthConfirmed ? null : _handleAuthRequest,
                     child: Container(
                       width: 64,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: const Color(0x4D235E26),
+                        color: _isAuthConfirmed
+                            ? const Color(0xFFF5F5F5)
+                            : const Color(0x4D235E26),
                         borderRadius: BorderRadius.circular(10),
+                        border: _isAuthConfirmed
+                            ? Border.all(color: const Color(0xFFE0E0E0))
+                            : null,
                       ),
                       alignment: Alignment.center,
                       child: Text(
                         _isAuthSent ? "재발송" : "인증",
-                        style: const TextStyle(
-                          color: Color(0xFF235E26),
+                        style: TextStyle(
+                          color: _isAuthConfirmed
+                              ? TColor.gray
+                              : const Color(0xFF235E26),
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                         ),
@@ -241,9 +267,7 @@ class _FindIdState extends State<FindId> {
           controller: _authCodeController,
           keyboardType: TextInputType.phone,
           maxLength: 4, // 인증번호 길이
-          onChanged: (value) {
-            setState(() {});
-          },
+          onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
             hintText: "인증번호",
             counterText: "",
