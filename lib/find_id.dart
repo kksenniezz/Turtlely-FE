@@ -82,7 +82,20 @@ class _FindIdState extends State<FindId> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            if (_step == 1) {
+              setState(() {
+                _step = 0;
+                _phoneController.clear();
+                _authCodeController.clear();
+                _authStatusMessage = "";
+                _isAuthSent = false;
+                _timer?.cancel();
+              });
+            } else {
+              Navigator.pop(context);
+            }
+          },
         ),
         title: const Text(
           "아이디 찾기",
