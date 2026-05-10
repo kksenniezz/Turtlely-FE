@@ -61,6 +61,13 @@ class _SignupState extends State<Signup> {
   }
 
   void _handleAuthRequest() {
+    if (_phoneController.text.isEmpty) {
+      setState(() {
+        _isAuthSent = false;
+        _authStatusMessage = "전화번호를 확인해 주세요";
+      });
+      return;
+    }
     setState(() {
       _isAuthSent = true;
       _isTimeOut = false; // 재발송 시 타임아웃 해제
@@ -127,7 +134,10 @@ class _SignupState extends State<Signup> {
   Widget build(BuildContext context) {
     // 활성화 조건: 0단계(인증4자리), 1단계(중복체크2 & 비번/비번확인 칸 안 비어있음)
     bool isStep0Valid =
-        _step == 0 && _authCodeController.text.length == 4 && !_isTimeOut;
+        _step == 0 &&
+        _phoneController.text.isNotEmpty &&
+        _authCodeController.text.length == 4 &&
+        !_isTimeOut;
     bool isStep1Valid =
         _step == 1 &&
         _idCheckStatus == 2 &&
@@ -167,7 +177,6 @@ class _SignupState extends State<Signup> {
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        // 키보드가 올라올 때 화면 스크롤이 가능하게 함
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
@@ -265,6 +274,7 @@ class _SignupState extends State<Signup> {
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
+          onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
             hintText: "전화번호",
             hintStyle: const TextStyle(color: TColor.gray),
@@ -320,16 +330,19 @@ class _SignupState extends State<Signup> {
         ),
 
         // 안내 메시지
-        Padding(
-          padding: const EdgeInsets.only(top: 8, left: 4),
-          child: Text(
-            _authStatusMessage,
-            style: TextStyle(
-              color: _isTimeOut ? Colors.red : const Color(0xFF235E26),
-              fontSize: 12,
+        if (_authStatusMessage.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, left: 4),
+            child: Text(
+              _authStatusMessage,
+              style: TextStyle(
+                color: (_isTimeOut || _authStatusMessage == "전화번호를 확인해 주세요")
+                    ? Colors.red
+                    : const Color(0xFF235E26),
+                fontSize: 12,
+              ),
             ),
           ),
-        ),
 
         const SizedBox(height: 16),
 
@@ -343,6 +356,7 @@ class _SignupState extends State<Signup> {
           },
           decoration: InputDecoration(
             hintText: "인증번호",
+            counterText: "",
             hintStyle: const TextStyle(color: TColor.gray),
             contentPadding: const EdgeInsets.symmetric(
               vertical: 16,
