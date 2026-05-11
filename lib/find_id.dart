@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'style.dart';
+import 'services/auth_service.dart';
 
 class FindId extends StatefulWidget {
   const FindId({super.key});
@@ -11,6 +12,7 @@ class FindId extends StatefulWidget {
 
 class _FindIdState extends State<FindId> {
   int _step = 0; // 0: 전화번호 입력, 1: 아이디 확인 결과
+  String _foundId = "";// 서버에서 찾은 아이디를 저장할 변수 추가
 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _authCodeController = TextEditingController();
@@ -25,6 +27,8 @@ class _FindIdState extends State<FindId> {
   @override
   void dispose() {
     _timer?.cancel();
+    _phoneController.dispose();
+    _authCodeController.dispose();
     super.dispose();
   }
 
@@ -45,20 +49,57 @@ class _FindIdState extends State<FindId> {
     });
   }
 
-  void _handleAuthRequest() {
-    if (_phoneController.text.isEmpty) {
-      setState(() {
-        _isAuthSent = false;
-        _authStatusMessage = "전화번호를 확인해 주세요";
-      });
-      return;
-    }
+  void _handleAuthRequest() async {
+  if (_phoneController.text.isEmpty) {
+    setState(() {
+      _authStatusMessage = "전화번호를 확인해 주세요";
+    });
+    return;
+  }
+
+  // [진짜 연동] 서버에 문자 발송 요청
+  bool isSent = await AuthService().sendSmsCode(_phoneController.text);
+
+  if (isSent) {
     setState(() {
       _isAuthSent = true;
       _isTimeOut = false;
       _authStatusMessage = "인증번호가 발송되었습니다";
       _startTimer();
     });
+  } else {
+    setState(() {
+      _authStatusMessage = "문자 발송에 실패했습니다. 다시 시도해주세요.";
+    });
+  }
+}
+  // [수정된 부분] 실제 아이디 찾기 로직
+  void _verifyAndFindId() async {
+    // 1. 서버에 인증번호 확인 요청
+    bool isCodeCorrect = await AuthService().verifySmsCode(
+      _phoneController.text, 
+      _authCodeController.text
+    );
+
+    if (isCodeCorrect) { 
+      // 2. 인증 성공 시 -> 서버에 아이디 물어보기
+      String? result = await AuthService().findId(_phoneController.text);
+
+      setState(() {
+        if (result != null) {
+          _timer?.cancel();
+          _foundId = result;
+          _step = 1; // 결과 화면 이동
+        } else {
+          _authStatusMessage = "해당 번호로 가입된 회원이 없습니다.";
+        }
+      });
+    } else {
+      // 3. 인증 실패 시 (isCodeCorrect가 false일 때)
+      setState(() {
+        _authStatusMessage = "인증번호가 일치하지 않습니다.";
+      });
+    }
   }
 
   String _formatTime(int seconds) {
@@ -125,13 +166,9 @@ class _FindIdState extends State<FindId> {
                     onPressed: () {
                       if (_step == 0) {
                         if (!isStep0Valid) return;
-                        setState(() {
-                          _timer?.cancel();
-                          _step = 1;
-                        });
+                        _verifyAndFindId(); // <- 우리가 만든 서버 통신 함수를 여기서 호출해야 합니다!
                       } else {
-                        // STEP 1: 로그인하러 가기 클릭 시
-                        Navigator.pop(context); // login.dart로 이동
+                        Navigator.pop(context);
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -275,8 +312,8 @@ class _FindIdState extends State<FindId> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 96), // 96px 간격
-        const Text(
-          "(아이디)",
+        Text(
+          _foundId,
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 128), // 128px 간격

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'style.dart';
+import 'services/auth_service.dart';
 
 class FindPassword extends StatefulWidget {
   const FindPassword({super.key});
@@ -49,20 +50,29 @@ class _FindPasswordState extends State<FindPassword> {
     });
   }
 
-  void _handleAuthRequest() {
+  void _handleFindPassword() async {
     if (_phoneController.text.isEmpty) {
-      setState(() {
-        _isAuthSent = false;
-        _authStatusMessage = "전화번호를 확인해 주세요";
-      });
+      setState(() => _authStatusMessage = "전화번호를 입력해주세요."); // 이름 변경
       return;
     }
-    setState(() {
-      _isAuthSent = true;
-      _isTimeOut = false;
-      _authStatusMessage = "인증번호가 발송되었습니다";
-      _startTimer();
-    });
+
+    // 서버에 임시 비번 발송 요청
+    bool isSuccess = await AuthService().findPassword(_phoneController.text);
+
+    if (isSuccess) {
+      setState(() {
+        _authStatusMessage = "임시 비밀번호가 문자로 발송되었습니다!"; // 이름 변경
+        _startTimer(); // 인증 버튼 눌렀을 때처럼 타이머도 돌려주면 좋겠죠?
+      });
+      // 성공 시 0단계에서 1단계(결과 화면)로 넘겨줍니다.
+      setState(() {
+        _step = 1;
+      });
+    } else {
+      setState(() {
+        _authStatusMessage = "가입된 번호가 아니거나 발송에 실패했습니다."; // 이름 변경
+      });
+    }
   }
 
   String _formatTime(int seconds) {
@@ -206,6 +216,7 @@ class _FindPasswordState extends State<FindPassword> {
               borderRadius: BorderRadius.circular(14),
               borderSide: const BorderSide(color: Colors.black),
             ),
+            // 우측 인증 버튼 섹션
             suffixIcon: Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: Row(
@@ -218,7 +229,10 @@ class _FindPasswordState extends State<FindPassword> {
                     ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: _handleAuthRequest,
+                    onTap: () {
+                      // [수정된 부분] 인증 버튼 누르면 비번 찾기 함수 실행!
+                      _handleFindPassword(); 
+                    },
                     child: Container(
                       width: 64,
                       height: 40,
@@ -242,7 +256,6 @@ class _FindPasswordState extends State<FindPassword> {
             ),
           ),
         ),
-
         // 메시지 영역 (에러 메시지 포함)
         if (_authStatusMessage.isNotEmpty)
           Padding(

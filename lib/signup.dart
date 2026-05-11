@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async'; // 타이머 추가
 import 'style.dart';
 import 'main.dart';
+import 'services/auth_service.dart';
 
 class Signup extends StatefulWidget {
   const Signup({super.key});
@@ -9,6 +10,7 @@ class Signup extends StatefulWidget {
   @override
   _SignupState createState() => _SignupState();
 }
+
 
 class _SignupState extends State<Signup> {
   int _step = 0; // 0: 전화번호 인증, 1: ID/PW 설정, 2: 닉네임 설정, 3: 가입 완료
@@ -60,19 +62,24 @@ class _SignupState extends State<Signup> {
     });
   }
 
-  void _handleAuthRequest() {
+  void _handleAuthRequest() async {
     if (_phoneController.text.isEmpty) {
-      setState(() {
-        _isAuthSent = false;
-        _authStatusMessage = "전화번호를 확인해 주세요";
-      });
+      setState(() => _authStatusMessage = "전화번호를 확인해 주세요");
       return;
     }
+    
+    // 진짜 서버에 발송 요청
+    bool isSent = await AuthService().sendSmsCode(_phoneController.text);
+
     setState(() {
-      _isAuthSent = true;
-      _isTimeOut = false; // 재발송 시 타임아웃 해제
-      _authStatusMessage = "인증번호가 발송되었습니다";
-      _startTimer();
+      if (isSent) {
+        _isAuthSent = true;
+        _isTimeOut = false;
+        _authStatusMessage = "인증번호가 발송되었습니다";
+        _startTimer();
+      } else {
+        _authStatusMessage = "문자 발송 실패. 다시 시도해주세요.";
+      }
     });
   }
 
@@ -82,25 +89,21 @@ class _SignupState extends State<Signup> {
     return "${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}";
   }
 
-  void _checkIdDuplicate() {
-    setState(() {
-      final idPattern = r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,20}$';
-      final regExp = RegExp(idPattern);
+  void _checkIdDuplicate() async {
+    if (_idController.text.isEmpty) return;
 
-      if (_idController.text == "admin") {
-        _idMessage = "이미 존재하는 아이디입니다";
-        _idColor = TColor.red;
-        _idCheckStatus = 1;
-      } else if (!regExp.hasMatch(_idController.text)) {
-        // 영문, 숫자 조합 6-20자 조건 미달 시
-        _idMessage = "영문, 숫자 포함 6-20자를 입력해 주세요";
-        _idColor = TColor.red;
-        _idCheckStatus = 1;
-      } else {
-        // 성공 시 (#5151F8)
+    // 서버에 중복 확인 요청
+    bool isAvailable = await AuthService().checkId(_idController.text);
+
+    setState(() {
+      if (isAvailable) {
         _idMessage = "사용 가능한 아이디입니다";
         _idColor = const Color(0xFF235E26);
         _idCheckStatus = 2;
+      } else {
+        _idMessage = "이미 존재하는 아이디입니다";
+        _idColor = TColor.red;
+        _idCheckStatus = 1;
       }
     });
   }
@@ -197,44 +200,50 @@ class _SignupState extends State<Signup> {
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // 현재 단계 유효성 검사 (기존 코드와 동일)
-                      if (_step == 0 && !isStep0Valid) return;
-                      if (_step == 1 && !isStep1Valid) return;
-                      if (_step == 2 && !isStep2Valid) return;
-
-                      // 실제 단계 이동 및 초기화 로직
+                    onPressed: () async {
                       if (_step == 0) {
-                        setState(() {
-                          _clearStep1();
-                          _step = 1;
-                        });
-                      } else if (_step == 1) {
-                        setState(() {
-                          final pwPattern =
-                              r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$';
-                          final regExp = RegExp(pwPattern);
+                        if (!isStep0Valid) return;
+                        // 서버에 인증번호 확인 요청
+                        bool isVerify = await AuthService().verifySmsCode(_phoneController.text, _authCodeController.text);
+                        if (isVerify) {
+                          setState(() { _clearStep1(); _step = 1; });
+                        } else {
+                          setState(() => _authStatusMessage = "인증번호가 일치하지 않습니다.");
+                        }
+                      } 
+                      else if (_step == 1) {
+                        // 비밀번호 정규식 체크 로직 (민영님 기존 코드 유지)
+                        final pwPattern = r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$';
+                        if (!RegExp(pwPattern).hasMatch(_pwController.text)) {
+                          setState(() { _pwMessage = "조건에 맞게 입력해 주세요"; _pwColor = TColor.red; });
+                          return;
+                        }
+                        if (_pwController.text != _pwConfirmController.text) {
+                          setState(() { _pwMessage = "비밀번호가 일치하지 않습니다"; _pwColor = TColor.red; });
+                          return;
+                        }
+                        setState(() { _clearStep2(); _step = 2; });
+                      } 
+                      else if (_step == 2) {
+                        if (!isStep2Valid) return;
+                        // [마지막 단계] 진짜 회원가입 요청!
+                        bool isSignupSuccess = await AuthService().signup(
+                          nickname: _nicknameController.text,
+                          loginId: _idController.text,
+                          password: _pwController.text,
+                          phoneNumber: _phoneController.text,
+                        );
 
-                          if (!regExp.hasMatch(_pwController.text)) {
-                            _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상을 입력해 주세요";
-                            _pwColor = TColor.red;
-                          } else if (_pwController.text !=
-                              _pwConfirmController.text) {
-                            _pwMessage = "비밀번호가 일치하지 않습니다 다시 확인해 주세요";
-                            _pwColor = TColor.red;
-                          } else {
-                            _pwMessage = "비밀번호가 일치합니다";
-                            _pwColor = const Color(0xFF235E26);
-
-                            _clearStep2();
-                            _step = 2;
-                          }
-                        });
-                      } else {
-                        // 2단계에서 가입하기를 누르면 3단계(완료)로 이동
-                        setState(() => _step++);
+                        if (isSignupSuccess) {
+                          setState(() => _step = 3); // 완료 화면으로!
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("회원가입 처리 중 에러가 발생했습니다."))
+                          );
+                        }
                       }
                     },
+
                     style: ElevatedButton.styleFrom(
                       // [수정] 배경색 결정 로직: 2단계 조건 추가
                       backgroundColor:
@@ -565,9 +574,9 @@ class _SignupState extends State<Signup> {
     return Column(
       children: [
         const SizedBox(height: 50),
-        const Text(
-          "안녕하세요 @@@님!",
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        Text(
+          "안녕하세요 ${_nicknameController.text}님!",
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 20),
         Image.asset('assets/normal_turtle.png', width: 160),
