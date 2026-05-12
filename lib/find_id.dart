@@ -12,8 +12,9 @@ class FindId extends StatefulWidget {
 
 class _FindIdState extends State<FindId> {
   int _step = 0; // 0: 전화번호 입력, 1: 아이디 확인 결과
-  String _foundId = "";// 서버에서 찾은 아이디를 저장할 변수 추가
+  String _foundId = ""; 
 
+  final AuthService _authService = AuthService(); 
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _authCodeController = TextEditingController();
 
@@ -49,53 +50,52 @@ class _FindIdState extends State<FindId> {
     });
   }
 
+  // 1. 인증번호 요청 핸들러 (아이디 찾기 전용)
   void _handleAuthRequest() async {
-  if (_phoneController.text.isEmpty) {
+    if (_phoneController.text.isEmpty) {
+      setState(() => _authStatusMessage = "전화번호를 확인해 주세요");
+      return;
+    }
+
+    // 💡 [수정] 아이디 찾기 전용 함수인 sendSmsForFindId를 호출합니다.
+    final result = await _authService.sendSmsForFindId(_phoneController.text);
+
     setState(() {
-      _authStatusMessage = "전화번호를 확인해 주세요";
+      // 서버 메시지("가입된 번호가 없습니다" 등)를 화면에 띄웁니다.
+      _authStatusMessage = result['message'];
+
+      if (result['success'] == true) {
+        _isAuthSent = true;
+        _isTimeOut = false;
+        _startTimer();
+      } else {
+        _isAuthSent = false;
+      }
     });
-    return;
   }
 
-  // [진짜 연동] 서버에 문자 발송 요청
-  bool isSent = await AuthService().sendSmsCode(_phoneController.text);
-
-  if (isSent) {
-    setState(() {
-      _isAuthSent = true;
-      _isTimeOut = false;
-      _authStatusMessage = "인증번호가 발송되었습니다";
-      _startTimer();
-    });
-  } else {
-    setState(() {
-      _authStatusMessage = "문자 발송에 실패했습니다. 다시 시도해주세요.";
-    });
-  }
-}
-  // [수정된 부분] 실제 아이디 찾기 로직
+  // 2. 인증 및 아이디 찾기 최종 핸들러
   void _verifyAndFindId() async {
-    // 1. 서버에 인증번호 확인 요청
-    bool isCodeCorrect = await AuthService().verifySmsCode(
+    // 공통 인증번호 확인 함수 호출
+    bool isCodeCorrect = await _authService.verifyCode(
       _phoneController.text, 
       _authCodeController.text
     );
 
     if (isCodeCorrect) { 
-      // 2. 인증 성공 시 -> 서버에 아이디 물어보기
-      String? result = await AuthService().findId(_phoneController.text);
+      // 인증 성공 시 -> 서버에서 아이디 결과 가져오기
+      String? resultId = await _authService.findIdResult(_phoneController.text);
 
       setState(() {
-        if (result != null) {
+        if (resultId != null && resultId.isNotEmpty) {
           _timer?.cancel();
-          _foundId = result;
-          _step = 1; // 결과 화면 이동
+          _foundId = resultId;
+          _step = 1; 
         } else {
           _authStatusMessage = "해당 번호로 가입된 회원이 없습니다.";
         }
       });
     } else {
-      // 3. 인증 실패 시 (isCodeCorrect가 false일 때)
       setState(() {
         _authStatusMessage = "인증번호가 일치하지 않습니다.";
       });
@@ -149,15 +149,10 @@ class _FindIdState extends State<FindId> {
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
             children: [
-              // 0단계: 기존 간격 유지, 1단계: 56px 적용
               SizedBox(height: _step == 0 ? 60 : 56),
-
               if (_step == 0) _buildPhoneAuthStep(),
               if (_step == 1) _buildIdResultStep(),
-
               const SizedBox(height: 40),
-
-              // 하단 버튼 섹션
               if (_step < 2)
                 SizedBox(
                   width: double.infinity,
@@ -166,18 +161,16 @@ class _FindIdState extends State<FindId> {
                     onPressed: () {
                       if (_step == 0) {
                         if (!isStep0Valid) return;
-                        _verifyAndFindId(); // <- 우리가 만든 서버 통신 함수를 여기서 호출해야 합니다!
+                        _verifyAndFindId();
                       } else {
-                        Navigator.pop(context);
+                        Navigator.pop(context); // 로그인 화면으로 돌아가기
                       }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _step == 1
                           ? TColor.buttonGreen
                           : (isStep0Valid ? TColor.buttonGreen : TColor.gray),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       elevation: 0,
                     ),
                     child: Text(
@@ -193,12 +186,10 @@ class _FindIdState extends State<FindId> {
     );
   }
 
-  // --- STEP 0: 휴대폰 인증 위젯 ---
   Widget _buildPhoneAuthStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. 전화번호 입력칸
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
@@ -206,48 +197,30 @@ class _FindIdState extends State<FindId> {
           decoration: InputDecoration(
             hintText: "전화번호",
             hintStyle: const TextStyle(color: TColor.gray),
-            contentPadding: const EdgeInsets.symmetric(
-              vertical: 16,
-              horizontal: 20,
-            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+              borderRadius: BorderRadius.circular(14), 
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0))
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Colors.black),
+              borderRadius: BorderRadius.circular(14), 
+              borderSide: const BorderSide(color: Colors.black)
             ),
-            // 우측 인증 버튼 섹션
             suffixIcon: Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_isAuthSent)
-                    Text(
-                      _formatTime(_secondsRemaining),
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
-                    ),
+                    Text(_formatTime(_secondsRemaining), style: const TextStyle(color: Colors.red, fontSize: 12)),
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: _handleAuthRequest,
                     child: Container(
-                      width: 64,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: const Color(0x4D235E26),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                      width: 64, height: 40,
+                      decoration: BoxDecoration(color: const Color(0x4D235E26), borderRadius: BorderRadius.circular(10)),
                       alignment: Alignment.center,
-                      child: Text(
-                        _isAuthSent ? "재발송" : "인증",
-                        style: const TextStyle(
-                          color: Color(0xFF235E26),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
+                      child: Text(_isAuthSent ? "재발송" : "인증", style: const TextStyle(color: Color(0xFF235E26), fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
                   ),
                 ],
@@ -255,47 +228,37 @@ class _FindIdState extends State<FindId> {
             ),
           ),
         ),
-
-        // 안내 메시지
         if (_authStatusMessage.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8, left: 4),
             child: Text(
               _authStatusMessage,
               style: TextStyle(
-                color: (_isTimeOut || _authStatusMessage == "전화번호를 확인해 주세요")
-                    ? Colors.red
-                    : const Color(0xFF235E26),
+                // 💡 발송 성공 메시지일 때만 초록색, 그 외 모든 에러는 빨간색!
+                color: _authStatusMessage.contains("성공") || _authStatusMessage.contains("발송되었습니다")
+                    ? const Color(0xFF235E26)
+                    : Colors.red,
                 fontSize: 12,
               ),
             ),
           ),
-
         const SizedBox(height: 16),
-
-        // 2. 인증번호 입력칸
         TextField(
           controller: _authCodeController,
           keyboardType: TextInputType.phone,
-          maxLength: 4, // 인증번호 길이
-          onChanged: (value) {
-            setState(() {});
-          },
+          maxLength: 4,
+          onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
-            hintText: "인증번호",
-            counterText: "",
+            hintText: "인증번호", counterText: "",
             hintStyle: const TextStyle(color: TColor.gray),
-            contentPadding: const EdgeInsets.symmetric(
-              vertical: 16,
-              horizontal: 20,
-            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+              borderRadius: BorderRadius.circular(14), 
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0))
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Colors.black),
+              borderRadius: BorderRadius.circular(14), 
+              borderSide: const BorderSide(color: Colors.black)
             ),
           ),
         ),
@@ -303,20 +266,13 @@ class _FindIdState extends State<FindId> {
     );
   }
 
-  // --- STEP 1: 아이디 확인 결과 위젯 (요청 디자인 반영) ---
   Widget _buildIdResultStep() {
     return Column(
       children: [
-        const Text(
-          "전화번호와 일치하는 아이디입니다",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 96), // 96px 간격
-        Text(
-          _foundId,
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 128), // 128px 간격
+        const Text("전화번호와 일치하는 아이디입니다", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 96),
+        Text(_foundId, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 128),
       ],
     );
   }

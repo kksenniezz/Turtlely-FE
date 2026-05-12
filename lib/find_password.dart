@@ -11,8 +11,9 @@ class FindPassword extends StatefulWidget {
 }
 
 class _FindPasswordState extends State<FindPassword> {
-  int _step = 0; // 0: 아이디 및 인증, 1: 새 비밀번호 설정
+  int _step = 0; // 0: 아이디 및 인증, 1: 결과 안내
 
+  final AuthService _authService = AuthService(); // 서비스 객체 추가
   final TextEditingController _idController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _authCodeController = TextEditingController();
@@ -50,28 +51,55 @@ class _FindPasswordState extends State<FindPassword> {
     });
   }
 
-  void _handleFindPassword() async {
+  // 1. 인증번호 발송 핸들러
+  void _handleSendAuthCode() async {
     if (_phoneController.text.isEmpty) {
-      setState(() => _authStatusMessage = "전화번호를 입력해주세요."); // 이름 변경
+      setState(() => _authStatusMessage = "전화번호를 입력해주세요.");
       return;
     }
 
-    // 서버에 임시 비번 발송 요청
-    bool isSuccess = await AuthService().findPassword(_phoneController.text);
+    // 💡 비밀번호 찾기 전용 인증번호 발송 API 호출
+    final result = await _authService.sendSmsForFindPw(_phoneController.text);
 
-    if (isSuccess) {
-      setState(() {
-        _authStatusMessage = "임시 비밀번호가 문자로 발송되었습니다!"; // 이름 변경
-        _startTimer(); // 인증 버튼 눌렀을 때처럼 타이머도 돌려주면 좋겠죠?
-      });
-      // 성공 시 0단계에서 1단계(결과 화면)로 넘겨줍니다.
-      setState(() {
-        _step = 1;
-      });
+    setState(() {
+      _authStatusMessage = result['message'];
+      if (result['success'] == true) {
+        _isAuthSent = true;
+        _isTimeOut = false;
+        _startTimer();
+      } else {
+        _isAuthSent = false;
+      }
+    });
+  }
+
+  // 2. 인증번호 검증 및 최종 임시 비번 발송 요청
+  void _verifyAndIssuePassword() async {
+    if (_idController.text.isEmpty || _authCodeController.text.isEmpty) {
+      setState(() => _authStatusMessage = "아이디 또는 인증번호를 다시 확인해 주세요");
+      return;
+    }
+
+    // A. 먼저 입력한 인증번호가 맞는지 확인
+    bool isVerify = await _authService.verifyCode(
+      _phoneController.text, 
+      _authCodeController.text
+    );
+
+    if (isVerify) {
+      // B. 인증 성공 시 -> 서버에 진짜 임시 비밀번호 문자로 보내달라고 요청
+      bool isFinalSuccess = await _authService.resetPasswordFinal(_phoneController.text);
+
+      if (isFinalSuccess) {
+        _timer?.cancel();
+        setState(() {
+          _step = 1; // 성공 시 결과 화면으로 이동
+        });
+      } else {
+        setState(() => _authStatusMessage = "임시 비밀번호 발급 중 에러가 발생했습니다.");
+      }
     } else {
-      setState(() {
-        _authStatusMessage = "가입된 번호가 아니거나 발송에 실패했습니다."; // 이름 변경
-      });
+      setState(() => _authStatusMessage = "인증번호가 일치하지 않습니다.");
     }
   }
 
@@ -133,21 +161,7 @@ class _FindPasswordState extends State<FindPassword> {
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: () {
-                      if (!isStep0Valid) return;
-
-                      if (_idController.text.isEmpty ||
-                          _authCodeController.text.isEmpty) {
-                        setState(() {
-                          _authStatusMessage = "아이디 또는 인증번호를 다시 확인해 주세요";
-                        });
-                        return;
-                      }
-                      setState(() {
-                        _timer?.cancel();
-                        _step = 1; // 다음 단계로 이동
-                      });
-                    },
+                    onPressed: isStep0Valid ? _verifyAndIssuePassword : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isStep0Valid
                           ? TColor.buttonGreen
@@ -168,22 +182,17 @@ class _FindPasswordState extends State<FindPassword> {
     );
   }
 
-  // --- Step 0: 인증 화면 ---
   Widget _buildAuthStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. 아이디 입력칸
         TextField(
           controller: _idController,
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
             hintText: "아이디",
             hintStyle: const TextStyle(color: TColor.gray),
-            contentPadding: const EdgeInsets.symmetric(
-              vertical: 16,
-              horizontal: 20,
-            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
@@ -195,8 +204,6 @@ class _FindPasswordState extends State<FindPassword> {
           ),
         ),
         const SizedBox(height: 16),
-
-        // 2. 전화번호 입력칸
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
@@ -204,10 +211,7 @@ class _FindPasswordState extends State<FindPassword> {
           decoration: InputDecoration(
             hintText: "전화번호",
             hintStyle: const TextStyle(color: TColor.gray),
-            contentPadding: const EdgeInsets.symmetric(
-              vertical: 16,
-              horizontal: 20,
-            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
@@ -216,38 +220,25 @@ class _FindPasswordState extends State<FindPassword> {
               borderRadius: BorderRadius.circular(14),
               borderSide: const BorderSide(color: Colors.black),
             ),
-            // 우측 인증 버튼 섹션
             suffixIcon: Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_isAuthSent)
-                    Text(
-                      _formatTime(_secondsRemaining),
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
-                    ),
+                    Text(_formatTime(_secondsRemaining), style: const TextStyle(color: Colors.red, fontSize: 12)),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: () {
-                      // [수정된 부분] 인증 버튼 누르면 비번 찾기 함수 실행!
-                      _handleFindPassword(); 
-                    },
+                    onTap: _handleSendAuthCode,
                     child: Container(
-                      width: 64,
-                      height: 40,
+                      width: 64, height: 40,
                       decoration: BoxDecoration(
                         color: const Color(0x4D235E26),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       alignment: Alignment.center,
-                      child: Text(
-                        _isAuthSent ? "재발송" : "인증",
-                        style: const TextStyle(
-                          color: Color(0xFF235E26),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
+                      child: Text(_isAuthSent ? "재발송" : "인증",
+                        style: const TextStyle(color: Color(0xFF235E26), fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                     ),
                   ),
@@ -256,98 +247,51 @@ class _FindPasswordState extends State<FindPassword> {
             ),
           ),
         ),
-        // 메시지 영역 (에러 메시지 포함)
         if (_authStatusMessage.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8, left: 4),
             child: Text(
               _authStatusMessage,
               style: TextStyle(
-                color:
-                    (_isTimeOut ||
-                        _authStatusMessage == "전화번호를 확인해 주세요" ||
-                        _authStatusMessage == "아이디 또는 인증번호를 다시 확인해 주세요")
-                    ? Colors.red
-                    : const Color(0xFF235E26),
+                color: (_authStatusMessage == "인증번호가 발송되었습니다") ? const Color(0xFF235E26) : Colors.red,
                 fontSize: 12,
               ),
             ),
           ),
         const SizedBox(height: 16),
-
-        // 3. 인증번호 입력칸
         TextField(
           controller: _authCodeController,
           keyboardType: TextInputType.phone,
           maxLength: 4,
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
-            hintText: "인증번호",
-            counterText: "",
+            hintText: "인증번호", counterText: "",
             hintStyle: const TextStyle(color: TColor.gray),
-            contentPadding: const EdgeInsets.symmetric(
-              vertical: 16,
-              horizontal: 20,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Colors.black),
-            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.black)),
           ),
         ),
       ],
     );
   }
 
-  // --- STEP 1: 결과 및 안내 화면 ---
   Widget _buildResetResultStep() {
     return Column(
       children: [
-        const Text(
-          "입력한 전화번호로 임시 비밀번호를 전송했습니다",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 16),
-        Image.asset(
-          'assets/normal_turtle.png',
-          width: 150,
-          errorBuilder: (context, error, stackTrace) {
-            return const Text("이미지 로드 실패 (assets 경로 확인)");
-          },
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          "로그인 후 비밀번호를 재설정하세요",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
+        const Text("입력한 전화번호로 임시 비밀번호를 전송했습니다", textAlign: TextAlign.center, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 32),
+        Image.asset('assets/normal_turtle.png', width: 150),
+        const SizedBox(height: 32),
+        const Text("로그인 후 비밀번호를 재설정하세요", textAlign: TextAlign.center, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        const Text(
-          "MyPage → 비밀번호 재설정",
-          style: TextStyle(
-            fontSize: 14,
-            color: TColor.buttonGreen,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        const Text("MyPage → 비밀번호 재설정", style: TextStyle(fontSize: 14, color: TColor.buttonGreen, fontWeight: FontWeight.bold)),
         const SizedBox(height: 40),
         SizedBox(
-          width: double.infinity,
-          height: 56,
+          width: double.infinity, height: 56,
           child: ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: TColor.buttonGreen,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              elevation: 0,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: TColor.buttonGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
             child: const Text("로그인하러 가기", style: TText.button),
           ),
         ),
