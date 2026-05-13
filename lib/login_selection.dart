@@ -10,7 +10,8 @@ class LoginSelection extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width),
+      constraints: const BoxConstraints(maxWidth: double.infinity),
+      useSafeArea: false,
       backgroundColor: const Color(0xFFE9F1E6), // 연두색 배경
       barrierColor: Colors.black.withOpacity(0.7),
       enableDrag: true, // 드래그로 닫기 활성화
@@ -18,17 +19,19 @@ class LoginSelection extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (BuildContext context) {
-        // 💡 가로를 강제로 꽉 채우기 위해 SizedBox와 Column의 stretch를 사용합니다.
-        return SizedBox(
-          width: MediaQuery.of(context).size.width, // 화면 전체 너비 강제 지정
+        return Container(
+          width: MediaQuery.of(context).size.width,
+          decoration: const BoxDecoration(
+            color: Color(0xFFE9F1E6),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment:
-                CrossAxisAlignment.stretch, // 💡 내부 버튼들을 좌우로 쫙 늘림
+            // 여기서 stretch를 써야 내부 버튼들도 부모인 모달 너비를 따라갑니다.
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 12),
               Center(
-                // 핸들바는 가운데 정렬
                 child: Container(
                   width: 40,
                   height: 4,
