@@ -1,10 +1,73 @@
 import 'dart:async';
-import 'style.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart'; // 카메라 제어
+import 'style.dart';
+// import 'package:camera/camera.dart'; // 카메라 제어
 // 구글 ML Kit 사용 시 (혹은 프로젝트에서 쓰는 포즈 인식 라이브러리)
 // import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+
+class VisionPage extends StatefulWidget {
+  @override
+  _VisionPageState createState() => _VisionPageState();
+}
+
+class _VisionPageState extends State<VisionPage> {
+  int step = 0; // 수정 
+  String loadingDots = "";
+  Timer? _dotTimer;
+  // bool isFinished = false; // 이따 주석 제거 (왜 없어졌는지 찾아보고)
+  // bool isError = false; // 이따 주석 제거
+
+  // 가상의 좌표 (실제 구현 시 ML Kit의 Pose 데이터를 이곳에 매핑하세요)
+  Offset eyePoint = const Offset(200, 250); // 눈
+  Offset earPoint = const Offset(240, 280); // 외이도 (Tragus)
+  Offset c7Point = const Offset(250, 400); // C7 (경추 7번)
+
+  void nextStep() {
+    setState(() {
+      if (step == 3) {
+        startLoading(); // 4단계로 진입
+      } else if (step < 7) {
+        step++;
+      }
+    });
+  }
+
+  void _startMeasurement() {
+    setState(() => step = 3; // 측정 시작 단계로 이동
+    int count =  0;
+
+    int dotCount = 0;
+    _dotTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() {
+        dotCount++;
+        loadingDots = "." * (dotCount % 4);
+
+        if (dotCount == 3) {
+          timer.cancel();
+          _sendToDataToService(); // 백엔드 통신 시뮬레이션
+        }
+      });
+    });
+  }
+}
+
+void _sendToDataToService() async {
+  // 실제로는 여기서 3초간의 좌표 중 최적값을 전송
+  await Future.delayed(Duration(seconds: 1));
+    bool success = true; // 예외 처리 테스트 시 false로 변경 가능
+
+    setState(() {
+      if (success) {
+        step = 5; // 5-1 단계
+      } else {
+        step = 8; // 6-1 예외 발생
+        // isError = true;
+      }
+    });
+}
+
+// 여기서부터 //
 
 // 말풍선 위젯
 Widget _buildSpeechBubble(
@@ -75,23 +138,6 @@ class TrianglePainter extends CustomPainter {
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
-class VisionPage extends StatefulWidget {
-  @override
-  _VisionPageState createState() => _VisionPageState();
-}
-
-class _VisionPageState extends State<VisionPage> {
-  int step = 1;
-  String loadingDots = "";
-  Timer? _dotTimer;
-  bool isFinished = false;
-  bool isError = false;
-
-  // 가상의 좌표 (실제 구현 시 ML Kit의 Pose 데이터를 이곳에 매핑하세요)
-  Offset eyePoint = const Offset(200, 250); // 눈
-  Offset earPoint = const Offset(240, 280); // 외이도 (Tragus)
-  Offset c7Point = const Offset(250, 400); // C7 (경추 7번)
-
   // 각도 계산 로직
   double get cvaAngle {
     // 외이도와 C7 사이의 수직선 기준 각도
@@ -101,46 +147,6 @@ class _VisionPageState extends State<VisionPage> {
         .abs();
   }
 
-  void nextStep() {
-    setState(() {
-      if (step == 3) {
-        startLoading(); // 4단계로 진입
-      } else if (step < 6) {
-        step++;
-      }
-    });
-  }
-
-  void startLoading() {
-    step = 4;
-    int dotCount = 0;
-    _dotTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      setState(() {
-        dotCount++;
-        loadingDots = "." * (dotCount % 4);
-        if (dotCount == 3) {
-          timer.cancel();
-          _sendToBack(); // 백엔드 통신 시뮬레이션
-        }
-      });
-    });
-  }
-
-  void _sendToBack() async {
-    // 실제로는 여기서 3초간의 좌표 중 최적값을 전송
-    bool success = true; // 예외 처리 테스트 시 false로 변경 가능
-    await Future.delayed(Duration(seconds: 1));
-
-    setState(() {
-      if (success) {
-        step = 51; // 5-1 단계
-      } else {
-        step = 61; // 6-1 예외 발생
-        isError = true;
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,7 +154,7 @@ class _VisionPageState extends State<VisionPage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => _showExitDialog(context),
         ),
         title: Row(
@@ -191,11 +197,7 @@ class _VisionPageState extends State<VisionPage> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Image.asset(
-                  'assets/images/side_turtle.png',
-                  width: 120,
-                  height: 120,
-                ),
+                Image.asset('assets/side_turtle.png', width: 120, height: 120),
                 const SizedBox(width: 10),
                 Padding(
                   padding: const EdgeInsets.only(top: 10), // 가이드라인 안 가리게 살짝 아래로
