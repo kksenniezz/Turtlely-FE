@@ -78,7 +78,7 @@ class AuthService {
       "loginId": loginId,
       "password": password,
       "phoneNumber": phoneNumber,
-      "socialId": socialId,
+      "social_id": socialId,
     });
     return res['success'];
   }
@@ -207,7 +207,7 @@ class AuthService {
   }) async {
     final res = await _postRequest('/auth/google', {
       "nickname": nickname,
-      "socialId": socialId,
+      "social_id": socialId,
       "phoneNumber": phoneNumber,
     });
 
