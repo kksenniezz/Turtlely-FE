@@ -5,7 +5,8 @@ import 'main.dart';
 import 'services/auth_service.dart';
 
 class Signup extends StatefulWidget {
-  const Signup({super.key});
+  final String? socialId;
+  const Signup({super.key, this.socialId});
 
   @override
   _SignupState createState() => _SignupState();
@@ -74,13 +75,13 @@ class _SignupState extends State<Signup> {
       setState(() => _authStatusMessage = "전화번호를 확인해 주세요");
       return;
     }
-    
+
     // 💡 [수정됨] AuthService에서 새로 만든 회원가입 전용 함수를 부릅니다.
     final result = await _authService.sendSmsForSignup(_phoneController.text);
 
     setState(() {
-      _authStatusMessage = result['message']; 
-      
+      _authStatusMessage = result['message'];
+
       if (result['success'] == true) {
         _isAuthSent = true;
         _isTimeOut = false;
@@ -144,8 +145,16 @@ class _SignupState extends State<Signup> {
 
   @override
   Widget build(BuildContext context) {
-    bool isStep0Valid = _step == 0 && _phoneController.text.isNotEmpty && _authCodeController.text.length == 4 && !_isTimeOut;
-    bool isStep1Valid = _step == 1 && _idCheckStatus == 2 && _pwController.text.isNotEmpty && _pwConfirmController.text.isNotEmpty;
+    bool isStep0Valid =
+        _step == 0 &&
+        _phoneController.text.isNotEmpty &&
+        _authCodeController.text.length == 4 &&
+        !_isTimeOut;
+    bool isStep1Valid =
+        _step == 1 &&
+        _idCheckStatus == 2 &&
+        _pwController.text.isNotEmpty &&
+        _pwConfirmController.text.isNotEmpty;
     bool isStep2Valid = _step == 2 && _nicknameController.text.isNotEmpty;
 
     return Scaffold(
@@ -157,14 +166,27 @@ class _SignupState extends State<Signup> {
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
           onPressed: () {
             setState(() {
-              if (_step == 0) Navigator.pop(context);
-              else if (_step == 1) { _clearStep1(); _clearStep0(); _step = 0; }
-              else if (_step == 2) { _clearStep2(); _clearStep1(); _step = 1; }
-              else _step--;
+              if (_step == 0) {
+                Navigator.pop(context);
+              } else if (_step == 2 && widget.socialId != null) {
+                _step = 0;
+              } else if (_step == 1) {
+                _clearStep1();
+                _clearStep0();
+                _step = 0;
+              } else if (_step == 2) {
+                _clearStep2();
+                _clearStep1();
+                _step = 1;
+              } else
+                _step--;
             });
           },
         ),
-        title: const Text("회원가입", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text(
+          "회원가입",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -190,51 +212,88 @@ class _SignupState extends State<Signup> {
                       if (_step == 0) {
                         if (!isStep0Valid) return;
                         // 💡 [수정됨] 공통 인증번호 검증 함수 verifyCode
-                        bool isVerify = await _authService.verifyCode(_phoneController.text, _authCodeController.text);
+                        bool isVerify = await _authService.verifyCode(
+                          _phoneController.text,
+                          _authCodeController.text,
+                        );
                         if (isVerify) {
-                          setState(() { _clearStep1(); _step = 1; });
+                          setState(() {
+                            if (widget.socialId != null) {
+                              _step = 2;
+                            } else {
+                              _clearStep1();
+                              _step = 1;
+                            }
+                          });
                         } else {
-                          setState(() => _authStatusMessage = "인증번호가 일치하지 않습니다.");
+                          setState(
+                            () => _authStatusMessage = "인증번호가 일치하지 않습니다",
+                          );
                         }
-                      } 
-                      else if (_step == 1) {
-                        final pwPattern = r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$';
+                      } else if (_step == 1) {
+                        final pwPattern =
+                            r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$';
                         if (!RegExp(pwPattern).hasMatch(_pwController.text)) {
-                          setState(() { _pwMessage = "조건에 맞게 입력해 주세요"; _pwColor = TColor.red; });
+                          setState(() {
+                            _pwMessage = "조건에 맞게 입력해 주세요";
+                            _pwColor = TColor.red;
+                          });
                           return;
                         }
                         if (_pwController.text != _pwConfirmController.text) {
-                          setState(() { _pwMessage = "비밀번호가 일치하지 않습니다"; _pwColor = TColor.red; });
+                          setState(() {
+                            _pwMessage = "비밀번호가 일치하지 않습니다";
+                            _pwColor = TColor.red;
+                          });
                           return;
                         }
-                        setState(() { _clearStep2(); _step = 2; });
-                      } 
-                      else if (_step == 2) {
+                        setState(() {
+                          _clearStep2();
+                          _step = 2;
+                        });
+                      } else if (_step == 2) {
                         if (!isStep2Valid) return;
                         // 💡 [수정됨] 최종 가입 함수 signupFinal
+
                         bool isSignupSuccess = await _authService.signupFinal(
                           nickname: _nicknameController.text,
-                          loginId: _idController.text,
-                          password: _pwController.text,
+                          loginId: widget.socialId != null
+                              ? null
+                              : _idController.text,
+                          password: widget.socialId != null
+                              ? null
+                              : _pwController.text,
                           phoneNumber: _phoneController.text,
+                          socialId: widget.socialId,
                         );
 
                         if (isSignupSuccess) {
                           setState(() => _step = 3);
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("회원가입 처리 중 에러가 발생했습니다."))
+                            const SnackBar(
+                              content: Text("회원가입 처리 중 에러가 발생했습니다."),
+                            ),
                           );
                         }
                       }
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: ((_step == 0 && isStep0Valid) || (_step == 1 && isStep1Valid) || (_step == 2 && isStep2Valid))
-                          ? TColor.buttonGreen : TColor.gray,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      backgroundColor:
+                          ((_step == 0 && isStep0Valid) ||
+                              (_step == 1 && isStep1Valid) ||
+                              (_step == 2 && isStep2Valid))
+                          ? TColor.buttonGreen
+                          : TColor.gray,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                       elevation: 0,
                     ),
-                    child: Text(_step == 2 ? "가입하기" : "다음", style: TText.button),
+                    child: Text(
+                      _step == 2 ? "가입하기" : "다음",
+                      style: TText.button,
+                    ),
                   ),
                 ),
               const SizedBox(height: 20),
@@ -258,24 +317,47 @@ class _SignupState extends State<Signup> {
           decoration: InputDecoration(
             hintText: "전화번호",
             hintStyle: const TextStyle(color: TColor.gray),
-            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.black)),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
             suffixIcon: Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_isAuthSent)
-                    Text(_formatTime(_secondsRemaining), style: const TextStyle(color: Colors.red, fontSize: 12)),
+                    Text(
+                      _formatTime(_secondsRemaining),
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: _handleAuthRequest,
                     child: Container(
-                      width: 64, height: 40,
-                      decoration: BoxDecoration(color: const Color(0x4D235E26), borderRadius: BorderRadius.circular(10)),
+                      width: 64,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0x4D235E26),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       alignment: Alignment.center,
-                      child: Text(_isAuthSent ? "재발송" : "인증", style: const TextStyle(color: Color(0xFF235E26), fontWeight: FontWeight.bold, fontSize: 13)),
+                      child: Text(
+                        _isAuthSent ? "재발송" : "인증",
+                        style: const TextStyle(
+                          color: Color(0xFF235E26),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -289,7 +371,9 @@ class _SignupState extends State<Signup> {
             child: Text(
               _authStatusMessage,
               style: TextStyle(
-                color: (_authStatusMessage == "인증번호가 발송되었습니다") ? const Color(0xFF235E26) : Colors.red,
+                color: (_authStatusMessage == "인증번호가 발송되었습니다")
+                    ? const Color(0xFF235E26)
+                    : Colors.red,
                 fontSize: 12,
               ),
             ),
@@ -301,11 +385,21 @@ class _SignupState extends State<Signup> {
           maxLength: 4,
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
-            hintText: "인증번호", counterText: "",
+            hintText: "인증번호",
+            counterText: "",
             hintStyle: const TextStyle(color: TColor.gray),
-            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.black)),
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
           ),
         ),
       ],
@@ -318,20 +412,41 @@ class _SignupState extends State<Signup> {
       children: [
         TextField(
           controller: _idController,
-          onChanged: (value) => setState(() { _idCheckStatus = 0; _idMessage = "영문, 숫자 포함 6-20자"; _idColor = TColor.gray; }),
+          onChanged: (value) => setState(() {
+            _idCheckStatus = 0;
+            _idMessage = "영문, 숫자 포함 6-20자";
+            _idColor = TColor.gray;
+          }),
           decoration: InputDecoration(
             hintText: "아이디",
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.black)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
             suffixIcon: Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: GestureDetector(
                 onTap: _checkIdDuplicate,
                 child: Container(
-                  width: 75, height: 40,
-                  decoration: BoxDecoration(color: const Color(0x4D235E26), borderRadius: BorderRadius.circular(10)),
+                  width: 75,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0x4D235E26),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   alignment: Alignment.center,
-                  child: const Text("중복 확인", style: TextStyle(color: Color(0xFF235E26), fontWeight: FontWeight.bold, fontSize: 12)),
+                  child: const Text(
+                    "중복 확인",
+                    style: TextStyle(
+                      color: Color(0xFF235E26),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -339,7 +454,10 @@ class _SignupState extends State<Signup> {
         ),
         Padding(
           padding: const EdgeInsets.only(top: 8, left: 4, bottom: 20),
-          child: Text(_idMessage, style: TextStyle(color: _idColor, fontSize: 12)),
+          child: Text(
+            _idMessage,
+            style: TextStyle(color: _idColor, fontSize: 12),
+          ),
         ),
         TextField(
           controller: _pwController,
@@ -347,10 +465,21 @@ class _SignupState extends State<Signup> {
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
             hintText: "비밀번호",
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.black)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
             suffixIcon: IconButton(
-              icon: Icon(_isObscurePw ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: TColor.gray),
+              icon: Icon(
+                _isObscurePw
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: TColor.gray,
+              ),
               onPressed: () => setState(() => _isObscurePw = !_isObscurePw),
             ),
           ),
@@ -362,17 +491,32 @@ class _SignupState extends State<Signup> {
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
             hintText: "비밀번호 확인",
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.black)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
             suffixIcon: IconButton(
-              icon: Icon(_isObscurePwConfirm ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: TColor.gray),
-              onPressed: () => setState(() => _isObscurePwConfirm = !_isObscurePwConfirm),
+              icon: Icon(
+                _isObscurePwConfirm
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                color: TColor.gray,
+              ),
+              onPressed: () =>
+                  setState(() => _isObscurePwConfirm = !_isObscurePwConfirm),
             ),
           ),
         ),
         Padding(
           padding: const EdgeInsets.only(top: 8, left: 4),
-          child: Text(_pwMessage, style: TextStyle(color: _pwColor, fontSize: 12)),
+          child: Text(
+            _pwMessage,
+            style: TextStyle(color: _pwColor, fontSize: 12),
+          ),
         ),
       ],
     );
@@ -381,15 +525,24 @@ class _SignupState extends State<Signup> {
   Widget _buildNicknameStep() {
     return Column(
       children: [
-        const Text("터틀리에서 사용할 닉네임을 설정해주세요", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Text(
+          "터틀리에서 사용할 닉네임을 설정해주세요",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 30),
         TextField(
           controller: _nicknameController,
           onChanged: (value) => setState(() {}),
           decoration: InputDecoration(
             hintText: "닉네임",
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE0E0E0))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Colors.black)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black),
+            ),
           ),
         ),
       ],
@@ -400,7 +553,10 @@ class _SignupState extends State<Signup> {
     return Column(
       children: [
         const SizedBox(height: 50),
-        Text("안녕하세요 ${_nicknameController.text}님!", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        Text(
+          "안녕하세요 ${_nicknameController.text}님!",
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
         const SizedBox(height: 20),
         Image.asset('assets/normal_turtle.png', width: 160),
         const Text("Turtlely", style: TText.logo),
@@ -408,10 +564,14 @@ class _SignupState extends State<Signup> {
         const Text("지금부터 터틀리와 함께 목 건강을 지켜보세요!"),
         const SizedBox(height: 40),
         SizedBox(
-          width: double.infinity, height: 56,
+          width: double.infinity,
+          height: 56,
           child: ElevatedButton(
             style: T_MainButtonStyle,
-            onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const TurtlelyMainPage())),
+            onPressed: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const TurtlelyMainPage()),
+            ),
             child: const Text("터틀리 시작하기", style: TText.button),
           ),
         ),

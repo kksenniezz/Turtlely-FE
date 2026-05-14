@@ -10,7 +10,10 @@ class AuthService {
   // ---------------------------------------------------------
   // 1. 공통 응답 처리 로직 (생략 없이 풀버전)
   // ---------------------------------------------------------
-  Future<Map<String, dynamic>> _postRequest(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> _postRequest(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
     final url = Uri.parse('$baseUrl$path');
     try {
       final response = await http.post(
@@ -18,17 +21,17 @@ class AuthService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
-      
+
       // UTF-8 디코딩으로 한글 깨짐 방지
       final data = jsonDecode(utf8.decode(response.bodyBytes));
-      
+
       print("통신 주소: $url");
       print("응답 데이터: $data");
 
       return {
         "success": (response.statusCode == 200 && data['isSuccess'] == true),
         "message": data['message'] ?? "에러가 발생했습니다.",
-        "result": data['result']
+        "result": data['result'],
       };
     } catch (e) {
       print("통신 에러: $e");
@@ -39,10 +42,12 @@ class AuthService {
   // ---------------------------------------------------------
   // 2. 회원가입 관련 함수들 (Signup)
   // ---------------------------------------------------------
-  
+
   // [회원가입용] 인증번호 발송
   Future<Map<String, dynamic>> sendSmsForSignup(String phoneNumber) async {
-    return await _postRequest('/auth/sms/send/signup', {"phoneNumber": phoneNumber});
+    return await _postRequest('/auth/sms/send/signup', {
+      "phoneNumber": phoneNumber,
+    });
   }
 
   // 아이디 중복 확인 (POST /auth/check-id)
@@ -63,15 +68,17 @@ class AuthService {
   // 최종 회원가입 완료 (POST /auth/signup)
   Future<bool> signupFinal({
     required String nickname,
-    required String loginId,
-    required String password,
+    String? loginId,
+    String? password,
     required String phoneNumber,
+    String? socialId, // 소셜 로그인용 socialId 추가
   }) async {
     final res = await _postRequest('/auth/signup', {
       "nickname": nickname,
       "loginId": loginId,
       "password": password,
       "phoneNumber": phoneNumber,
+      "socialId": socialId,
     });
     return res['success'];
   }
@@ -82,14 +89,18 @@ class AuthService {
 
   // [아이디 찾기용] 인증번호 발송 (POST /auth/sms/send/find)
   Future<Map<String, dynamic>> sendSmsForFindId(String phoneNumber) async {
-    return await _postRequest('/auth/sms/send/find', {"phoneNumber": phoneNumber});
+    return await _postRequest('/auth/sms/send/find', {
+      "phoneNumber": phoneNumber,
+    });
   }
 
   // 최종 아이디 결과 가져오기 (POST /api/account/id) 💡 주소 수정됨!
   // 최종 아이디 결과 가져오기 (POST /api/account/id)
   Future<String?> findIdResult(String phoneNumber) async {
-    final res = await _postRequest('/api/account/id', {"phoneNumber": phoneNumber});
-    
+    final res = await _postRequest('/api/account/id', {
+      "phoneNumber": phoneNumber,
+    });
+
     // 💡 수정 포인트: res['result']가 { "loginId": "..." } 형태이므로 값을 한 번 더 꺼내야 함
     if (res['success'] && res['result'] != null) {
       try {
@@ -113,12 +124,16 @@ class AuthService {
 
   // [비밀번호 찾기용] 인증번호 발송 (POST /auth/sms/send/find)
   Future<Map<String, dynamic>> sendSmsForFindPw(String phoneNumber) async {
-    return await _postRequest('/auth/sms/send/find', {"phoneNumber": phoneNumber});
+    return await _postRequest('/auth/sms/send/find', {
+      "phoneNumber": phoneNumber,
+    });
   }
 
-  // 최종 임시 비밀번호 발급 요청 (POST /api/account/pw) 
+  // 최종 임시 비밀번호 발급 요청 (POST /api/account/pw)
   Future<bool> resetPasswordFinal(String phoneNumber) async {
-    final res = await _postRequest('/api/account/pw', {"phoneNumber": phoneNumber});
+    final res = await _postRequest('/api/account/pw', {
+      "phoneNumber": phoneNumber,
+    });
     return res['success'];
   }
 
@@ -137,10 +152,19 @@ class AuthService {
 
   // 일반 로그인 (POST /auth/login)
   Future<bool> login(String id, String pw) async {
-    final res = await _postRequest('/auth/login', {'loginId': id, 'password': pw});
+    final res = await _postRequest('/auth/login', {
+      'loginId': id,
+      'password': pw,
+    });
     if (res['success']) {
-      await storage.write(key: 'accessToken', value: res['result']['accessToken']);
-      await storage.write(key: 'refreshToken', value: res['result']['refreshToken']);
+      await storage.write(
+        key: 'accessToken',
+        value: res['result']['accessToken'],
+      );
+      await storage.write(
+        key: 'refreshToken',
+        value: res['result']['refreshToken'],
+      );
       return true;
     }
     return false;
@@ -150,11 +174,54 @@ class AuthService {
   Future<bool> reissueToken() async {
     final refreshToken = await storage.read(key: 'refreshToken');
     if (refreshToken == null) return false;
-    final res = await _postRequest('/auth/reissue', {"refreshToken": refreshToken});
+    final res = await _postRequest('/auth/reissue', {
+      "refreshToken": refreshToken,
+    });
     if (res['success']) {
-      await storage.write(key: 'accessToken', value: res['result']['accessToken']);
+      await storage.write(
+        key: 'accessToken',
+        value: res['result']['accessToken'],
+      );
       return true;
     }
     return false;
+  }
+
+  // ---------------------------------------------------------
+  // 6. 구글 회원가입
+  // ---------------------------------------------------------
+
+  // [1] 구글 로그인 검증 및 회원 여부 확인 (POST /auth/login/google)
+  Future<Map<String, dynamic>> googleLoginVerify(String accessToken) async {
+    return await _postRequest('/auth/login/google', {
+      "accessToken": accessToken,
+    });
+  }
+
+  // [2] 구글 최종 회원가입 완료 (POST /auth/google)
+  // 닉네임 설정 페이지에서 마지막에 호출함
+  Future<bool> signupGoogleFinal({
+    required String nickname,
+    required String socialId,
+    required String phoneNumber,
+  }) async {
+    final res = await _postRequest('/auth/google', {
+      "nickname": nickname,
+      "socialId": socialId,
+      "phoneNumber": phoneNumber,
+    });
+
+    // 가입 성공 시 토큰 저장 (기존 팀원 로직과 일관성 유지)
+    if (res['success'] && res['result'] != null) {
+      await storage.write(
+        key: 'accessToken',
+        value: res['result']['accessToken'],
+      );
+      await storage.write(
+        key: 'refreshToken',
+        value: res['result']['refreshToken'],
+      );
+    }
+    return res['success'];
   }
 }

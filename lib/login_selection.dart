@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_sign_in_web/google_sign_in_web.dart' as web;
+import 'package:turtly/main.dart';
+import '../services/auth_service.dart';
+import '../services/google_login.dart';
 import 'style.dart';
 import 'login.dart';
 import 'signup.dart';
 
 class LoginSelection extends StatelessWidget {
   const LoginSelection({super.key});
+
+  static final authService = AuthService();
+  static const storage = FlutterSecureStorage();
 
   void _showSelectionModal(BuildContext context, String type) {
     showModalBottomSheet(
@@ -27,7 +37,6 @@ class LoginSelection extends StatelessWidget {
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            // 여기서 stretch를 써야 내부 버튼들도 부모인 모달 너비를 따라갑니다.
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 12),
@@ -43,7 +52,6 @@ class LoginSelection extends StatelessWidget {
               ),
               const SizedBox(height: 26),
               Center(
-                // 타이틀 가운데 정렬
                 child: Text(
                   type,
                   style: const TextStyle(
@@ -56,11 +64,12 @@ class LoginSelection extends StatelessWidget {
               const Divider(color: Color(0xFFD9D9D9), thickness: 1, height: 1),
               const SizedBox(height: 32),
 
+              // 일반 로그인/회원가입 버튼
               _buildResponsiveModalButton(
                 context: context,
                 label: '일반 $type',
                 assetPath: 'mail.png',
-                onTap: () {
+                onPressed: () {
                   Navigator.pop(context);
                   Navigator.push(
                     context,
@@ -73,13 +82,75 @@ class LoginSelection extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
+              // 구글 로그인/회원가입 버튼
               _buildResponsiveModalButton(
                 context: context,
                 label: '구글 $type',
                 assetPath: 'google_icon.png',
-                onTap: () => print("구글 $type 클릭됨"),
-              ),
+                onPressed: () async {
+                  try {
+                    final socialService = SocialLoginService();
 
+                    final String? accessToken = await socialService
+                        .getGoogleAccessToken();
+
+                    if (accessToken != null) {
+                      print("구글 액세스 토큰: $accessToken");
+                      final res = await authService.googleLoginVerify(
+                        accessToken,
+                      );
+
+                      if (res['success']) {
+                        final bool isNewUser =
+                            res['result']['isNewUser'] ?? false;
+                        final String socialId = res['result']['socialId'] ?? "";
+
+                        if (isNewUser) {
+                          print(
+                            "신규 구글 사용자입니다. 회원가입 페이지로 이동합니다. socialId: $socialId",
+                          );
+                          // [신규] 회원가입(정보입력) 페이지로 이동
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  Signup(socialId: socialId), // socialId 넘겨줌
+                            ),
+                          );
+                        } else {
+                          print("기존 유저입니다. 바로 로그인을 진행합니다.");
+                          // [기존] 토큰 저장 후 홈 이동
+                          await storage.write(
+                            key: 'accessToken',
+                            value: res['result']['accessToken'],
+                          );
+                          await storage.write(
+                            key: 'refreshToken',
+                            value: res['result']['refreshToken'],
+                          );
+
+                          // 홈 화면으로 이동 (스택 제거)
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TurtlelyMainPage(),
+                            ),
+                            (route) => false,
+                          );
+                        }
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(res['message'] ?? "구글 로그인 실패"),
+                          ),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    print("구글 로그인 에러: $e");
+                  }
+                },
+              ),
               // 하단 여백 (홈바 영역)
               SizedBox(height: MediaQuery.of(context).padding.bottom + 20),
             ],
@@ -93,12 +164,12 @@ class LoginSelection extends StatelessWidget {
     required BuildContext context,
     required String label,
     required String assetPath,
-    required VoidCallback onTap,
+    required VoidCallback onPressed,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0), // 양옆 여백만 남기고 늘어남
       child: InkWell(
-        onTap: onTap,
+        onTap: onPressed,
         child: Container(
           height: 56,
           decoration: BoxDecoration(
@@ -120,7 +191,6 @@ class LoginSelection extends StatelessWidget {
                 assetPath,
                 width: 20,
                 height: 20,
-                // 💡 이미지가 안 뜨면 원인을 보여주도록 텍스트 출력
                 errorBuilder: (context, error, stackTrace) =>
                     const Icon(Icons.broken_image, size: 20),
               ),
