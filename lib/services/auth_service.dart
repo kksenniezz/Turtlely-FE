@@ -205,6 +205,7 @@ class AuthService {
     required String socialId,
     required String phoneNumber,
   }) async {
+    print("구글 가입 실행 /auth/google");
     final res = await _postRequest('/auth/google', {
       "nickname": nickname,
       "socialId": socialId,

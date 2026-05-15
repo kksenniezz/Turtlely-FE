@@ -255,17 +255,22 @@ class _SignupState extends State<Signup> {
                         if (!isStep2Valid) return;
                         // 💡 [수정됨] 최종 가입 함수 signupFinal
 
-                        bool isSignupSuccess = await _authService.signupFinal(
-                          nickname: _nicknameController.text,
-                          loginId: widget.socialId != null
-                              ? null
-                              : _idController.text,
-                          password: widget.socialId != null
-                              ? null
-                              : _pwController.text,
-                          phoneNumber: _phoneController.text,
-                          socialId: widget.socialId,
-                        );
+                        bool isSignupSuccess;
+                        if (widget.socialId != null) {
+                          isSignupSuccess = await _authService
+                              .signupGoogleFinal(
+                                nickname: _nicknameController.text,
+                                socialId: widget.socialId!,
+                                phoneNumber: _phoneController.text,
+                              );
+                        } else {
+                          isSignupSuccess = await _authService.signupFinal(
+                            nickname: _nicknameController.text,
+                            loginId: _idController.text,
+                            password: _pwController.text,
+                            phoneNumber: _phoneController.text,
+                          );
+                        }
 
                         if (isSignupSuccess) {
                           setState(() => _step = 3);
