@@ -103,7 +103,7 @@ class _VisionPageState extends State<VisionPage> {
       case 1:
         return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 2:
-        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요";
+        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요 \n 버튼을 누르면 바로 시작됩니다!";
       case 3:
         return "거북목 측정중 $loadingDots";
       case 4:
