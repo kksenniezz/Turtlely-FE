@@ -78,7 +78,7 @@ class _VisionPageState extends State<VisionPage> {
       case 0:
         return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!";
       case 1:
-        return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n옆을 바라봐 주세요";
+        return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 2:
         return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요";
       case 3:
@@ -109,35 +109,37 @@ class _VisionPageState extends State<VisionPage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
           onPressed: () => _showExitDialog(context),
         ),
-        title: Row(
-          children: [
-            Text("월간 거북목 측정", style: TextStyle(fontWeight: FontWeight.bold)),
-            if (step == 6 || step == 7) ...[
-              const SizedBox(width: 20),
-              GestureDetector(
-                onTap: () {
-                  if (step == 6) {
-                    Navigator.pop(context);
-                  } else {
-                    setState(() => step = 1);
-                  }
-                },
-                child: Text(
-                  step == 6 ? "종료" : "재시도",
-                  style: TextStyle(
-                    color: TColor.darkGreen,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+        title: const Text(
+          "월간 거북목 측정",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
+        actions: [
+          if (step == 6 || step == 7) ...[
+            const SizedBox(width: 20),
+            GestureDetector(
+              onTap: () {
+                if (step == 6) {
+                  Navigator.pop(context);
+                } else {
+                  setState(() => step = 1);
+                }
+              },
+              child: Text(
+                step == 6 ? "종료" : "재시도",
+                style: TextStyle(
+                  color: TColor.darkGreen,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
       body: Stack(
         children: [
@@ -159,10 +161,10 @@ class _VisionPageState extends State<VisionPage> {
             left: 20,
             right: 20,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start, // 위치 보고 end로 바꿀 수도
+              crossAxisAlignment: CrossAxisAlignment.end, // 위치 보고 end로 바꿀 수도
               children: [
                 Image.asset(
-                  'assets/side_turtle.png',
+                  'side_turtle.png',
                   width: 120,
                   height: 120,
                   errorBuilder: (context, error, stackTrace) {
@@ -228,7 +230,7 @@ class _VisionPageState extends State<VisionPage> {
               child: GestureDetector(
                 onTap: onTap,
                 child: CustomPaint(
-                  size: const Size(20, 20),
+                  size: const Size(20, 15),
                   painter: TrianglePainter(color: TColor.darkGreen),
                 ),
               ),
@@ -258,76 +260,136 @@ class PosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 가이드 가이드라인 페인트 (초록빛 흐릿한 타원형 점선 대용 세팅)
-    final guidePaint = Paint()
-      ..color = Colors.green.withOpacity(0.5)
+    // 1. [페인트 세팅] 사람 외형 프로필 선
+    final profilePaint = Paint()
+      ..color = TColor.darkGreen.withOpacity(0.6)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
+      ..strokeWidth = 5.0
+      ..strokeCap = StrokeCap.round;
 
-    final paintPoint = Paint()
-      ..color = Colors.yellow
+    // 2. [페인트 세팅] 내 포즈 스켈레톤 선
+    final skeletonPaint = Paint()
+      ..color = TColor.buttonGreen
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5.0
+      ..strokeCap = StrokeCap.round;
+
+    // 3. [페인트 세팅] 랜드마크 점
+    final pointPaint = Paint()
+      ..color = TColor.buttonGreen
       ..style = PaintingStyle.fill;
-    final paintLine = Paint()
-      ..color = Colors.yellow
-      ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
 
-    // 1단계(안내) 및 3단계(측정) 진행 시 고정 가이드라인 드로잉
-    if (step == 1 || step == 2 || step == 3) {
-      var path = Path();
-      // 머리 폼 뼈대 타원 가이드라인
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(size.width * 0.5, size.height * 0.35),
-          width: size.width * 0.4,
-          height: size.height * 0.25,
-        ),
-        guidePaint,
-      );
+    // 파트 A: 사람 외형 프로필 가이드라인 (배경 고정)
+    var profilePath = Path();
 
-      // 후두부에서 견갑골/어깨 라인으로 내려가는 2D 곡선 가이드
-      path.moveTo(size.width * 0.4, size.height * 0.45);
-      path.quadraticBezierTo(
-        size.width * 0.4,
-        size.height * 0.6,
-        size.width * 0.2,
-        size.height * 0.7,
-      );
-      canvas.drawPath(path, guidePaint);
-    }
+    // 스마트폰 화면 비율에 절대 찌그러지지 않도록 중심점과 반지름(반응형 방어 크기) 정의
+    final double centerX = size.width * 0.5;
+    final double centerY = size.height * 0.35; // 화면 위쪽에 예쁘게 안착하도록 세팅
 
-    // 2. 실시간 추출 랜드마크 스켈레톤 라인 (좌표값이 매핑된 경우만 렌더링)
+    profilePath.moveTo(centerX + 30, centerY - 170);
+
+    // 1. 뒤통수 -> 목덜미 -> 등으로 떨어지는 선 (우측 라인)
+    profilePath.cubicTo(
+      centerX + 210,
+      centerY - 140, // 뒤통수 볼륨
+      centerX + 140,
+      centerY + 50, // 목덜미 굴곡
+      centerX + 200,
+      centerY + 300, // 승모근 타고 내려가는 등 선
+    );
+
+    // 2. 정수리 -> 이마 (좌측 라인 시작)
+    profilePath.moveTo(centerX + 30, centerY - 170);
+    profilePath.quadraticBezierTo(
+      centerX - 60,
+      centerY - 170,
+      centerX - 110,
+      centerY - 100,
+    ); // 정수리 앞쪽 둥글림
+
+    // 3. 이마 -> 코 -> 입 -> 턱 (이미지 속 얼굴 상세 굴곡 복사)
+    profilePath.lineTo(centerX - 130, centerY - 45); // 이마 라인
+    profilePath.quadraticBezierTo(
+      centerX - 180,
+      centerY - 15,
+      centerX - 175,
+      centerY + 5,
+    ); // 둥근 코
+    profilePath.lineTo(centerX - 150, centerY + 25); // 코 밑
+    profilePath.quadraticBezierTo(
+      centerX - 150,
+      centerY + 45,
+      centerX - 145,
+      centerY + 65,
+    ); // 입술과 턱 구역
+    profilePath.quadraticBezierTo(
+      centerX - 150,
+      centerY + 95,
+      centerX - 115,
+      centerY + 115,
+    ); // 턱끝 둥글림
+
+    // 4. 턱밑 -> 앞목 -> 앞가슴으로 툭 떨어지는 선
+    profilePath.quadraticBezierTo(
+      centerX - 80,
+      centerY + 120,
+      centerX - 90,
+      centerY + 170,
+    ); // 목 라인
+    profilePath.cubicTo(
+      centerX - 110,
+      centerY + 220,
+      centerX - 170,
+      centerY + 270,
+      centerX - 200,
+      centerY + 320, // 화면 왼쪽 아래로 자연스럽게 나가는 앞가슴 선
+    );
+
+    canvas.drawPath(profilePath, profilePaint);
+
+    // 파트 B: 실시간 포즈 스켈레톤 (미디어파이프 좌표 연동)
     if (eye != Offset.zero && ear != Offset.zero && c7 != Offset.zero) {
-      canvas.drawCircle(eye, 6, paintPoint);
-      canvas.drawCircle(ear, 6, paintPoint);
-      canvas.drawCircle(c7, 6, paintPoint);
+      // 1. [스켈레톤 선] 눈-귀, 귀-C7 연결 (CRA, CVA 각도 모양 생성)
+      canvas.drawLine(eye, ear, skeletonPaint);
+      canvas.drawLine(ear, c7, skeletonPaint);
 
-      canvas.drawLine(eye, ear, paintLine);
-      canvas.drawLine(ear, c7, paintLine);
-
-      // CVA 연산용 기준 매칭 수평 지지선 드로잉
+      // 2. [CVA 수직 기준선] CVA 연산을 위한 C7 중심의 수직 지지선 드로잉 (흰색)
+      // C7에서 위쪽으로 수직으로 뻗는 선 (수직 기준)
       canvas.drawLine(
         c7,
-        Offset(c7.dx + 60, c7.dy),
-        paintLine..color = Colors.white,
+        Offset(c7.dx, c7.dy - 80), // C7 위쪽으로 80px 뻗음
+        skeletonPaint
+          ..color = Colors.white
+          ..strokeWidth = 3.0,
       );
 
-      // 측정 단계 이상 진입했을 때 각 랜드마크 각도 식별 태그 부착
+      // 3. [랜드마크 점] 눈, 귀, C7 위치에 노란색 점 찍기
+      canvas.drawCircle(eye, 6, pointPaint);
+      canvas.drawCircle(ear, 6, pointPaint);
+      canvas.drawCircle(
+        c7,
+        6,
+        pointPaint..color = const Color(0xFFFFD700),
+      ); // C7 점
+
+      // 4. [각도 라벨] 측정 단계 이상 진입했을 때 각 랜드마크 각도 식별 태그 부착
       if (step >= 3) {
-        _drawAngleLabel(canvas, "CRA", ear.dx + 10, ear.dy - 20);
-        _drawAngleLabel(canvas, "CVA", c7.dx + 20, c7.dy - 20);
+        _drawAngleLabel(canvas, "CRA", ear.dx + 10, ear.dy - 25);
+        _drawAngleLabel(canvas, "CVA", c7.dx + 15, c7.dy - 35);
       }
     }
   }
 
+  // 각도 라벨 드로잉 도우미 함수
   void _drawAngleLabel(Canvas canvas, String text, double x, double y) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
         style: const TextStyle(
-          color: Colors.yellow,
-          fontSize: 13,
+          color: Colors.yellow, // 선명한 노란색
+          fontSize: 14,
           fontWeight: FontWeight.bold,
+          backgroundColor: Colors.black38, // 글씨 가독성을 위한 약간의 배경색
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -339,7 +401,6 @@ class PosePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-// 역삼각형 아이콘 버튼 드로잉 페인터
 class TrianglePainter extends CustomPainter {
   final Color color;
   TrianglePainter({required this.color});
@@ -385,7 +446,7 @@ void _showExitDialog(BuildContext context) {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.bold,
                     color: Colors.black,
                   ),
                 ),
@@ -431,7 +492,11 @@ Widget _dialogButton(String label, Color color, VoidCallback onPressed) {
       ),
       child: Text(
         label,
-        style: const TextStyle(color: Colors.black, fontSize: 16),
+        style: const TextStyle(
+          color: Colors.black,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     ),
   );
