@@ -1,11 +1,12 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'style.dart';
 import 'main.dart';
-import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+// import 'service/mediapipe_service.dart';
 
 class VisionPage extends StatefulWidget {
+  const VisionPage({Key? key}) : super(key: key);
+
   @override
   _VisionPageState createState() => _VisionPageState();
 }
@@ -15,19 +16,19 @@ class _VisionPageState extends State<VisionPage> {
       0; // 0: 인사, 1: 자세 안내, 2: 측정 안내, 3: 측정 중, 4: 측정 완료, 5: 리포트 안내, 6: 종료 안내, 7: 예외 발생
   String loadingDots = "";
   Timer? _dotTimer;
-  // bool isFinished = false; // 이따 주석 제거 (왜 없어졌는지 찾아보기)
-  // bool isError = false; // 이따 주석 제거 (왜 없어졌는지 찾아보기)
-  final PoseDetector _poseDetector = PoseDetector(
-    options: PoseDetectorOptions(
-      mode: PoseDetectionMode.stream, // 실시간 스트림 모드
-      modelConfig: PoseDetectionModel.base,
-    ),
-  );
+
+  // final MediaPipeService _mediaPipeService = MediaPipeService();
 
   // 좌표 담을 변수들
   Offset eyePoint = Offset.zero; // 눈
   Offset earPoint = Offset.zero; // 외이도 (Tragus)
   Offset c7Point = Offset.zero; // C7 (경추 7번)
+
+  @override
+  void dispose() {
+    _dotTimer?.cancel();
+    super.dispose();
+  }
 
   void nextStep() {
     setState(() {
@@ -40,144 +41,36 @@ class _VisionPageState extends State<VisionPage> {
   }
 
   void _startMeasurement() {
-    setState(() => step = 3); // 측정 시작 단계로 이동
-    int count = 0;
+    setState(() {
+      step = 3;
+      eyePoint = Offset.zero;
+      earPoint = Offset.zero;
+      c7Point = Offset.zero;
+    }); // 측정 시작 단계로 이동
 
-    _dotTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+    // _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
+
+    int count = 0;
+    _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       setState(() {
         count++;
         loadingDots = "." * (count % 4);
-
-        if (count == 3) {
-          timer.cancel();
-          _sendToDataToService(); // 백엔드 통신 시뮬레이션
-        }
       });
-    });
-  }
 
-  // 실제 카메라 프레임 분석 함수 (MediaPipe/ML Kit 연동부)
-  void processImage(InputImage inputImage) async {
-    final List<Pose> poses = await poseDetector.processImage(inputImage);
+      if (count == 3) {
+        timer.cancel();
 
-    for (Pose pose in poses) {
-      // 1. 필요한 랜드마크 데이터 가져오기
+        // bool success = await _mediaPipeService.sendVisionData(); // 실제 백엔드 통신 함수 호출
 
-      if (step == 3) {
-        // 3단계: 측정 중일 때만 실행
-        final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
-        final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
-        final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
-
-        setState(() {
-          // 2. 여기서 x, y 좌표가 변수에 담깁니다!
-          eyePoint = Offset(eye?.x ?? 0, eye?.y ?? 0);
-          earPoint = Offset(ear?.x ?? 0, ear?.y ?? 0);
-          c7Point = Offset(shoulder?.x ?? 0, shoulder?.y ?? 0);
-
-          // 3. 백엔드 전송용 리스트(Batch)에 저장
-          _coordinateBatch.add({
-            'eyeX': eyePoint.dx,
-            'eyeY': eyePoint.dy,
-            'earX': earPoint.dx,
-            'earY': earPoint.dy,
-            'c7X': c7Point.dx,
-            'c7Y': c7Point.dy,
-          });
-        });
-      }
-      @override
-      void dispose() {
-        _poseDetector.close(); // 카메라와 디텍터를 꼭 닫아줘야 성능 저하가 없어요.
-        super.dispose();
-      }
-    }
-  }
-
-  void _sendToDataToService() async {
-    // 실제로는 여기서 3초간의 좌표 중 최적값을 전송
-    // 지금은 시뮬레이션, 나중에 AuthService.sendVisionData(_coordinateBatch) 연동
-    await Future.delayed(const Duration(seconds: 1));
-    bool success = true; // 예외 처리 테스트 시 false로 변경 가능 -> 이건 연동 아닌가?
-
-    setState(() {
-      if (success) {
-        step = 4; // 완료 단계
-      } else {
-        step = 7; // 예외 단계
-        // isError = true;
+        // setState(() {
+        //  if (success) {
+        //    step = 4; // 측정 완료 단계
+        //  } else {
+        //    step = 7; // 예외 발생 단계
+        //  }
+        // });
       }
     });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => _showExitDialog(context),
-        ),
-        title: Row(
-          children: [
-            Text("월간 거북목 측정"),
-            if (step == 6 || step == 7) ...[
-              SizedBox(width: 20),
-              GestureDetector(
-                onTap: () => step == 6
-                    ? Navigator.pop(context)
-                    : setState(() => step = 1),
-                child: Text(
-                  step == 6 ? "종료" : "재시도",
-                  style: TextStyle(color: TColor.darkGreen, fontSize: 18),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-      body: Stack(
-        children: [
-          // 1. 카메라 프리뷰 및 가이드라인 (CVA/CRA 선)
-          Positioned.fill(
-            child: CustomPaint(
-              painter: PosePainter(
-                eye: eyePoint,
-                ear: earPoint,
-                c7: c7Point,
-                step: step,
-              ),
-            ),
-          ),
-
-          // 2. 거북이와 말풍선 배치
-          Positioned(
-            bottom: 50,
-            left: 20,
-            right: 20,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Image.asset('assets/side_turtle.png', width: 120, height: 120),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: _buildSpeechBubble(
-                      _getStepText(),
-                      _shouldShowButton(),
-                      nextStep,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   String _getStepText() {
@@ -205,61 +98,184 @@ class _VisionPageState extends State<VisionPage> {
 
   bool _shouldShowButton() {
     // 3단계(측정중), 6단계(종료 안내), 7단계(재시도)는 역삼각형 버튼 숨김
-    if ([3, 6, 7].contains(step)) return false; // 수정 필요?
+    if ([3, 6, 7].contains(step)) return false;
     return true;
   }
-}
 
-// 말풍선 위젯
-Widget _buildSpeechBubble(
-  String text,
-  bool showNextButton,
-  VoidCallback? onTap,
-) {
-  return Container(
-    width: 220,
-    constraints: BoxConstraints(minHeight: 100),
-    padding: const EdgeInsets.all(20),
-    decoration: BoxDecoration(
-      color: TColor.lightGreen,
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(24),
-        topRight: Radius.circular(24),
-        bottomRight: Radius.circular(24),
-        bottomLeft: Radius.circular(0),
-      ),
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Text(
-            text,
-            style: TextStyle(color: TColor.darkGreen, fontSize: 16),
-          ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => _showExitDialog(context),
         ),
-        if (showNextButton)
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: GestureDetector(
-              onTap: onTap,
-              child: CustomPaint(
-                size: const Size(20, 20),
-                painter: TrianglePainter(color: TColor.darkGreen),
+        title: Row(
+          children: [
+            Text("월간 거북목 측정", style: TextStyle(fontWeight: FontWeight.bold)),
+            if (step == 6 || step == 7) ...[
+              const SizedBox(width: 20),
+              GestureDetector(
+                onTap: () {
+                  if (step == 6) {
+                    Navigator.pop(context);
+                  } else {
+                    setState(() => step = 1);
+                  }
+                },
+                child: Text(
+                  step == 6 ? "종료" : "재시도",
+                  style: TextStyle(
+                    color: TColor.darkGreen,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      body: Stack(
+        children: [
+          // 1. 카메라 프리뷰 및 가이드라인 (CVA/CRA 선)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: PosePainter(
+                eye: eyePoint,
+                ear: earPoint,
+                c7: c7Point,
+                step: step,
               ),
             ),
           ),
-      ],
-    ),
-  );
+
+          // 2. 거북이와 말풍선 배치
+          Positioned(
+            bottom: 50,
+            left: 20,
+            right: 20,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start, // 위치 보고 end로 바꿀 수도
+              children: [
+                Image.asset(
+                  'assets/side_turtle.png',
+                  width: 120,
+                  height: 120,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: 120,
+                      height: 120,
+                      color: Colors.grey[800],
+                      child: const Icon(
+                        Icons.image_not_supported,
+                        color: Colors.grey,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildSpeechBubble(
+                    _getStepText(),
+                    _shouldShowButton(),
+                    nextStep,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 말풍선 위젯
+  Widget _buildSpeechBubble(
+    String text,
+    bool showNextButton,
+    VoidCallback? onTap,
+  ) {
+    return Container(
+      width: 220,
+      constraints: BoxConstraints(minHeight: 110),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: TColor.lightGreen,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+          bottomLeft: Radius.circular(0),
+        ),
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              text,
+              style: TextStyle(color: TColor.darkGreen, fontSize: 16),
+            ),
+          ),
+          if (showNextButton)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: GestureDetector(
+                onTap: onTap,
+                child: CustomPaint(
+                  size: const Size(20, 20),
+                  painter: TrianglePainter(color: TColor.darkGreen),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
-var path = Path();
-      // [오른쪽 옆모습 가이드 예시 좌표]
-      // 머리 위치 (타원)
+// -------------------------------------------------------------------------
+// 🎨 커스텀 그래픽 페인터 모듈 영역
+// -------------------------------------------------------------------------
+
+class PosePainter extends CustomPainter {
+  final Offset eye;
+  final Offset ear;
+  final Offset c7;
+  final int step;
+
+  PosePainter({
+    required this.eye,
+    required this.ear,
+    required this.c7,
+    required this.step,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 가이드 가이드라인 페인트 (초록빛 흐릿한 타원형 점선 대용 세팅)
+    final guidePaint = Paint()
+      ..color = Colors.green.withOpacity(0.5)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+
+    final paintPoint = Paint()
+      ..color = Colors.yellow
+      ..style = PaintingStyle.fill;
+    final paintLine = Paint()
+      ..color = Colors.yellow
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke;
+
+    // 1단계(안내) 및 3단계(측정) 진행 시 고정 가이드라인 드로잉
+    if (step == 1 || step == 2 || step == 3) {
+      var path = Path();
+      // 머리 폼 뼈대 타원 가이드라인
       canvas.drawOval(
         Rect.fromCenter(
           center: Offset(size.width * 0.5, size.height * 0.35),
@@ -269,28 +285,34 @@ var path = Path();
         guidePaint,
       );
 
-      // 목에서 어깨로 내려오는 라인
-      path.moveTo(size.width * 0.4, size.height * 0.45); // 뒤통수 아래
+      // 후두부에서 견갑골/어깨 라인으로 내려가는 2D 곡선 가이드
+      path.moveTo(size.width * 0.4, size.height * 0.45);
       path.quadraticBezierTo(
-        size.width * 0.4, size.height * 0.6, // 굴곡점
-        size.width * 0.2, size.height * 0.7, // 어깨 끝
+        size.width * 0.4,
+        size.height * 0.6,
+        size.width * 0.2,
+        size.height * 0.7,
       );
       canvas.drawPath(path, guidePaint);
     }
 
-    // 2. 실시간 추출 좌표 및 각도 선 (추출되었을 때만)
-    if (eye != Offset.zero) {
+    // 2. 실시간 추출 랜드마크 스켈레톤 라인 (좌표값이 매핑된 경우만 렌더링)
+    if (eye != Offset.zero && ear != Offset.zero && c7 != Offset.zero) {
       canvas.drawCircle(eye, 6, paintPoint);
       canvas.drawCircle(ear, 6, paintPoint);
       canvas.drawCircle(c7, 6, paintPoint);
-      
+
       canvas.drawLine(eye, ear, paintLine);
       canvas.drawLine(ear, c7, paintLine);
 
-      // 수평선 (CVA 기준선)
-      canvas.drawLine(c7, Offset(c7.dx + 60, c7.dy), paintLine..color = Colors.black);
+      // CVA 연산용 기준 매칭 수평 지지선 드로잉
+      canvas.drawLine(
+        c7,
+        Offset(c7.dx + 60, c7.dy),
+        paintLine..color = Colors.white,
+      );
 
-      // 측정 중/완료 시 텍스트만 표시 (CRA, CVA 라벨)
+      // 측정 단계 이상 진입했을 때 각 랜드마크 각도 식별 태그 부착
       if (step >= 3) {
         _drawAngleLabel(canvas, "CRA", ear.dx + 10, ear.dy - 20);
         _drawAngleLabel(canvas, "CVA", c7.dx + 20, c7.dy - 20);
@@ -298,11 +320,15 @@ var path = Path();
     }
   }
 
-void _drawAngleLabel(Canvas canvas, String text, double x, double y) {
+  void _drawAngleLabel(Canvas canvas, String text, double x, double y) {
     final tp = TextPainter(
       text: TextSpan(
-        text: text, 
-        style: const TextStyle(color: Colors.yellow, fontSize: 12, fontWeight: FontWeight.bold)
+        text: text,
+        style: const TextStyle(
+          color: Colors.yellow,
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+        ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -313,7 +339,7 @@ void _drawAngleLabel(Canvas canvas, String text, double x, double y) {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-// 역삼각형 버튼 Painter
+// 역삼각형 아이콘 버튼 드로잉 페인터
 class TrianglePainter extends CustomPainter {
   final Color color;
   TrianglePainter({required this.color});
@@ -333,50 +359,59 @@ class TrianglePainter extends CustomPainter {
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
+// -------------------------------------------------------------------------
+// 🚪 모달 및 다이얼로그 도우미 함수 영역
+// -------------------------------------------------------------------------
+
 void _showExitDialog(BuildContext context) {
   showDialog(
     context: context,
     builder: (context) => Center(
-      child: Container(
-        width: 336,
-        height: 224,
-        decoration: BoxDecoration(
-          color: const Color(0xFFFAFAFA),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(top: 67),
-              child: Text(
-                '월간 거북목 측정을 종료하시겠습니까?\n\n현재 측정은 저장되지 않습니다',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 336,
+          height: 224,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFAFAFA),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 50, left: 20, right: 20),
+                child: Text(
+                  '월간 거북목 측정을 종료하시겠습니까?\n\n현재 측정은 저장되지 않습니다',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black,
+                  ),
                 ),
               ),
-            ),
-            const Spacer(),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _dialogButton(
-                  "취소",
-                  const Color(0xFFD9D9D9),
-                  () => Navigator.pop(context),
-                ),
-                _dialogButton("확인", const Color(0x7F235E26), () {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => TurtlelyMainPage()),
-                    (route) => false,
-                  );
-                }),
-              ],
-            ),
-            const SizedBox(height: 24),
-          ],
+              const Spacer(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _dialogButton(
+                    "취소",
+                    const Color(0xFFD9D9D9),
+                    () => Navigator.pop(context),
+                  ),
+                  _dialogButton("확인", const Color(0x7F235E26), () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (context) => TurtlelyMainPage(),
+                      ),
+                      (route) => false,
+                    );
+                  }),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     ),
