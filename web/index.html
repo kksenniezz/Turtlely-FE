@@ -37,6 +37,9 @@
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="unsafe-none">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 </head>
 <body>
   <!--
@@ -47,6 +50,57 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+    <script>
+    let poseEngine;
+    let htmlVideoElement;
+
+    // 플러터에서 웹 카메라가 켜지면 호출할 초기화 함수
+    window.startWebMediaPipe = function() {
+      htmlVideoElement = document.querySelector('video');
+      if (!htmlVideoElement) return;
+
+      poseEngine = new Pose({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+      });
+
+      poseEngine.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      // 미디어파이프가 좌표를 찾으면 플러터 글로벌 함수로 던짐
+      poseEngine.onResults((results) => {
+        if (results.poseLandmarks) {
+          const landmarks = results.poseLandmarks;
+          // 11: 왼어깨(C7대용), 11: 왼눈, 11: 왼귀 대신 미디어파이프 인덱스 매핑 (왼쪽 측면 기준)
+          const leftEye = landmarks[11]; 
+          const leftEar = landmarks[7];
+          const leftShoulder = landmarks[11];
+
+          if (window.onWebPoseDetected) {
+            window.onWebPoseDetected(JSON.stringify({
+              eyeX: leftEye.x, eyeY: leftEye.y,
+              earX: leftEar.x, earY: leftEar.y,
+              c7X: leftShoulder.x, c7Y: leftShoulder.y
+            }));
+          }
+        }
+      });
+
+      // 브라우저 프레임 단위로 미디어파이프에 비디오 밀어넣기
+      async function detectionFrame() {
+        if (htmlVideoElement && !htmlVideoElement.paused) {
+          await poseEngine.send({ image: htmlVideoElement });
+        }
+        requestAnimationFrame(detectionFrame);
+      }
+      htmlVideoElement.addEventListener('play', () => {
+        detectionFrame();
+      });
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
