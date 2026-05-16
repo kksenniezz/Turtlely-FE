@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'style.dart';
 import 'main.dart';
-// import 'service/mediapipe_service.dart';
+import 'services/mediapipe_service.dart';
 
 class VisionPage extends StatefulWidget {
   const VisionPage({Key? key}) : super(key: key);
@@ -17,12 +18,36 @@ class _VisionPageState extends State<VisionPage> {
   String loadingDots = "";
   Timer? _dotTimer;
 
-  // final MediaPipeService _mediaPipeService = MediaPipeService();
+  final MediaPipeService _mediaPipeService = MediaPipeService();
 
   // 좌표 담을 변수들
   Offset eyePoint = Offset.zero; // 눈
   Offset earPoint = Offset.zero; // 외이도 (Tragus)
   Offset c7Point = Offset.zero; // C7 (경추 7번)
+
+  @override
+  void initState() {
+    super.initState();
+    _bootUp();
+  }
+
+  // 서비스의 카메라를 깨우고 좌표 스트림을 구독합니다.
+  Future<void> _bootUp() async {
+    await _mediaPipeService.initializeCamera();
+    if (!mounted) return;
+    setState(() {}); // 카메라 켜졌으니 빌드 갱신
+
+    // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기
+    _mediaPipeService.poseStream.listen((poses) {
+      if (!mounted) return;
+      setState(() {
+        // 미디어파이프가 찾은 실시간 좌표를 화면 변수에 매핑
+        eyePoint = poses['eye'] ?? Offset.zero;
+        earPoint = poses['ear'] ?? Offset.zero;
+        c7Point = poses['c7'] ?? Offset.zero;
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -43,12 +68,9 @@ class _VisionPageState extends State<VisionPage> {
   void _startMeasurement() {
     setState(() {
       step = 3;
-      eyePoint = Offset.zero;
-      earPoint = Offset.zero;
-      c7Point = Offset.zero;
     }); // 측정 시작 단계로 이동
 
-    // _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
+    _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
 
     int count = 0;
     _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
@@ -60,15 +82,16 @@ class _VisionPageState extends State<VisionPage> {
       if (count == 3) {
         timer.cancel();
 
-        // bool success = await _mediaPipeService.sendVisionData(); // 실제 백엔드 통신 함수 호출
+        bool success = await _mediaPipeService
+            .sendVisionData(); // 실제 백엔드 통신 함수 호출
 
-        // setState(() {
-        //  if (success) {
-        //    step = 4; // 측정 완료 단계
-        //  } else {
-        //    step = 7; // 예외 발생 단계
-        //  }
-        // });
+        setState(() {
+          if (success) {
+            step = 4; // 측정 완료 단계
+          } else {
+            step = 7; // 예외 발생 단계
+          }
+        });
       }
     });
   }
@@ -116,7 +139,11 @@ class _VisionPageState extends State<VisionPage> {
         ),
         title: const Text(
           "월간 거북목 측정",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         actions: [
           if (step == 6 || step == 7) ...[
@@ -144,6 +171,15 @@ class _VisionPageState extends State<VisionPage> {
       body: Stack(
         children: [
           // 1. 카메라 프리뷰 및 가이드라인 (CVA/CRA 선)
+          Positioned.fill(
+            child:
+                _mediaPipeService.isInitialized &&
+                    _mediaPipeService.cameraController != null
+                ? CameraPreview(_mediaPipeService.cameraController!)
+                : const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+          ),
           Positioned.fill(
             child: CustomPaint(
               painter: PosePainter(
