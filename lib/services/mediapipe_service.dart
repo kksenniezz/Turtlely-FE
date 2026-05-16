@@ -36,25 +36,34 @@ class MediaPipeService {
       isInitialized = true;
 
       // 🔄 실시간 프레임 스트리밍 시작 (여기서 미디어파이프 연동)
-      cameraController!.startImageStream((CameraImage image) {
-        // [TODO] 팀원들과 맞춘 MediaPipe 웹/앱 웹소켓 혹은 로컬 라이브러리로 프레임 전송구역
-        // 지금은 카메라가 잘 도는지 확인하기 위해 테스트용 가상 좌표를 계속 쏴줍니다.
+      if (cameraController != null && cameraController!.value.isInitialized) {
+        cameraController!.startImageStream((CameraImage image) {
+          // 실시간으로 변하는 미세 진동 테스트 좌표 생성
+          double pulse = (DateTime.now().millisecondsSinceEpoch % 1000) / 100.0;
+          Offset liveEye = Offset(150 + pulse, 200 - pulse);
+          Offset liveEar = Offset(200 + pulse, 230 + pulse);
+          Offset liveC7 = Offset(210 - pulse, 310 + pulse);
 
-        // 예시: 실시간으로 계산된 좌표를 지도처럼 변환했다고 가정
-        Offset mockEye = const Offset(150, 200);
-        Offset mockEar = const Offset(200, 230);
-        Offset mockC7 = const Offset(210, 310);
+          // vision.dart 화면으로 좌표 던지기!
+          _poseStreamController.add({
+            'eye': liveEye,
+            'ear': liveEar,
+            'c7': liveC7,
+          });
 
-        // vision.dart 화면으로 좌표 던지기!
-        _poseStreamController.add({
-          'eye': mockEye,
-          'ear': mockEar,
-          'c7': mockC7,
+          // 3초 측정 바구니 적재 로직
+          if (coordinateBatch.length < 90) {
+            coordinateBatch.add({
+              "eyeX": liveEye.dx,
+              "eyeY": liveEye.dy,
+              "earX": liveEar.dx,
+              "earY": liveEar.dy,
+              "c7X": liveC7.dx,
+              "c7Y": liveC7.dy,
+            });
+          }
         });
-
-        // 3단계(측정중)일 때 바구니에 데이터 담기
-        // (이 로직은 vision.dart의 step 상태와 연동하여 제어 가능)
-      });
+      }
     } catch (e) {
       print("서비스 카메라 초기화 에러: $e");
     }
