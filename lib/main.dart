@@ -5,6 +5,7 @@ import 'style.dart'; // TColor, TText 등이 정의된 파일
 import 'exercise.dart';
 import 'report.dart';
 import 'mypage.dart';
+import 'vision.dart';
 import 'splash.dart';
 
 void main() async {
@@ -322,13 +323,4 @@ class _HomeViewContentState extends State<HomeViewContent> {
       ),
     );
   }
-}
-
-class VisionPage extends StatelessWidget {
-  const VisionPage({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text("월간 거북목 측정")),
-    body: const Center(child: Text("카메라 연동 화면")),
-  );
 }
