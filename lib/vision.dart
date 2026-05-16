@@ -297,21 +297,43 @@ class PosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 1. [페인트 세팅] 사람 외형 프로필 선
+    // 🔧 1. 반응형 좌표 보정 (밀림 현상 완전 방어)
+    Offset correctedEye = Offset.zero;
+    Offset correctedEar = Offset.zero;
+    Offset correctedC7 = Offset.zero;
+
+    // 만약 넘어온 값이 이미 큰 픽셀 값이면 그대로 쓰고, 0~1 사이 소수점 비율이면 화면 크기를 곱합니다.
+    if (eye != Offset.zero) {
+      correctedEye = eye.dx <= 1.0
+          ? Offset(eye.dx * size.width, eye.dy * size.height)
+          : eye;
+    }
+    if (ear != Offset.zero) {
+      correctedEar = ear.dx <= 1.0
+          ? Offset(ear.dx * size.width, ear.dy * size.height)
+          : ear;
+    }
+    if (c7 != Offset.zero) {
+      correctedC7 = c7.dx <= 1.0
+          ? Offset(c7.dx * size.width, c7.dy * size.height)
+          : c7;
+    }
+
+    // 🎨 2. 페인트 스타일 세팅
     final profilePaint = Paint()
       ..color = TColor.buttonGreen.withOpacity(0.6)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5.0
       ..strokeCap = StrokeCap.round;
 
-    // 2. [페인트 세팅] 내 포즈 스켈레톤 선
+    // 내 포즈 스켈레톤 선
     final skeletonPaint = Paint()
       ..color = TColor.blue
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5.0
       ..strokeCap = StrokeCap.round;
 
-    // 3. [페인트 세팅] 랜드마크 점
+    // 랜드마크 점
     final pointPaint = Paint()
       ..color = TColor.blue
       ..style = PaintingStyle.fill;
@@ -386,18 +408,18 @@ class PosePainter extends CustomPainter {
 
     // 파트 B: 실시간 포즈 스켈레톤 (미디어파이프 좌표 연동)
     // 1. 눈과 귀가 잡혔다면 -> 눈-귀 스켈레톤 선 연결
-    if (eye != Offset.zero && ear != Offset.zero) {
-      canvas.drawLine(eye, ear, skeletonPaint);
+    if (correctedEye != Offset.zero && correctedEar != Offset.zero) {
+      canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
     }
 
     // 2. 귀와 C7이 잡혔다면 -> 귀-C7 스켈레톤 선 연결 및 수직선 드로잉
-    if (ear != Offset.zero && c7 != Offset.zero) {
-      canvas.drawLine(ear, c7, skeletonPaint);
+    if (correctedEar != Offset.zero && correctedC7 != Offset.zero) {
+      canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
 
       // C7 중심의 CVA 수직 기준선 드로잉-
       canvas.drawLine(
-        c7,
-        Offset(c7.dx, c7.dy - 80),
+        correctedC7,
+        Offset(correctedC7.dx, correctedC7.dy - 100),
         skeletonPaint
           ..color = TColor.blue
           ..strokeWidth = 3.0,
@@ -405,33 +427,82 @@ class PosePainter extends CustomPainter {
     }
 
     // 3. 개별 랜드마크 점 찍기 (0점이 아닐 때만 콕콕 찍어주기)
-    if (eye != Offset.zero)
-      canvas.drawCircle(eye, 6, pointPaint..color = TColor.blue);
-    if (ear != Offset.zero)
-      canvas.drawCircle(ear, 6, pointPaint..color = TColor.blue);
-    if (c7 != Offset.zero) {
-      canvas.drawCircle(c7, 6, pointPaint..color = TColor.blue); // C7 노란 점
-    }
+    if (correctedEye != Offset.zero)
+      canvas.drawCircle(correctedEye, 7, pointPaint..color = TColor.blue);
+    if (correctedEar != Offset.zero)
+      canvas.drawCircle(correctedEar, 7, pointPaint..color = TColor.blue);
+    if (correctedC7 != Offset.zero)
+      canvas.drawCircle(
+        correctedC7,
+        7,
+        pointPaint..color = TColor.blue,
+      ); // C7 노란 점
 
-    // 4. 각도 라벨 부착 (측정 단계 진입 시 활성화)
-    if (step >= 3) {
-      if (ear != Offset.zero)
-        _drawAngleLabel(canvas, "CRA", ear.dx + 10, ear.dy - 25);
-      if (c7 != Offset.zero)
-        _drawAngleLabel(canvas, "CVA", c7.dx + 15, c7.dy - 35);
+    if (correctedEye != Offset.zero) {
+      _drawTextLabel(
+        canvas,
+        "눈",
+        correctedEye.dx - 65,
+        correctedEye.dy - 10,
+        color: Colors.greenAccent,
+      );
+    }
+    if (correctedEar != Offset.zero) {
+      _drawTextLabel(
+        canvas,
+        "귀",
+        correctedEar.dx + 15,
+        correctedEar.dy - 10,
+        color: Colors.greenAccent,
+      );
+      // 귀 부위 각도 모형 텍스트 (CRA)
+      _drawTextLabel(
+        canvas,
+        "CRA",
+        correctedEar.dx - 30,
+        correctedEar.dy + 15,
+        color: Colors.yellow,
+        fontSize: 12,
+      );
+    }
+    if (correctedC7 != Offset.zero) {
+      _drawTextLabel(
+        canvas,
+        "경추",
+        correctedC7.dx + 15,
+        correctedC7.dy - 10,
+        color: const Color(0xFFFFD700),
+      );
+      // 경추 부위 수직 각도 모형 텍스트 (CVA)
+      _drawTextLabel(
+        canvas,
+        "CVA",
+        correctedC7.dx - 35,
+        correctedC7.dy - 40,
+        color: Colors.white,
+        fontSize: 12,
+      );
     }
   }
 
-  // 각도 라벨 드로잉 도우미 함수
-  void _drawAngleLabel(Canvas canvas, String text, double x, double y) {
+  void _drawTextLabel(
+    Canvas canvas,
+    String text,
+    double x,
+    double y, {
+    required Color color,
+    double fontSize = 14,
+  }) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: const TextStyle(
-          color: Colors.yellow, // 선명한 노란색
-          fontSize: 14,
+        style: TextStyle(
+          color: color,
+          fontSize: fontSize,
           fontWeight: FontWeight.bold,
-          backgroundColor: Colors.black38, // 글씨 가독성을 위한 약간의 배경색
+          backgroundColor: Colors.black.withOpacity(
+            0.5,
+          ), // 영상 위에서 잘 보이도록 반투명 검은 배경 가이드 추가
         ),
       ),
       textDirection: TextDirection.ltr,
