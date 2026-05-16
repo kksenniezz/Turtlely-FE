@@ -47,25 +47,26 @@ class MediaPipeService {
 
       if (kIsWeb) {
         // 🌐 [웹 브라우저 환경 실행]
-        // index.html에 정의해둔 자바스크립트 함수 호출하여 웹 비디오 바인딩
         Timer(const Duration(milliseconds: 500), () {
           js.context.callMethod('startWebMediaPipe');
         });
 
-        // 자바스크립트가 꺼내온 좌표 리시버 등록
+        // 자바스크립트(index.html)가 꺼내온 오른쪽 좌표 리시버 등록
         js.context['onWebPoseDetected'] = (String jsonPayload) {
           final data = jsonDecode(jsonPayload);
-          // 웹 미디어파이프의 해상도 비율 보정 (기본 0~1 사이 소수점이므로 화면 크기에 맞춤)
-          double xRatio = 400.0;
-          double yRatio = 300.0;
 
+          // 웹 미디어파이프 기본 스케일 보정 (화면 가이드라인 테두리 안쪽으로 안착)
+          double xRatio = 360.0;
+          double yRatio = 480.0;
+
+          // 💡 변수명 깔끔하게 통일하여 디스패치 호출
           _dispatchCoordinates(
-            data['eyeX'] * xRatio,
-            data['eyeY'] * yRatio,
-            data['earX'] * xRatio,
-            data['earY'] * yRatio,
-            data['c7X'] * xRatio,
-            data['c7Y'] * yRatio,
+            (data['eyeX'] ?? 0.5) * xRatio,
+            (data['eyeY'] ?? 0.3) * yRatio,
+            (data['earX'] ?? 0.5) * xRatio,
+            (data['earY'] ?? 0.4) * yRatio,
+            (data['c7X'] ?? 0.5) * xRatio,
+            (data['c7Y'] ?? 0.6) * yRatio,
           );
         };
       } else {
@@ -76,19 +77,31 @@ class MediaPipeService {
 
           final List<Pose> poses = await _poseDetector.processImage(inputImage);
 
-          for (Pose pose in poses) {
-            final leftEye = pose.landmarks[PoseLandmarkType.leftEye];
-            final leftEar = pose.landmarks[PoseLandmarkType.leftEar];
-            final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+          // 💡 모바일 화면 픽셀 매핑을 위한 스마트폰 해상도 스케일 보정값
+          double scaleX = 0.5;
+          double scaleY = 0.5;
 
-            if (leftEye != null && leftEar != null && leftShoulder != null) {
+          for (Pose pose in poses) {
+            // 💡 [수정] 왼쪽으로 고개 돌렸을 때 렌즈에 찍히는 오른쪽(Right) 부위만 추적!
+            final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
+            final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
+            final rightShoulder =
+                pose.landmarks[PoseLandmarkType.rightShoulder]; // C7 대용
+
+            if (rightEye != null && rightEar != null && rightShoulder != null) {
+              // 콘솔 디버깅용 실시간 로그 (이게 찍히면 AI가 열일하고 있다는 뜻!)
+              print(
+                "📱 [앱 AI 실시간 인식 중] -> eyeX: ${rightEye.x * scaleX}, earX: ${rightEar.x * scaleX}",
+              );
+
+              // 💡 변수명 직관적으로 싹 정돈하여 호출
               _dispatchCoordinates(
-                leftEye.x,
-                leftEye.y,
-                leftEar.x,
-                leftEar.y,
-                leftShoulder.x,
-                leftShoulder.y,
+                rightEye.x * scaleX,
+                rightEye.y * scaleY,
+                rightEar.x * scaleX,
+                rightEar.y * scaleY,
+                rightShoulder.x * scaleX,
+                rightShoulder.y * scaleY,
               );
             }
           }
@@ -99,7 +112,7 @@ class MediaPipeService {
     }
   }
 
-  // 좌표 스트림 전송 및 바구니 적재 공통화 함수
+  // 🔄 좌표 스트림 전송 및 바구니 적재 공통화 함수
   void _dispatchCoordinates(
     double eyeX,
     double eyeY,
@@ -108,17 +121,28 @@ class MediaPipeService {
     double c7X,
     double c7Y,
   ) {
+    // 💡 미세 떨림 방어용 실시간 노이즈 필터링 (직전 좌표와 스무딩 평균 처리)
+    double filteredEyeX = eyeX;
+    double filteredEyeY = eyeY;
+
+    if (coordinateBatch.isNotEmpty) {
+      var lastFrame = coordinateBatch.last;
+      filteredEyeX = (lastFrame['eyeX']! + eyeX) / 2;
+      filteredEyeY = (lastFrame['eyeY']! + eyeY) / 2;
+    }
+
+    // 🎯 vision.dart의 CustomPainter로 쫀득하게 정제된 픽셀 좌표 전달
     _poseStreamController.add({
-      'eye': Offset(eyeX, eyeY),
+      'eye': Offset(filteredEyeX, filteredEyeY),
       'ear': Offset(earX, earY),
       'c7': Offset(c7X, c7Y),
     });
 
-    // 3초 카운트다운 동안 임시 바구니에 로우 데이터 축적 (초당 15프레임 타깃, 최대 45개 내외)
+    // 3초 카운트다운 동안 임시 바구니에 로우 데이터 차곡차곡 적재
     if (coordinateBatch.length < 50) {
       coordinateBatch.add({
-        "eyeX": eyeX,
-        "eyeY": eyeY,
+        "eyeX": filteredEyeX,
+        "eyeY": filteredEyeY,
         "earX": earX,
         "earY": earY,
         "c7X": c7X,
@@ -127,7 +151,7 @@ class MediaPipeService {
     }
   }
 
-  // 🛠️ 알고리즘: 3초간 쌓인 수십 개 좌표 중 '가장 미세 움직임이 적고 안정적인 프레임 딱 1개' 정산 추출
+  // 🧠 세은님 기획 알고리즘: 눈의 통계적 중앙값(Median)을 구해 값이 튀는 것을 최종 차단
   Map<String, double> _calculateOptimalFrameWithMedian() {
     if (coordinateBatch.isEmpty) return {};
 
@@ -135,7 +159,7 @@ class MediaPipeService {
     List<double> eyeXList = coordinateBatch.map((f) => f['eyeX']!).toList();
     List<double> eyeYList = coordinateBatch.map((f) => f['eyeY']!).toList();
 
-    // 2. 정렬
+    // 2. 오름차순 정렬
     eyeXList.sort();
     eyeYList.sort();
 
@@ -159,7 +183,7 @@ class MediaPipeService {
       }
     }
 
-    // 5. 최종 전송용 데이터 정산 (Key 명칭도 깔끔하게 통일)
+    // 5. 최종 전송용 데이터 정산 완료 (Key 명칭 깔끔하게 통일)
     return {
       "eyeX": medianEyeX,
       "eyeY": medianEyeY,
@@ -174,10 +198,10 @@ class MediaPipeService {
   Future<bool> sendVisionData() async {
     if (coordinateBatch.isEmpty) return false;
 
-    // 💡 [해결 - 1번 에러] 새로 업데이트된 중앙값 정산 함수명으로 교체 완료!
+    // 눈 중앙점 필터링 알고리즘 작동하여 단 1개의 데이터 정산
     Map<String, double> realTargetFrame = _calculateOptimalFrameWithMedian();
 
-    // 2. 단일 객체 전송 (백엔드가 요구하는 포맷 형식)
+    // 단일 객체 전송
     final response = await _postRequest(
       "/api/vision/measurement",
       realTargetFrame,
@@ -185,7 +209,7 @@ class MediaPipeService {
     return response['success'] == true;
   }
 
-  // 🛠️ [해결 - 2, 3, 4, 5번 에러] 최신 Google ML Kit 규격에 최적화된 이미지 변환 함수
+  // 최신 Google ML Kit 규격에 맞춘 모바일 카메라 바이트 이미지 변환 함수
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
       final WriteBuffer allBytes = WriteBuffer();
@@ -199,7 +223,6 @@ class MediaPipeService {
           InputImageFormatValue.fromRawValue(image.format.raw) ??
           InputImageFormat.nv21;
 
-      // 구글 최신 ML Kit 패키지 스펙에 맞춰 InputImageMetadata 하나로 통합 처리
       final metadata = InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: imageRotation,
