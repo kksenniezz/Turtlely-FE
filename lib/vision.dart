@@ -33,10 +33,6 @@ class _VisionPageState extends State<VisionPage> {
 
   // 서비스의 카메라를 깨우고 좌표 스트림을 구독합니다.
   Future<void> _bootUp() async {
-    await _mediaPipeService.initializeCamera();
-    if (!mounted) return;
-    setState(() {}); // 카메라 켜졌으니 빌드 갱신
-
     // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기
     _mediaPipeService.poseStream.listen((poses) {
       if (!mounted) return;
@@ -47,6 +43,10 @@ class _VisionPageState extends State<VisionPage> {
         c7Point = poses['c7'] ?? Offset.zero;
       });
     });
+
+    await _mediaPipeService.initializeCamera();
+    if (!mounted) return;
+    setState(() {}); // 카메라 켜졌으니 빌드 갱신
   }
 
   @override
@@ -188,6 +188,7 @@ class _VisionPageState extends State<VisionPage> {
                 c7: c7Point,
                 step: step,
               ),
+              child: Container(color: Colors.transparent),
             ),
           ),
 
@@ -298,21 +299,21 @@ class PosePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // 1. [페인트 세팅] 사람 외형 프로필 선
     final profilePaint = Paint()
-      ..color = TColor.darkGreen.withOpacity(0.6)
+      ..color = TColor.buttonGreen.withOpacity(0.6)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5.0
       ..strokeCap = StrokeCap.round;
 
     // 2. [페인트 세팅] 내 포즈 스켈레톤 선
     final skeletonPaint = Paint()
-      ..color = TColor.buttonGreen
+      ..color = TColor.blue
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5.0
       ..strokeCap = StrokeCap.round;
 
     // 3. [페인트 세팅] 랜드마크 점
     final pointPaint = Paint()
-      ..color = TColor.buttonGreen
+      ..color = TColor.blue
       ..style = PaintingStyle.fill;
 
     // 파트 A: 사람 외형 프로필 가이드라인 (배경 고정)
@@ -384,35 +385,40 @@ class PosePainter extends CustomPainter {
     canvas.drawPath(profilePath, profilePaint);
 
     // 파트 B: 실시간 포즈 스켈레톤 (미디어파이프 좌표 연동)
-    if (eye != Offset.zero && ear != Offset.zero && c7 != Offset.zero) {
-      // 1. [스켈레톤 선] 눈-귀, 귀-C7 연결 (CRA, CVA 각도 모양 생성)
+    // 1. 눈과 귀가 잡혔다면 -> 눈-귀 스켈레톤 선 연결
+    if (eye != Offset.zero && ear != Offset.zero) {
       canvas.drawLine(eye, ear, skeletonPaint);
+    }
+
+    // 2. 귀와 C7이 잡혔다면 -> 귀-C7 스켈레톤 선 연결 및 수직선 드로잉
+    if (ear != Offset.zero && c7 != Offset.zero) {
       canvas.drawLine(ear, c7, skeletonPaint);
 
-      // 2. [CVA 수직 기준선] CVA 연산을 위한 C7 중심의 수직 지지선 드로잉 (흰색)
-      // C7에서 위쪽으로 수직으로 뻗는 선 (수직 기준)
+      // C7 중심의 CVA 수직 기준선 드로잉-
       canvas.drawLine(
         c7,
-        Offset(c7.dx, c7.dy - 80), // C7 위쪽으로 80px 뻗음
+        Offset(c7.dx, c7.dy - 80),
         skeletonPaint
-          ..color = Colors.white
+          ..color = TColor.blue
           ..strokeWidth = 3.0,
       );
+    }
 
-      // 3. [랜드마크 점] 눈, 귀, C7 위치에 노란색 점 찍기
-      canvas.drawCircle(eye, 6, pointPaint);
-      canvas.drawCircle(ear, 6, pointPaint);
-      canvas.drawCircle(
-        c7,
-        6,
-        pointPaint..color = const Color(0xFFFFD700),
-      ); // C7 점
+    // 3. 개별 랜드마크 점 찍기 (0점이 아닐 때만 콕콕 찍어주기)
+    if (eye != Offset.zero)
+      canvas.drawCircle(eye, 6, pointPaint..color = TColor.blue);
+    if (ear != Offset.zero)
+      canvas.drawCircle(ear, 6, pointPaint..color = TColor.blue);
+    if (c7 != Offset.zero) {
+      canvas.drawCircle(c7, 6, pointPaint..color = TColor.blue); // C7 노란 점
+    }
 
-      // 4. [각도 라벨] 측정 단계 이상 진입했을 때 각 랜드마크 각도 식별 태그 부착
-      if (step >= 3) {
+    // 4. 각도 라벨 부착 (측정 단계 진입 시 활성화)
+    if (step >= 3) {
+      if (ear != Offset.zero)
         _drawAngleLabel(canvas, "CRA", ear.dx + 10, ear.dy - 25);
+      if (c7 != Offset.zero)
         _drawAngleLabel(canvas, "CVA", c7.dx + 15, c7.dy - 35);
-      }
     }
   }
 

@@ -50,57 +50,77 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-    <script>
-    let poseEngine;
-    let htmlVideoElement;
+  <script src="flutter_bootstrap.js" async></script>
+  <script>
+  let poseEngine;
+  let htmlVideoElement;
 
-    // 플러터에서 웹 카메라가 켜지면 호출할 초기화 함수
-    window.startWebMediaPipe = function() {
-      htmlVideoElement = document.querySelector('video');
-      if (!htmlVideoElement) return;
+  // 플러터에서 웹 카메라가 완전히 켜지면 호출할 초기화 함수
+  window.startWebMediaPipe = function() {
+    console.log("🌐 [JS] startWebMediaPipe 함수가 플러터에 의해 호출되었습니다.");
 
-      poseEngine = new Pose({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-      });
+    htmlVideoElement = document.querySelector('video');
+    if (!htmlVideoElement) {
+      console.error("🚨 [JS] 비디오 엘리먼트를 찾지 못해 300ms 후 재시도합니다.");
+      setTimeout(window.startWebMediaPipe, 300);
+      return;
+    }
 
-      poseEngine.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
+    // 1. 미디어파이프 포즈 엔진 생성
+    poseEngine = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
 
-      // 미디어파이프가 좌표를 찾으면 플러터 글로벌 함수로 던짐
-      poseEngine.onResults((results) => {
-        if (results.poseLandmarks) {
-          const landmarks = results.poseLandmarks;
-          // 11: 왼어깨(C7대용), 11: 왼눈, 11: 왼귀 대신 미디어파이프 인덱스 매핑 (왼쪽 측면 기준)
-          const leftEye = landmarks[11]; 
-          const leftEar = landmarks[7];
-          const leftShoulder = landmarks[11];
+    poseEngine.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
 
-          if (window.onWebPoseDetected) {
-            window.onWebPoseDetected(JSON.stringify({
-              eyeX: leftEye.x, eyeY: leftEye.y,
-              earX: leftEar.x, earY: leftEar.y,
-              c7X: leftShoulder.x, c7Y: leftShoulder.y
-            }));
-          }
+    // 2. 🎯 AI 좌표 감지 콜백 (세은님 앱/웹 통합 우측 관절 규칙 반영)
+    poseEngine.onResults((results) => {
+      if (results.poseLandmarks) {
+        const landmarks = results.poseLandmarks;
+        
+        // 💡 미디어파이프 표준 우측 인덱스: Right Eye = 5, Right Ear = 8, Right Shoulder = 12
+        const rightEye = landmarks[5]; 
+        const rightEar = landmarks[8];
+        const rightShoulder = landmarks[12]; // C7 대용
+
+        if (rightEye && rightEar && rightShoulder && window.onWebPoseDetected) {
+          // 플러터가 기다리는 Key 이름(eyeX, earX, c7X) 그대로 토스!
+          window.onWebPoseDetected(JSON.stringify({
+            eyeX: rightEye.x, 
+            eyeY: rightEye.y,
+            earX: rightEar.x, 
+            earY: rightEar.y,
+            c7X: rightShoulder.x, 
+            c7Y: rightShoulder.y
+          }));
         }
-      });
-
-      // 브라우저 프레임 단위로 미디어파이프에 비디오 밀어넣기
-      async function detectionFrame() {
-        if (htmlVideoElement && !htmlVideoElement.paused) {
-          await poseEngine.send({ image: htmlVideoElement });
-        }
-        requestAnimationFrame(detectionFrame);
       }
+    });
+
+    // 3. 🔄 이벤트 리스너에만 의존하지 않고, 비디오가 이미 켜져있다면 강제로 루프 구동
+    async function detectionFrame() {
+      if (htmlVideoElement && !htmlVideoElement.paused && !htmlVideoElement.ended) {
+        await poseEngine.send({ image: htmlVideoElement });
+      }
+      requestAnimationFrame(detectionFrame);
+    }
+
+    // 카메라가 이미 재생 중이거나 play 이벤트가 트리거될 때 둘 다 대응하도록 방어
+    if (htmlVideoElement.readyState >= 2 && !htmlVideoElement.paused) {
+      console.log("🌐 [JS] 비디오가 이미 재생 중이므로 루프를 즉시 시작합니다.");
+      detectionFrame();
+    } else {
       htmlVideoElement.addEventListener('play', () => {
+        console.log("🌐 [JS] 비디오 play 이벤트 감지 -> 루프 시작");
         detectionFrame();
       });
-    };
-  </script>
-  <script src="flutter_bootstrap.js" async></script>
+    }
+  };
+</script>
 </body>
 </html>
