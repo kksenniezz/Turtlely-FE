@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'style.dart';
 import 'main.dart';
 import 'services/mediapipe_service.dart';
@@ -175,26 +176,44 @@ class _VisionPageState extends State<VisionPage> {
       ),
       body: Stack(
         children: [
-          // 1. 카메라 프리뷰 및 가이드라인 (CVA/CRA 선)
+          // 🎯 1. [카메라 & 스켈레톤] 다시 예전처럼 화면 전체(fill)로 시원하게 꽉 채우기!
           Positioned.fill(
             child:
                 _mediaPipeService.isInitialized &&
                     _mediaPipeService.cameraController != null
-                ? CameraPreview(_mediaPipeService.cameraController!)
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      // 💡 크롬 창을 줄이거나 늘릴 때의 실시간 화면 크기를 가로채서 CustomPaint에 던집니다.
+                      return Stack(
+                        children: [
+                          // 화면을 꽉 채우는 카메라
+                          Positioned.fill(
+                            child: CameraPreview(
+                              _mediaPipeService.cameraController!,
+                            ),
+                          ),
+                          // 카메라와 정확히 똑같은 '실시간 크기'의 도화지 배치
+                          Positioned.fill(
+                            child: CustomPaint(
+                              size: Size(
+                                constraints.maxWidth,
+                                constraints.maxHeight,
+                              ),
+                              painter: PosePainter(
+                                eye: eyePoint,
+                                ear: earPoint,
+                                c7: c7Point,
+                                step: step,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  )
                 : const Center(
                     child: CircularProgressIndicator(color: Colors.white),
                   ),
-          ),
-          Positioned.fill(
-            child: CustomPaint(
-              painter: PosePainter(
-                eye: eyePoint,
-                ear: earPoint,
-                c7: c7Point,
-                step: step,
-              ),
-              child: Container(color: Colors.transparent),
-            ),
           ),
 
           // 2. 거북이와 말풍선 배치
@@ -302,18 +321,43 @@ class PosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final double scaleX = size.width / 360.0;
+    final double scaleY = size.height / 480.0;
+
+    double offsetY = 0.0;
+    double stretchX = 1.0;
+
+    if (kIsWeb) {
+      if ((size.width / size.height) > (360.0 / 480.0)) {
+        offsetY = -(size.height * 0.08); // 위아래 밀림 방지
+        stretchX = 1.15; // 정면/측면 왜곡 방지
+      }
+    } else {
+      offsetY = 0.0;
+      stretchX = 1.0;
+    }
+
     Offset correctedEye = Offset.zero;
     Offset correctedEar = Offset.zero;
     Offset correctedC7 = Offset.zero;
 
     if (eye != Offset.zero) {
-      correctedEye = Offset(size.width - eye.dx, eye.dy);
+      correctedEye = Offset(
+        size.width - (eye.dx * scaleX * stretchX),
+        (eye.dy * scaleY) + offsetY,
+      );
     }
     if (ear != Offset.zero) {
-      correctedEar = Offset(size.width - ear.dx, ear.dy);
+      correctedEar = Offset(
+        size.width - (ear.dx * scaleX),
+        (ear.dy * scaleY) + offsetY,
+      );
     }
     if (c7 != Offset.zero) {
-      correctedC7 = Offset(size.width - c7.dx, c7.dy);
+      correctedC7 = Offset(
+        size.width - (c7.dx * scaleX),
+        (c7.dy * scaleY) + (offsetY * 0.5),
+      );
     }
 
     // 🎨 2. 페인트 스타일 세팅
@@ -450,7 +494,7 @@ class PosePainter extends CustomPainter {
       double cvaSweepAngle = math.pi - c7ToEarAngle;
 
       // CRA 부채꼴 호 드로잉
-      final double craArcRadius = 35.0;
+      final double craArcRadius = 20.0;
       canvas.drawArc(
         Rect.fromCircle(center: correctedEar, radius: craArcRadius),
         angleToC7,
