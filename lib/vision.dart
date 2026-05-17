@@ -302,29 +302,18 @@ class PosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 🔧 1. 반응형 좌표 보정 (밀림 현상 완전 방어)
-
     Offset correctedEye = Offset.zero;
     Offset correctedEar = Offset.zero;
     Offset correctedC7 = Offset.zero;
 
     if (eye != Offset.zero) {
-      correctedEye = Offset(
-        size.width - (eye.dx * size.width),
-        eye.dy * size.height,
-      );
+      correctedEye = Offset(size.width - eye.dx, eye.dy);
     }
     if (ear != Offset.zero) {
-      correctedEar = Offset(
-        size.width - (ear.dx * size.width),
-        ear.dy * size.height,
-      );
+      correctedEar = Offset(size.width - ear.dx, ear.dy);
     }
     if (c7 != Offset.zero) {
-      correctedC7 = Offset(
-        size.width - (c7.dx * size.width),
-        c7.dy * size.height,
-      );
+      correctedC7 = Offset(size.width - c7.dx, c7.dy);
     }
 
     // 🎨 2. 페인트 스타일 세팅
@@ -423,13 +412,8 @@ class PosePainter extends CustomPainter {
     if (correctedEye != Offset.zero &&
         correctedEar != Offset.zero &&
         correctedC7 != Offset.zero) {
-      if (correctedEye != Offset.zero && correctedEar != Offset.zero) {
-        canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
-      }
-
-      if (correctedEar != Offset.zero && correctedC7 != Offset.zero) {
-        canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
-      }
+      canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
+      canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
 
       // C7 중심의 CVA 수직 기준선 드로잉-
       canvas.drawLine(
@@ -451,7 +435,7 @@ class PosePainter extends CustomPainter {
       );
 
       // 호가 안쪽(몸 안쪽) 구역으로 싹 감기도록 스윕 각도 조율
-      double craSweepAngle = angleToC7 - angleToEye;
+      double craSweepAngle = angleToEye - angleToC7;
       if (craSweepAngle < 0) craSweepAngle += 2 * math.pi;
       if (craSweepAngle > math.pi) craSweepAngle = 2 * math.pi - craSweepAngle;
 
@@ -459,14 +443,14 @@ class PosePainter extends CustomPainter {
         correctedEar.dy - correctedC7.dy,
         correctedEar.dx - correctedC7.dx,
       );
-      double horizontalRad = math.pi;
-      double cvaSweepAngle = (horizontalRad - c7ToEarAngle).abs();
+      double cvaStartAngle = math.pi;
+      double cvaSweepAngle = (c7ToEarAngle - math.pi);
 
       // CRA 부채꼴 호 드로잉
       final double craArcRadius = 35.0;
       canvas.drawArc(
         Rect.fromCircle(center: correctedEar, radius: craArcRadius),
-        angleToEye,
+        angleToC7,
         craSweepAngle,
         false,
         arcPaint..color = TColor.blue.withOpacity(0.8),
@@ -476,7 +460,7 @@ class PosePainter extends CustomPainter {
       final double cvaArcRadius = 40.0;
       canvas.drawArc(
         Rect.fromCircle(center: correctedC7, radius: cvaArcRadius),
-        c7ToEarAngle,
+        cvaStartAngle,
         cvaSweepAngle,
         false,
         arcPaint..color = TColor.blue.withOpacity(0.8),
