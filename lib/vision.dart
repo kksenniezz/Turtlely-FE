@@ -42,6 +42,7 @@ class _VisionPageState extends State<VisionPage> {
         eyePoint = poses['eye'] ?? Offset.zero;
         earPoint = poses['ear'] ?? Offset.zero;
         c7Point = poses['c7'] ?? Offset.zero;
+        print("눈: $eyePoint, 외이도: $earPoint, C7: $c7Point");
       });
     });
 
@@ -302,25 +303,28 @@ class PosePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     // 🔧 1. 반응형 좌표 보정 (밀림 현상 완전 방어)
+
     Offset correctedEye = Offset.zero;
     Offset correctedEar = Offset.zero;
     Offset correctedC7 = Offset.zero;
 
-    // 만약 넘어온 값이 이미 큰 픽셀 값이면 그대로 쓰고, 0~1 사이 소수점 비율이면 화면 크기를 곱합니다.
     if (eye != Offset.zero) {
-      correctedEye = eye.dx <= 1.0
-          ? Offset(eye.dx * size.width, eye.dy * size.height)
-          : eye;
+      correctedEye = Offset(
+        size.width - (eye.dx * size.width),
+        eye.dy * size.height,
+      );
     }
     if (ear != Offset.zero) {
-      correctedEar = ear.dx <= 1.0
-          ? Offset(ear.dx * size.width, ear.dy * size.height)
-          : ear;
+      correctedEar = Offset(
+        size.width - (ear.dx * size.width),
+        ear.dy * size.height,
+      );
     }
     if (c7 != Offset.zero) {
-      correctedC7 = c7.dx <= 1.0
-          ? Offset(c7.dx * size.width, c7.dy * size.height)
-          : c7;
+      correctedC7 = Offset(
+        size.width - (c7.dx * size.width),
+        c7.dy * size.height,
+      );
     }
 
     // 🎨 2. 페인트 스타일 세팅
@@ -419,8 +423,13 @@ class PosePainter extends CustomPainter {
     if (correctedEye != Offset.zero &&
         correctedEar != Offset.zero &&
         correctedC7 != Offset.zero) {
-      canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
-      canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
+      if (correctedEye != Offset.zero && correctedEar != Offset.zero) {
+        canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
+      }
+
+      if (correctedEar != Offset.zero && correctedC7 != Offset.zero) {
+        canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
+      }
 
       // C7 중심의 CVA 수직 기준선 드로잉-
       canvas.drawLine(
@@ -440,7 +449,11 @@ class PosePainter extends CustomPainter {
         correctedC7.dy - correctedEar.dy,
         correctedC7.dx - correctedEar.dx,
       );
-      double craSweepAngle = (angleToC7 - angleToEye).abs();
+
+      // 호가 안쪽(몸 안쪽) 구역으로 싹 감기도록 스윕 각도 조율
+      double craSweepAngle = angleToC7 - angleToEye;
+      if (craSweepAngle < 0) craSweepAngle += 2 * math.pi;
+      if (craSweepAngle > math.pi) craSweepAngle = 2 * math.pi - craSweepAngle;
 
       double c7ToEarAngle = math.atan2(
         correctedEar.dy - correctedC7.dy,
@@ -479,7 +492,7 @@ class PosePainter extends CustomPainter {
       );
       _drawTextLabel(
         canvas,
-        "외이도",
+        "귀",
         correctedEar.dx + 20,
         correctedEar.dy,
         fontSize: 16,
@@ -487,7 +500,7 @@ class PosePainter extends CustomPainter {
       );
       _drawTextLabel(
         canvas,
-        "C7",
+        "경추",
         correctedC7.dx + 20,
         correctedC7.dy - 5,
         fontSize: 16,
@@ -534,18 +547,6 @@ class PosePainter extends CustomPainter {
           color: textColor,
           fontSize: fontSize,
           fontWeight: FontWeight.bold,
-          shadows: const [
-            Shadow(
-              color: Colors.white,
-              offset: Offset(1.5, 1.5),
-              blurRadius: 1.0,
-            ),
-            Shadow(
-              color: Colors.white,
-              offset: Offset(-1.5, -1.5),
-              blurRadius: 1.0,
-            ),
-          ],
         ),
       ),
       textDirection: TextDirection.ltr,
