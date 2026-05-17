@@ -16,6 +16,8 @@ class MediaPipeService {
   bool isCapturing = false;
   int _frameCounter = 0;
 
+  Offset? _lastEyePoint;
+
   CameraController? cameraController;
   bool isInitialized = false;
 
@@ -121,11 +123,12 @@ class MediaPipeService {
     double filteredEyeX = eyeX;
     double filteredEyeY = eyeY;
 
-    if (coordinateBatch.isNotEmpty) {
-      var lastFrame = coordinateBatch.last;
-      filteredEyeX = (lastFrame['eyeX']! + eyeX) / 2;
-      filteredEyeY = (lastFrame['eyeY']! + eyeY) / 2;
+    if (_lastEyePoint != null) {
+      filteredEyeX = (_lastEyePoint!.dx + eyeX) / 2;
+      filteredEyeY = (_lastEyePoint!.dy + eyeY) / 2;
     }
+
+    _lastEyePoint = Offset(filteredEyeX, filteredEyeY);
 
     // 🎯 vision.dart의 CustomPainter로 쫀득하게 정제된 픽셀 좌표 전달
     _poseStreamController.add({
@@ -139,7 +142,7 @@ class MediaPipeService {
       _frameCounter++;
 
       // 실시간 프레임 스트림 중 6프레임당 1개씩 솎아냅니다. (3초간 총 15개 안팎 수집)
-      if (_frameCounter % 6 == 0) {
+      if (_frameCounter % 2 == 0) {
         coordinateBatch.add({
           "frame_index": _frameCounter,
           "timestamp": DateTime.now().millisecondsSinceEpoch,
@@ -157,6 +160,7 @@ class MediaPipeService {
   // ⏱️ [추가] 3초 카운트다운과 연동하여 데이터 수집을 제어하는 외부 트리거 함수
   void start3SecondCapture() {
     coordinateBatch.clear(); // 이전 측정 쓰레기 데이터 청소
+    _lastEyePoint = null;
     _frameCounter = 0; // 카운터 초기화
     isCapturing = true; // 3초간 적재 락 해제!
     print("🎬 [터틀리] 3초 데이터 수집 파이프라인 가동 개시");
