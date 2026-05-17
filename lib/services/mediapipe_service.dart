@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -12,7 +11,10 @@ class MediaPipeService {
   // 1. 서버 주소랑 좌표 바구니 선언
   final String baseUrl = "http://54.144.66.35.nip.io:8080";
   // 임시적으로 3초간 측정한 좌표를 담는 바구니 (초당 10-15프레임 가정 -> 30-45개 좌표)
-  List<Map<String, double>> coordinateBatch = [];
+  List<Map<String, dynamic>> coordinateBatch = [];
+
+  bool isCapturing = false;
+  int _frameCounter = 0;
 
   CameraController? cameraController;
   bool isInitialized = false;
@@ -89,12 +91,6 @@ class MediaPipeService {
                 pose.landmarks[PoseLandmarkType.rightShoulder]; // C7 대용
 
             if (rightEye != null && rightEar != null && rightShoulder != null) {
-              // 콘솔 디버깅용 실시간 로그 (이게 찍히면 AI가 열일하고 있다는 뜻!)
-              print(
-                "📱 [앱 AI 실시간 인식 중] -> eyeX: ${rightEye.x * scaleX}, earX: ${rightEar.x * scaleX}",
-              );
-
-              // 💡 변수명 직관적으로 싹 정돈하여 호출
               _dispatchCoordinates(
                 rightEye.x * scaleX,
                 rightEye.y * scaleY,
@@ -138,74 +134,51 @@ class MediaPipeService {
       'c7': Offset(c7X, c7Y),
     });
 
-    // 3초 카운트다운 동안 임시 바구니에 로우 데이터 차곡차곡 적재
-    if (coordinateBatch.length < 50) {
-      coordinateBatch.add({
-        "eyeX": filteredEyeX,
-        "eyeY": filteredEyeY,
-        "earX": earX,
-        "earY": earY,
-        "c7X": c7X,
-        "c7Y": c7Y,
-      });
-    }
-  }
+    // ⏳ [수정] 3초 타이머 촬영 트리거가 활성화되었을 때만 솎아내어 적재 시작!
+    if (isCapturing) {
+      _frameCounter++;
 
-  // 🧠 세은님 기획 알고리즘: 눈의 통계적 중앙값(Median)을 구해 값이 튀는 것을 최종 차단
-  Map<String, double> _calculateOptimalFrameWithMedian() {
-    if (coordinateBatch.isEmpty) return {};
-
-    // 1. 바구니에서 eyeX, eyeY 리스트 추출
-    List<double> eyeXList = coordinateBatch.map((f) => f['eyeX']!).toList();
-    List<double> eyeYList = coordinateBatch.map((f) => f['eyeY']!).toList();
-
-    // 2. 오름차순 정렬
-    eyeXList.sort();
-    eyeYList.sort();
-
-    // 3. 정확히 가운데 위치한 '중앙값(Median)' 획득
-    int medianIndex = eyeXList.length ~/ 2;
-    double medianEyeX = eyeXList[medianIndex];
-    double medianEyeY = eyeYList[medianIndex];
-
-    // 4. 이 중앙값과 가장 가까운 안정적인 프레임 1개 매칭
-    Map<String, double> optimalFrame = coordinateBatch.first;
-    double minDistance = double.maxFinite;
-
-    for (var frame in coordinateBatch) {
-      double distance = sqrt(
-        pow(frame['eyeX']! - medianEyeX, 2) +
-            pow(frame['eyeY']! - medianEyeY, 2),
-      );
-      if (distance < minDistance) {
-        minDistance = distance;
-        optimalFrame = frame;
+      // 실시간 프레임 스트림 중 6프레임당 1개씩 솎아냅니다. (3초간 총 15개 안팎 수집)
+      if (_frameCounter % 6 == 0) {
+        coordinateBatch.add({
+          "frame_index": _frameCounter,
+          "timestamp": DateTime.now().millisecondsSinceEpoch,
+          "eyeX": filteredEyeX,
+          "eyeY": filteredEyeY,
+          "earX": earX,
+          "earY": earY,
+          "c7X": c7X,
+          "c7Y": c7Y,
+        });
       }
     }
-
-    // 5. 최종 전송용 데이터 정산 완료 (Key 명칭 깔끔하게 통일)
-    return {
-      "eyeX": medianEyeX,
-      "eyeY": medianEyeY,
-      "earX": optimalFrame['earX']!,
-      "earY": optimalFrame['earY']!,
-      "c7X": optimalFrame['c7X']!,
-      "c7Y": optimalFrame['c7Y']!,
-    };
   }
 
-  // 🚀 최종 정산된 1개의 가벼운 JSON Object 오브젝트만 백엔드로 전송!
-  Future<bool> sendVisionData() async {
-    if (coordinateBatch.isEmpty) return false;
+  // ⏱️ [추가] 3초 카운트다운과 연동하여 데이터 수집을 제어하는 외부 트리거 함수
+  void start3SecondCapture() {
+    coordinateBatch.clear(); // 이전 측정 쓰레기 데이터 청소
+    _frameCounter = 0; // 카운터 초기화
+    isCapturing = true; // 3초간 적재 락 해제!
+    print("🎬 [터틀리] 3초 데이터 수집 파이프라인 가동 개시");
+  }
 
-    // 눈 중앙점 필터링 알고리즘 작동하여 단 1개의 데이터 정산
-    Map<String, double> realTargetFrame = _calculateOptimalFrameWithMedian();
+  // 🚀 [대체 개편] 3초간 이쁘게 솎아 모은 10~15개의 프레임 배열을 백엔드에 한방에 전송!
+  Future<bool> sendBatchVisionData() async {
+    // 유저가 움직여서 수집 플래그가 여전히 켜져 있다면 안전하게 꺼줍니다.
+    isCapturing = false;
 
-    // 단일 객체 전송
-    final response = await _postRequest(
-      "/api/vision/measurement",
-      realTargetFrame,
-    );
+    if (coordinateBatch.isEmpty) {
+      print("❌ [터틀리 전송 실패] 수집된 데이터 프레임이 아예 없습니다.");
+      return false;
+    }
+
+    print("📤 [터틀리 전송 시도] 총 ${coordinateBatch.length}개의 정제된 프레임 리스트를 쏩니다.");
+
+    // 백엔드 아키텍처에 맞춰 프레임 리스트 통째로 묶어 전송 구우러 가기 🍖
+    final response = await _postRequest("/api/vision/measurement", {
+      "frames": coordinateBatch,
+    });
+
     return response['success'] == true;
   }
 

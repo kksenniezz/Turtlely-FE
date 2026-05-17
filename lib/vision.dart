@@ -42,7 +42,7 @@ class _VisionPageState extends State<VisionPage> {
         eyePoint = poses['eye'] ?? Offset.zero;
         earPoint = poses['ear'] ?? Offset.zero;
         c7Point = poses['c7'] ?? Offset.zero;
-        print("눈: $eyePoint, 외이도: $earPoint, C7: $c7Point");
+        // print("눈: $eyePoint, 외이도: $earPoint, C7: $c7Point");
       });
     });
 
@@ -72,6 +72,7 @@ class _VisionPageState extends State<VisionPage> {
       step = 3;
     }); // 측정 시작 단계로 이동
 
+    _mediaPipeService.start3SecondCapture();
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
 
     int count = 0;
@@ -84,8 +85,7 @@ class _VisionPageState extends State<VisionPage> {
       if (count == 3) {
         timer.cancel();
 
-        bool success = await _mediaPipeService
-            .sendVisionData(); // 실제 백엔드 통신 함수 호출
+        bool success = await _mediaPipeService.sendBatchVisionData();
 
         setState(() {
           if (success) {
