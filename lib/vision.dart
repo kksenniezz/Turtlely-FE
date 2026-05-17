@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'style.dart';
@@ -103,7 +104,7 @@ class _VisionPageState extends State<VisionPage> {
       case 1:
         return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 2:
-        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요 \n 버튼을 누르면 바로 시작됩니다!";
+        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요 \n버튼을 누르면 바로 시작됩니다!";
       case 3:
         return "거북목 측정중 $loadingDots";
       case 4:
@@ -147,7 +148,6 @@ class _VisionPageState extends State<VisionPage> {
         ),
         actions: [
           if (step == 6 || step == 7) ...[
-            const SizedBox(width: 20),
             GestureDetector(
               onTap: () {
                 if (step == 6) {
@@ -156,15 +156,19 @@ class _VisionPageState extends State<VisionPage> {
                   setState(() => step = 1);
                 }
               },
-              child: Text(
-                step == 6 ? "종료" : "재시도",
-                style: TextStyle(
-                  color: TColor.darkGreen,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+              child: Container(
+                alignment: Alignment.center,
+                child: Text(
+                  step == 6 ? "종료" : "재시도",
+                  style: TextStyle(
+                    color: TColor.darkGreen,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
+            const SizedBox(width: 16),
           ],
         ],
       ),
@@ -198,7 +202,7 @@ class _VisionPageState extends State<VisionPage> {
             left: 20,
             right: 20,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end, // 위치 보고 end로 바꿀 수도
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Image.asset(
                   'side_turtle.png',
@@ -333,6 +337,11 @@ class PosePainter extends CustomPainter {
       ..strokeWidth = 5.0
       ..strokeCap = StrokeCap.round;
 
+    final arcPaint = Paint()
+      ..color = TColor.blue
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0;
+
     // 랜드마크 점
     final pointPaint = Paint()
       ..color = TColor.blue
@@ -343,7 +352,7 @@ class PosePainter extends CustomPainter {
 
     // 스마트폰 화면 비율에 절대 찌그러지지 않도록 중심점과 반지름(반응형 방어 크기) 정의
     final double centerX = size.width * 0.5;
-    final double centerY = size.height * 0.35; // 화면 위쪽에 예쁘게 안착하도록 세팅
+    final double centerY = size.height * 0.35;
 
     profilePath.moveTo(centerX + 30, centerY - 170);
 
@@ -407,81 +416,106 @@ class PosePainter extends CustomPainter {
     canvas.drawPath(profilePath, profilePaint);
 
     // 파트 B: 실시간 포즈 스켈레톤 (미디어파이프 좌표 연동)
-    // 1. 눈과 귀가 잡혔다면 -> 눈-귀 스켈레톤 선 연결
-    if (correctedEye != Offset.zero && correctedEar != Offset.zero) {
+    if (correctedEye != Offset.zero &&
+        correctedEar != Offset.zero &&
+        correctedC7 != Offset.zero) {
       canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
-    }
-
-    // 2. 귀와 C7이 잡혔다면 -> 귀-C7 스켈레톤 선 연결 및 수직선 드로잉
-    if (correctedEar != Offset.zero && correctedC7 != Offset.zero) {
       canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
 
       // C7 중심의 CVA 수직 기준선 드로잉-
       canvas.drawLine(
         correctedC7,
-        Offset(correctedC7.dx, correctedC7.dy - 100),
+        Offset(correctedC7.dx - 180, correctedC7.dy),
         skeletonPaint
           ..color = TColor.blue
           ..strokeWidth = 3.0,
       );
-    }
 
-    // 3. 개별 랜드마크 점 찍기 (0점이 아닐 때만 콕콕 찍어주기)
-    if (correctedEye != Offset.zero)
-      canvas.drawCircle(correctedEye, 7, pointPaint..color = TColor.blue);
-    if (correctedEar != Offset.zero)
-      canvas.drawCircle(correctedEar, 7, pointPaint..color = TColor.blue);
-    if (correctedC7 != Offset.zero)
-      canvas.drawCircle(
-        correctedC7,
-        7,
-        pointPaint..color = TColor.blue,
-      ); // C7 노란 점
+      // CRA 부채꼴 호
+      double angleToEye = math.atan2(
+        correctedEye.dy - correctedEar.dy,
+        correctedEye.dx - correctedEar.dx,
+      );
+      double angleToC7 = math.atan2(
+        correctedC7.dy - correctedEar.dy,
+        correctedC7.dx - correctedEar.dx,
+      );
+      double craSweepAngle = (angleToC7 - angleToEye).abs();
 
-    if (correctedEye != Offset.zero) {
+      double c7ToEarAngle = math.atan2(
+        correctedEar.dy - correctedC7.dy,
+        correctedEar.dx - correctedC7.dx,
+      );
+      double horizontalRad = math.pi;
+      double cvaSweepAngle = (horizontalRad - c7ToEarAngle).abs();
+
+      // CRA 부채꼴 호 드로잉
+      final double craArcRadius = 35.0;
+      canvas.drawArc(
+        Rect.fromCircle(center: correctedEar, radius: craArcRadius),
+        angleToEye,
+        craSweepAngle,
+        false,
+        arcPaint..color = TColor.blue.withOpacity(0.8),
+      );
+
+      // CVA 부채꼴 호 드로잉
+      final double cvaArcRadius = 40.0;
+      canvas.drawArc(
+        Rect.fromCircle(center: correctedC7, radius: cvaArcRadius),
+        c7ToEarAngle,
+        cvaSweepAngle,
+        false,
+        arcPaint..color = TColor.blue.withOpacity(0.8),
+      );
+
       _drawTextLabel(
         canvas,
         "눈",
-        correctedEye.dx - 65,
-        correctedEye.dy - 10,
-        color: Colors.greenAccent,
+        correctedEye.dx - 10,
+        correctedEye.dy - 28,
+        fontSize: 16,
+        textColor: TColor.blue,
       );
-    }
-    if (correctedEar != Offset.zero) {
       _drawTextLabel(
         canvas,
-        "귀",
-        correctedEar.dx + 15,
-        correctedEar.dy - 10,
-        color: Colors.greenAccent,
+        "외이도",
+        correctedEar.dx + 20,
+        correctedEar.dy,
+        fontSize: 16,
+        textColor: TColor.blue,
       );
-      // 귀 부위 각도 모형 텍스트 (CRA)
+      _drawTextLabel(
+        canvas,
+        "C7",
+        correctedC7.dx + 20,
+        correctedC7.dy - 5,
+        fontSize: 16,
+        textColor: TColor.blue,
+      );
+
       _drawTextLabel(
         canvas,
         "CRA",
-        correctedEar.dx - 30,
-        correctedEar.dy + 15,
-        color: Colors.yellow,
-        fontSize: 12,
+        correctedEar.dx - 45,
+        correctedEar.dy + 25,
+        fontSize: 15,
+        textColor: TColor.blue,
       );
-    }
-    if (correctedC7 != Offset.zero) {
-      _drawTextLabel(
-        canvas,
-        "경추",
-        correctedC7.dx + 15,
-        correctedC7.dy - 10,
-        color: const Color(0xFFFFD700),
-      );
-      // 경추 부위 수직 각도 모형 텍스트 (CVA)
       _drawTextLabel(
         canvas,
         "CVA",
-        correctedC7.dx - 35,
-        correctedC7.dy - 40,
-        color: Colors.white,
-        fontSize: 12,
+        correctedC7.dx - 75,
+        correctedC7.dy - 25,
+        fontSize: 15,
+        textColor: TColor.blue,
       );
+
+      // 랜드마크 점 찍기
+      final List<Offset> points = [correctedEye, correctedEar, correctedC7];
+      for (var p in points) {
+        canvas.drawCircle(p, 6, pointPaint);
+      }
     }
   }
 
@@ -490,19 +524,28 @@ class PosePainter extends CustomPainter {
     String text,
     double x,
     double y, {
-    required Color color,
+    required Color textColor,
     double fontSize = 14,
   }) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
         style: TextStyle(
-          color: color,
+          color: textColor,
           fontSize: fontSize,
           fontWeight: FontWeight.bold,
-          backgroundColor: Colors.black.withOpacity(
-            0.5,
-          ), // 영상 위에서 잘 보이도록 반투명 검은 배경 가이드 추가
+          shadows: const [
+            Shadow(
+              color: Colors.white,
+              offset: Offset(1.5, 1.5),
+              blurRadius: 1.0,
+            ),
+            Shadow(
+              color: Colors.white,
+              offset: Offset(-1.5, -1.5),
+              blurRadius: 1.0,
+            ),
+          ],
         ),
       ),
       textDirection: TextDirection.ltr,
