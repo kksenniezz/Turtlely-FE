@@ -48,7 +48,7 @@ class _VisionPageState extends State<VisionPage> {
 
     await _mediaPipeService.initializeCamera();
     if (!mounted) return;
-    setState(() {}); // 카메라 켜졌으니 빌드 갱신
+    setState(() {});
   }
 
   @override
@@ -443,8 +443,11 @@ class PosePainter extends CustomPainter {
         correctedEar.dy - correctedC7.dy,
         correctedEar.dx - correctedC7.dx,
       );
+
+      if (c7ToEarAngle < 0) c7ToEarAngle += 2 * math.pi;
+
       double cvaStartAngle = math.pi;
-      double cvaSweepAngle = (c7ToEarAngle - math.pi);
+      double cvaSweepAngle = math.pi - c7ToEarAngle;
 
       // CRA 부채꼴 호 드로잉
       final double craArcRadius = 35.0;
@@ -455,6 +458,11 @@ class PosePainter extends CustomPainter {
         false,
         arcPaint..color = TColor.blue.withOpacity(0.8),
       );
+
+      if (cvaSweepAngle < 0) {
+        cvaStartAngle = math.pi;
+        cvaSweepAngle = c7ToEarAngle - math.pi;
+      }
 
       // CVA 부채꼴 호 드로잉
       final double cvaArcRadius = 40.0;
