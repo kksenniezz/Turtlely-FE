@@ -5,11 +5,15 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:js' as js;
 
 class MediaPipeService {
+  static String currentUserId = "";
   // 1. 서버 주소랑 좌표 바구니 선언
-  final String baseUrl = "http://54.144.66.35.nip.io:8080";
+  final String baseUrl =
+      "https://eternity-urging-blissful.ngrok-free.dev/report/analyze";
+  final storage = const FlutterSecureStorage();
   // 임시적으로 3초간 측정한 좌표를 담는 바구니 (초당 10-15프레임 가정 -> 30-45개 좌표)
   List<Map<String, dynamic>> coordinateBatch = [];
 
@@ -63,14 +67,19 @@ class MediaPipeService {
           double xRatio = 360.0;
           double yRatio = 480.0;
 
-          // 💡 변수명 깔끔하게 통일하여 디스패치 호출
           _dispatchCoordinates(
-            (data['eyeX'] ?? 0.5) * xRatio,
-            (data['eyeY'] ?? 0.3) * yRatio,
-            (data['earX'] ?? 0.5) * xRatio,
-            (data['earY'] ?? 0.4) * yRatio,
-            (data['c7X'] ?? 0.5) * xRatio,
-            (data['c7Y'] ?? 0.6) * yRatio,
+            eyeX: (data['eyeX'] ?? 0.5) * xRatio,
+            eyeY: (data['eyeY'] ?? 0.3) * yRatio,
+            earX: (data['earX'] ?? 0.5) * xRatio,
+            earY: (data['earY'] ?? 0.4) * yRatio,
+            c7X: (data['c7X'] ?? 0.5) * xRatio,
+            c7Y: (data['c7Y'] ?? 0.6) * yRatio,
+            rawEyeX: data['eyeX'] ?? 0.5,
+            rawEyeY: data['eyeY'] ?? 0.3,
+            rawEarX: data['earX'] ?? 0.5,
+            rawEarY: data['earY'] ?? 0.4,
+            rawC7X: data['c7X'] ?? 0.5,
+            rawC7Y: data['c7Y'] ?? 0.6,
           );
         };
       } else {
@@ -81,25 +90,34 @@ class MediaPipeService {
 
           final List<Pose> poses = await _poseDetector.processImage(inputImage);
 
-          // 💡 모바일 화면 픽셀 매핑을 위한 스마트폰 해상도 스케일 보정값
           double scaleX = 0.5;
           double scaleY = 0.5;
 
+          // 모바일 기기 고유의 카메라 프리뷰 가로/세로 실시간 해상도 확보 (정규화용 분모 값)
+          double imgWidth = image.width.toDouble();
+          double imgHeight = image.height.toDouble();
+
           for (Pose pose in poses) {
-            // 💡 [수정] 왼쪽으로 고개 돌렸을 때 렌즈에 찍히는 오른쪽(Right) 부위만 추적!
             final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
             final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
             final rightShoulder =
-                pose.landmarks[PoseLandmarkType.rightShoulder]; // C7 대용
+                pose.landmarks[PoseLandmarkType.rightShoulder];
 
             if (rightEye != null && rightEar != null && rightShoulder != null) {
+              // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
               _dispatchCoordinates(
-                rightEye.x * scaleX,
-                rightEye.y * scaleY,
-                rightEar.x * scaleX,
-                rightEar.y * scaleY,
-                rightShoulder.x * scaleX,
-                rightShoulder.y * scaleY,
+                eyeX: rightEye.x * scaleX,
+                eyeY: rightEye.y * scaleY,
+                earX: rightEar.x * scaleX,
+                earY: rightEar.y * scaleY,
+                c7X: rightShoulder.x * scaleX,
+                c7Y: rightShoulder.y * scaleY,
+                rawEyeX: rightEye.x / imgWidth,
+                rawEyeY: rightEye.y / imgHeight,
+                rawEarX: rightEar.x / imgWidth,
+                rawEarY: rightEar.y / imgHeight,
+                rawC7X: rightShoulder.x / imgWidth,
+                rawC7Y: rightShoulder.y / imgHeight,
               );
             }
           }
@@ -110,16 +128,21 @@ class MediaPipeService {
     }
   }
 
-  // 🔄 좌표 스트림 전송 및 바구니 적재 공통화 함수
-  void _dispatchCoordinates(
-    double eyeX,
-    double eyeY,
-    double earX,
-    double earY,
-    double c7X,
-    double c7Y,
-  ) {
-    // 💡 미세 떨림 방어용 실시간 노이즈 필터링 (직전 좌표와 스무딩 평균 처리)
+  // 🔄 좌표 스트림 전송 및 바구니 적재 공통화 함수 (정규화 인자 분리 설계)
+  void _dispatchCoordinates({
+    required double eyeX,
+    required double eyeY,
+    required double earX,
+    required double earY,
+    required double c7X,
+    required double c7Y,
+    required double rawEyeX,
+    required double rawEyeY,
+    required double rawEarX,
+    required double rawEarY,
+    required double rawC7X,
+    required double rawC7Y,
+  }) {
     double filteredEyeX = eyeX;
     double filteredEyeY = eyeY;
 
@@ -130,45 +153,43 @@ class MediaPipeService {
 
     _lastEyePoint = Offset(filteredEyeX, filteredEyeY);
 
-    // 🎯 vision.dart의 CustomPainter로 쫀득하게 정제된 픽셀 좌표 전달
+    // 🎯 vision.dart UI단에 쫀득하게 그릴 반응형 픽셀 좌표 전달
     _poseStreamController.add({
       'eye': Offset(filteredEyeX, filteredEyeY),
       'ear': Offset(earX, earY),
       'c7': Offset(c7X, c7Y),
     });
 
-    // ⏳ [수정] 3초 타이머 촬영 트리거가 활성화되었을 때만 솎아내어 적재 시작!
+    // ⏳ 3초 타이머 활성화됐을 때만 바구니에 차곡차곡 적재
     if (isCapturing) {
       _frameCounter++;
 
-      // 실시간 프레임 스트림 중 6프레임당 1개씩 솎아냅니다. (3초간 총 15개 안팎 수집)
       if (_frameCounter % 2 == 0) {
+        // 🚀 백엔드 전송용 바구니에는 웹/앱 구별 없이 완벽하게 정규화된 0.0 ~ 1.0 값만 저장!
         coordinateBatch.add({
           "frame_index": _frameCounter,
           "timestamp": DateTime.now().millisecondsSinceEpoch,
-          "eyeX": filteredEyeX,
-          "eyeY": filteredEyeY,
-          "earX": earX,
-          "earY": earY,
-          "c7X": c7X,
-          "c7Y": c7Y,
+          "eyeX": rawEyeX,
+          "eyeY": rawEyeY,
+          "earX": rawEarX,
+          "earY": rawEarY,
+          "c7X": rawC7X,
+          "c7Y": rawC7Y,
         });
       }
     }
   }
 
-  // ⏱️ [추가] 3초 카운트다운과 연동하여 데이터 수집을 제어하는 외부 트리거 함수
   void start3SecondCapture() {
-    coordinateBatch.clear(); // 이전 측정 쓰레기 데이터 청소
+    coordinateBatch.clear();
     _lastEyePoint = null;
-    _frameCounter = 0; // 카운터 초기화
-    isCapturing = true; // 3초간 적재 락 해제!
+    _frameCounter = 0;
+    isCapturing = true;
     print("🎬 [터틀리] 3초 데이터 수집 파이프라인 가동 개시");
   }
 
-  // 🚀 [대체 개편] 3초간 이쁘게 솎아 모은 10~15개의 프레임 배열을 백엔드에 한방에 전송!
+  // 🚀 [연동의 정수] vision.dart 한 줄도 안 고치고 이메일 연동 완료하는 마법 구역
   Future<bool> sendBatchVisionData() async {
-    // 유저가 움직여서 수집 플래그가 여전히 켜져 있다면 안전하게 꺼줍니다.
     isCapturing = false;
 
     if (coordinateBatch.isEmpty) {
@@ -176,17 +197,27 @@ class MediaPipeService {
       return false;
     }
 
-    print("📤 [터틀리 전송 시도] 총 ${coordinateBatch.length}개의 정제된 프레임 리스트를 쏩니다.");
+    // 💡 저장소에서 진짜 로그인한 사용자의 ID(이메일)를 뽑아냅니다.
+    String userIdToSend = MediaPipeService.currentUserId;
 
-    // 백엔드 아키텍처에 맞춰 프레임 리스트 통째로 묶어 전송 구우러 가기 🍖
-    final response = await _postRequest("/api/vision/measurement", {
+    // 만약 로그인이 풀렸거나 게스트 모드일 때를 대비한 방어 코드 설정
+    if (userIdToSend.isEmpty) {
+      userIdToSend = "guest@turtlely.com"; // 혹시 비어있을 때를 대비한 방어막
+    }
+
+    print(
+      "📤 [터틀리 전송] 유저($userIdToSend)로 총 ${coordinateBatch.length}개의 프레임을 전송합니다.",
+    );
+
+    final Map<String, dynamic> requestPayload = {
+      "user_id": userIdToSend, // 🚀 진짜 유저 이메일이 들어갑니다!
       "frames": coordinateBatch,
-    });
+    };
 
+    final response = await _postRequest("/report/analyze", requestPayload);
     return response['success'] == true;
   }
 
-  // 최신 Google ML Kit 규격에 맞춘 모바일 카메라 바이트 이미지 변환 함수
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
       final WriteBuffer allBytes = WriteBuffer();
