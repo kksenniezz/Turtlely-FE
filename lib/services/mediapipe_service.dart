@@ -194,14 +194,15 @@ class MediaPipeService {
       return false;
     }
 
-    String userIdToSend = MediaPipeService.loginId;
+    String? savedId = await storage.read(key: 'savedLoginId');
+    String userIdToSend = "";
 
-    if (userIdToSend.isEmpty || userIdToSend == "null") {
-      final savedId = await storage.read(key: 'savedLoginId');
-      if (savedId != null && savedId.isNotEmpty) {
-        userIdToSend = savedId;
-        MediaPipeService.loginId = savedId;
-      }
+    if (savedId != null && savedId.isNotEmpty && savedId != "null") {
+      userIdToSend = savedId;
+      MediaPipeService.loginId = savedId; // 메모리 방에도 백업
+    } else {
+      // 2️⃣ 만약 로그인을 안 한 상태이거나 서랍장이 진짜 비어있다면 현재 메모리 값 확인
+      userIdToSend = MediaPipeService.loginId;
     }
 
     // 만약 로그인이 풀렸거나 게스트 모드일 때를 대비한 방어 코드 설정
