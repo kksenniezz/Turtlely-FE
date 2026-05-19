@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'mediapipe_service.dart';
 
 class AuthService {
   // 서버 주소
@@ -81,19 +80,6 @@ class AuthService {
       "phoneNumber": phoneNumber,
       "socialId": socialId,
     });
-    if (res['success']) {
-      // 일반 가입이든 구글 가입이든 세은님이 넘겨준 loginId(이메일)를 그대로 활용!
-      if (loginId != null && loginId.isNotEmpty) {
-        MediaPipeService.loginId = loginId;
-
-        await storage.write(key: 'savedLoginId', value: loginId);
-
-        print(
-          "🔑 [회원가입 성공] MediaPipeService 보관함 ID 연동 완료: ${MediaPipeService.loginId}",
-        );
-      }
-    }
-
     return res['success'];
   }
 
@@ -108,6 +94,7 @@ class AuthService {
     });
   }
 
+  // 최종 아이디 결과 가져오기 (POST /api/account/id) 💡 주소 수정됨!
   // 최종 아이디 결과 가져오기 (POST /api/account/id)
   Future<String?> findIdResult(String phoneNumber) async {
     final res = await _postRequest('/api/account/id', {
@@ -178,12 +165,6 @@ class AuthService {
         key: 'refreshToken',
         value: res['result']['refreshToken'],
       );
-
-      MediaPipeService.loginId = res['result']['loginId'];
-      print(
-        "🔑 [일반 로그인 성공] :8080 인증 성공 ID를 :8000방 연동 완료: ${MediaPipeService.loginId}",
-      );
-
       return true;
     }
     return false;
@@ -240,10 +221,6 @@ class AuthService {
       await storage.write(
         key: 'refreshToken',
         value: res['result']['refreshToken'],
-      );
-      MediaPipeService.loginId = res['result']['loginId'];
-      print(
-        "🔑 [구글 로그인 성공] :8080 인증 성공 ID를 :8000방 연동 완료: ${MediaPipeService.loginId}",
       );
     }
     return res['success'];
