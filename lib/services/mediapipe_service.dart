@@ -9,7 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:js' as js;
 
 class MediaPipeService {
-  static String currentUserId = "";
+  static String loginId = "";
   // 1. 서버 주소랑 좌표 바구니 선언
   final String baseUrl = "http://54.144.66.35.nip.io:8000";
   final storage = const FlutterSecureStorage();
@@ -166,14 +166,12 @@ class MediaPipeService {
       if (_frameCounter % 2 == 0) {
         // 🚀 백엔드 전송용 바구니에는 웹/앱 구별 없이 완벽하게 정규화된 0.0 ~ 1.0 값만 저장!
         coordinateBatch.add({
-          "frame_index": _frameCounter,
-          "timestamp": DateTime.now().millisecondsSinceEpoch,
-          "eyeX": rawEyeX,
-          "eyeY": rawEyeY,
-          "earX": rawEarX,
-          "earY": rawEarY,
-          "c7X": rawC7X,
-          "c7Y": rawC7Y,
+          "c7_x": rawC7X,
+          "c7_y": rawC7Y,
+          "eye_x": rawEyeX,
+          "eye_y": rawEyeY,
+          "tragus_x": rawEarX,
+          "tragus_y": rawEarY,
         });
       }
     }
@@ -196,15 +194,19 @@ class MediaPipeService {
       return false;
     }
 
-    String? userIdToSend = await storage.read(key: 'accessToken');
+    String userIdToSend = MediaPipeService.loginId;
 
-    userIdToSend =
-        await storage.read(key: 'savedLoginId') ??
-        MediaPipeService.currentUserId;
+    if (userIdToSend.isEmpty || userIdToSend == "null") {
+      final savedId = await storage.read(key: 'savedLoginId');
+      if (savedId != null && savedId.isNotEmpty) {
+        userIdToSend = savedId;
+        MediaPipeService.loginId = savedId;
+      }
+    }
 
     // 만약 로그인이 풀렸거나 게스트 모드일 때를 대비한 방어 코드 설정
-    if (userIdToSend == null || userIdToSend.isEmpty) {
-      userIdToSend = "guest@turtlely.com"; // 혹시 비어있을 때를 대비한 방어막
+    if (userIdToSend.isEmpty || userIdToSend == "null") {
+      userIdToSend = "guest@turtlely.com";
     }
 
     print(
@@ -212,11 +214,29 @@ class MediaPipeService {
     );
 
     final Map<String, dynamic> requestPayload = {
-      "loginId": userIdToSend,
-      "frames": coordinateBatch,
+      "frames": coordinateBatch
+          .map(
+            (frame) => {
+              "c7_x": double.parse(frame["c7_x"].toString()),
+              "c7_y": double.parse(frame["c7_y"].toString()),
+              "eye_x": double.parse(frame["eye_x"].toString()),
+              "eye_y": double.parse(frame["eye_y"].toString()),
+              "tragus_x": double.parse(frame["tragus_x"].toString()),
+              "tragus_y": double.parse(frame["tragus_y"].toString()),
+            },
+          )
+          .toList(),
+      "login_id": userIdToSend.trim(), // 백엔드 스네이크 케이스 규격 준수
     };
 
+    // 5️⃣ 슈팅 직전의 데이터 모양 콘솔 확인용 로그
+    print("📦 [터틀리 백엔드 슈팅 직전 최종 바디]: ${jsonEncode(requestPayload)}");
+
     final response = await _postRequest("/report/analyze", requestPayload);
+
+    print(
+      "📥 [터틀리 분석 서버 최종 응답]: success=${response['success']}, message=${response['message']}",
+    );
     return response['success'] == true;
   }
 
