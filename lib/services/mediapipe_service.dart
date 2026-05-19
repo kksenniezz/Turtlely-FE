@@ -194,20 +194,28 @@ class MediaPipeService {
       return false;
     }
 
-    String? savedId = await storage.read(key: 'savedLoginId');
-    String userIdToSend = "";
+    String userIdToSend = "guest@turtlely.com"; // 기본값 지정
 
-    if (savedId != null && savedId.isNotEmpty && savedId != "null") {
-      userIdToSend = savedId;
-      MediaPipeService.loginId = savedId; // 메모리 방에도 백업
-    } else {
-      // 2️⃣ 만약 로그인을 안 한 상태이거나 서랍장이 진짜 비어있다면 현재 메모리 값 확인
-      userIdToSend = MediaPipeService.loginId;
-    }
+    try {
+      // 1️⃣ 오리지널 AuthService가 안전하게 서랍장에 넣어둔 accessToken을 확보합니다.
+      final accessToken = await storage.read(key: 'accessToken');
 
-    // 만약 로그인이 풀렸거나 게스트 모드일 때를 대비한 방어 코드 설정
-    if (userIdToSend.isEmpty || userIdToSend == "null") {
-      userIdToSend = "guest@turtlely.com";
+      if (accessToken != null &&
+          accessToken.isNotEmpty &&
+          accessToken != "null") {
+        // 2️⃣ 토큰의 배를 슥 갈라서 암호화된 내부 명부(Payload)를 열어 유저 ID를 획득합니다.
+        final normalizedPayload = utf8.decode(
+          base64Url.decode(base64Url.normalize(accessToken.split('.')[1])),
+        );
+        final Map<String, dynamic> payloadMap = jsonDecode(normalizedPayload);
+
+        if (payloadMap['sub'] != null) {
+          userIdToSend = payloadMap['sub'].toString();
+          MediaPipeService.loginId = userIdToSend; // 동기화 방도 같이 백업
+        }
+      }
+    } catch (e) {
+      print("⚠️ 미디어파이프 전송 직전 토큰 파싱 에러 (게스트 계정으로 처리): $e");
     }
 
     print(
@@ -215,18 +223,29 @@ class MediaPipeService {
     );
 
     final Map<String, dynamic> requestPayload = {
-      "frames": coordinateBatch
-          .map(
-            (frame) => {
-              "c7_x": double.parse(frame["c7_x"].toString()),
-              "c7_y": double.parse(frame["c7_y"].toString()),
-              "eye_x": double.parse(frame["eye_x"].toString()),
-              "eye_y": double.parse(frame["eye_y"].toString()),
-              "tragus_x": double.parse(frame["tragus_x"].toString()),
-              "tragus_y": double.parse(frame["tragus_y"].toString()),
-            },
-          )
-          .toList(),
+      "frames": coordinateBatch.map((frame) {
+        // 💡 [핵심 치트키] .toStringAsFixed(2)로 소수점 둘째자리 반올림 후 double로 재생성!
+        return {
+          "c7_x": double.parse(
+            double.parse(frame["c7_x"].toString()).toStringAsFixed(2),
+          ),
+          "c7_y": double.parse(
+            double.parse(frame["c7_y"].toString()).toStringAsFixed(2),
+          ),
+          "eye_x": double.parse(
+            double.parse(frame["eye_x"].toString()).toStringAsFixed(2),
+          ),
+          "eye_y": double.parse(
+            double.parse(frame["eye_y"].toString()).toStringAsFixed(2),
+          ),
+          "tragus_x": double.parse(
+            double.parse(frame["tragus_x"].toString()).toStringAsFixed(2),
+          ),
+          "tragus_y": double.parse(
+            double.parse(frame["tragus_y"].toString()).toStringAsFixed(2),
+          ),
+        };
+      }).toList(),
       "login_id": userIdToSend.trim(), // 백엔드 스네이크 케이스 규격 준수
     };
 
@@ -278,7 +297,7 @@ class MediaPipeService {
       );
       final data = jsonDecode(utf8.decode(response.bodyBytes));
       return {
-        "success": (response.statusCode == 200 && data['isSuccess'] == true),
+        "success": (response.statusCode == 200),
         "message": data['message'] ?? "에러가 발생했습니다.",
         "result": data['result'],
       };
