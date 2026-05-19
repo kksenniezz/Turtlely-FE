@@ -85,6 +85,9 @@ class AuthService {
       // 일반 가입이든 구글 가입이든 세은님이 넘겨준 loginId(이메일)를 그대로 활용!
       if (loginId != null && loginId.isNotEmpty) {
         MediaPipeService.currentUserId = loginId;
+
+        await storage.write(key: 'savedLoginId', value: loginId);
+
         print(
           "🔑 [회원가입 성공] MediaPipeService 보관함 ID 연동 완료: ${MediaPipeService.currentUserId}",
         );
@@ -178,6 +181,7 @@ class AuthService {
       );
 
       MediaPipeService.currentUserId = res['result']['loginId'];
+      await storage.write(key: 'savedLoginId', value: res['result']['loginId']);
       print("🔑 [일반 로그인 성공] 보관함 ID: ${MediaPipeService.currentUserId}");
 
       return true;
@@ -238,6 +242,7 @@ class AuthService {
         value: res['result']['refreshToken'],
       );
       MediaPipeService.currentUserId = res['result']['loginId'];
+      await storage.write(key: 'savedLoginId', value: res['result']['loginId']);
       print("🔑 [구글 로그인 성공] 보관함 ID: ${MediaPipeService.currentUserId}");
     }
     return res['success'];

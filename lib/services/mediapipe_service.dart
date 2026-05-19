@@ -196,11 +196,14 @@ class MediaPipeService {
       return false;
     }
 
-    // 💡 저장소에서 진짜 로그인한 사용자의 ID(이메일)를 뽑아냅니다.
-    String userIdToSend = MediaPipeService.currentUserId;
+    String? userIdToSend = await storage.read(key: 'accessToken');
+
+    userIdToSend =
+        await storage.read(key: 'savedLoginId') ??
+        MediaPipeService.currentUserId;
 
     // 만약 로그인이 풀렸거나 게스트 모드일 때를 대비한 방어 코드 설정
-    if (userIdToSend.isEmpty) {
+    if (userIdToSend == null || userIdToSend.isEmpty) {
       userIdToSend = "guest@turtlely.com"; // 혹시 비어있을 때를 대비한 방어막
     }
 
@@ -209,7 +212,7 @@ class MediaPipeService {
     );
 
     final Map<String, dynamic> requestPayload = {
-      "userId": userIdToSend, // 🚀 진짜 유저 이메일이 들어갑니다!
+      "loginId": userIdToSend,
       "frames": coordinateBatch,
     };
 
