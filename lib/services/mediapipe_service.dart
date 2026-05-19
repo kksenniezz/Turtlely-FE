@@ -210,7 +210,7 @@ class MediaPipeService {
     );
 
     final Map<String, dynamic> requestPayload = {
-      "user_id": userIdToSend, // 🚀 진짜 유저 이메일이 들어갑니다!
+      "userId": userIdToSend, // 🚀 진짜 유저 이메일이 들어갑니다!
       "frames": coordinateBatch,
     };
 

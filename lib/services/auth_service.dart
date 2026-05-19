@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'mediapipe_service.dart';
 
 class AuthService {
   // 서버 주소
@@ -80,6 +81,16 @@ class AuthService {
       "phoneNumber": phoneNumber,
       "socialId": socialId,
     });
+    if (res['success']) {
+      // 일반 가입이든 구글 가입이든 세은님이 넘겨준 loginId(이메일)를 그대로 활용!
+      if (loginId != null && loginId.isNotEmpty) {
+        MediaPipeService.currentUserId = loginId;
+        print(
+          "🔑 [회원가입 성공] MediaPipeService 보관함 ID 연동 완료: ${MediaPipeService.currentUserId}",
+        );
+      }
+    }
+
     return res['success'];
   }
 
@@ -165,6 +176,10 @@ class AuthService {
         key: 'refreshToken',
         value: res['result']['refreshToken'],
       );
+
+      MediaPipeService.currentUserId = res['result']['loginId'];
+      print("🔑 [일반 로그인 성공] 보관함 ID: ${MediaPipeService.currentUserId}");
+
       return true;
     }
     return false;
@@ -222,6 +237,8 @@ class AuthService {
         key: 'refreshToken',
         value: res['result']['refreshToken'],
       );
+      MediaPipeService.currentUserId = res['result']['loginId'];
+      print("🔑 [구글 로그인 성공] 보관함 ID: ${MediaPipeService.currentUserId}");
     }
     return res['success'];
   }
