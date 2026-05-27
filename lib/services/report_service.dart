@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-// 📦 [모델 내장] 백엔드 응답 규격 데이터 모델 DTO
+// 📦 백엔드 DB 구조 및 연동 명세 데이터 모델
 class ReportData {
   final int status;
   final String message;
@@ -43,18 +44,39 @@ class ReportData {
   }
 }
 
-// 🌐 네트워크 통신 및 에러 텍스트 가공 서비스
 class ReportService {
-  static const String _baseUrl = 'http://localhost:8000/api';
+  static const String _baseUrl = 'http://54.144.66.35.nip.io:8000';
+
+  // 💡 [MediaPipeService 문법] 시큐어 스토리지 연동
+  final _storage = const FlutterSecureStorage();
 
   Future<ReportData?> fetchMonthlyReport({
-    required String loginId,
     required int year,
     required int month,
   }) async {
+    String userIdToSend = "guest@turtlely.com"; // 기본값 지정
+
     try {
+      // 💡 [MediaPipeService 문법] 저장된 accessToken 확보
+      final accessToken = await _storage.read(key: 'accessToken');
+
+      if (accessToken != null &&
+          accessToken.isNotEmpty &&
+          accessToken != "null") {
+        // 토큰의 배를 슥 갈라서 유저 ID(sub) 추출
+        final normalizedPayload = utf8.decode(
+          base64Url.decode(base64Url.normalize(accessToken.split('.')[1])),
+        );
+        final Map<String, dynamic> payloadMap = jsonDecode(normalizedPayload);
+
+        if (payloadMap['sub'] != null) {
+          userIdToSend = payloadMap['sub'].toString().trim();
+        }
+      }
+
+      // 🎯 동적으로 확보한 userIdToSend를 쿼리스트링에 안전하게 매핑
       final url = Uri.parse(
-        '$_baseUrl/report?login_id=$loginId&year=$year&month=$month',
+        '$_baseUrl/report?login_id=$userIdToSend&year=$year&month=$month',
       );
       final response = await http.get(url);
 
@@ -63,7 +85,7 @@ class ReportService {
         return ReportData.fromJson(decodedData);
       }
 
-      // 🚨 500 에러 처리: 백엔드 에러코드를 유저 친화적인 메시지로 변환해 throw
+      // 500 에러 가공 및 throw 처리
       if (response.statusCode == 500) {
         final decodedData = json.decode(utf8.decode(response.bodyBytes));
         final String errorCode = decodedData['errorCode'] ?? '';
@@ -79,7 +101,8 @@ class ReportService {
 
       return null;
     } catch (e) {
-      // 이미 정제된 한글 에러 메시지는 그대로 패스
+      print("🚨 [ReportService 통신 에러 진짜 원인]: $e");
+
       if (e is String) rethrow;
       throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
     }

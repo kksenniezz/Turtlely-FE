@@ -17,53 +17,28 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   late String selectedMonth;
   static bool isAlarmRegistered = false;
 
-  final int firstMeasuredYear = 2025;
-  final int firstMeasuredMonth = 5;
-  final int firstMeasuredDay = 15;
-
   final ReportService _reportService = ReportService();
   ReportData? _currentReport;
 
   bool _isLoading = false;
   String? _networkErrorMessage;
 
-  bool isDebugDesignMode = true;
+  int? _startYear;
+  int? _startMonth;
 
   @override
   void initState() {
     super.initState();
     selectedYear = "${_today.year}년";
     selectedMonth = "${_today.month}월";
-    _fetchReportData();
+    _fetchReportData(isInitialFetch: true);
   }
 
-  Future<void> _fetchReportData() async {
+  Future<void> _fetchReportData({bool isInitialFetch = false}) async {
     setState(() {
       _isLoading = true;
       _networkErrorMessage = null;
     });
-
-    // 더미데이터 추후 삭제 //
-    if (isDebugDesignMode) {
-      await Future.delayed(const Duration(milliseconds: 200)); // 살짝 로딩 효과
-      setState(() {
-        _currentReport = ReportData(
-          status: 2,
-          message: "성공",
-          year: 2026,
-          month: 5,
-          nickname: "kksenniezz", // 닉네임 마음대로 변경 가능
-          postureStatus: "역C자목", // 💡 "거북목", "일자목", "역C자목" 바꾸면 밑에 이미지도 바뀜!
-          postureMessage: "경추 정렬이 반대로 꺾인 상태입니다.",
-          cvaAngle: 69.0,
-          craAngle: 128.5,
-          totalMeasurements: 1, // 0개 락을 뚫기 위해 1로 고정
-        );
-        _isLoading = false;
-      });
-      return; // 🌟 더미 데이터를 넣었으니 여기서 함수를 강제 종료해서 아래 서버 코드로 안 내려가게 막음!
-    }
-    // 더미데이터 추후 삭제 //
 
     final int targetYear = int.parse(selectedYear.replaceAll('년', ''));
     final int targetMonth = int.parse(selectedMonth.replaceAll('월', ''));
@@ -79,16 +54,29 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
     try {
       final data = await _reportService.fetchMonthlyReport(
-        loginId: 'kksenniezz',
         year: targetYear,
         month: targetMonth,
       );
+
+      print(
+        "🔍 [월간리포트 수신 데이터] 닉네임: ${data?.nickname}, 측정횟수: ${data?.totalMeasurements}, CVA: ${data?.cvaAngle}",
+      );
+
       setState(() {
         _currentReport = data;
+
+        if (isInitialFetch && data != null) {
+          _startYear = data.year;
+          _startMonth = data.month;
+        }
       });
     } catch (errorMessage) {
+      setState(() {
+        _networkErrorMessage = errorMessage.toString();
+      });
       _showServerAlternativeDialog(errorMessage.toString());
-    } finally {
+    }
+    {
       setState(() => _isLoading = false);
     }
   }
@@ -113,6 +101,29 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         ],
       ),
     );
+  }
+
+  List<String> _generateYearList() {
+    final int startYear = _startYear ?? _today.year;
+
+    return List.generate(
+      (_today.year - startYear) + 1,
+      (index) => "${_today.year - index}년",
+    );
+  }
+
+  List<String> _generateMonthList() {
+    int selectedYInt = int.parse(selectedYear.replaceAll('년', ''));
+    final int startYear = _startYear ?? _today.year;
+    final int startMonth = _startMonth ?? 1;
+
+    if (selectedYInt == startYear) {
+      return List.generate(
+        12 - startMonth + 1,
+        (index) => "${startMonth + index}월",
+      );
+    }
+    return List.generate(12, (i) => "${i + 1}월");
   }
 
   int _checkStatus() {
@@ -184,24 +195,29 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   Widget _buildMainContent(int status) {
     final report = _currentReport;
 
-    if (status == 2 && (report == null || _networkErrorMessage != null)) {
-      return _buildReadyView(
-        title: "$selectedMonth 월간 거북목 측정 기록이 없습니다",
-        hideActionButtons: true,
-      );
-    }
-
-    if (status == 1 && _today.day < firstMeasuredDay) {
-      return _buildReadyView(
-        title: "이번 달은 ${firstMeasuredDay}일부터\n월간 거북목 측정을 할 수 있어요",
-        hideActionButtons: true,
-      );
-    }
-
-    if (report != null && report.totalMeasurements == 0) {
+    if (status == 1 &&
+        _networkErrorMessage == null &&
+        (report == null || report.totalMeasurements == 0)) {
       return _buildReadyView(
         title: "이번 달은 월간 거북목 측정을\n아직 하지 않았어요!",
         isMeasureActionMode: true,
+      );
+    }
+
+    if (status == 2 && report == null && _networkErrorMessage == null) {
+      return _buildReadyView(
+        title: "${selectedMonth} 월간 거북목 측정 기록이 없습니다",
+        hideActionButtons: true,
+      );
+    }
+
+    if (_networkErrorMessage != null) {
+      return Center(
+        child: Text(
+          "데이터를 불러오지 못했습니다.\n서버 상태나 인터넷 연결을 확인해 주세요.",
+          style: TText.body.copyWith(color: TColor.gray),
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
@@ -217,11 +233,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
     switch (status) {
       case 0:
-        return _buildReadyView(
-          title: "이번 달은 ${firstMeasuredDay}일부터\n월간 거북목 측정을 할 수 있어요",
-        );
+        return _buildReadyView(title: "이번 달은 측정일이 되면\n월간 거북목 측정을 할 수 있어요");
       case 1:
-        return _buildReadyView(title: "$selectedMonth 월간 리포트\n준비 중 . . .");
       case 2:
         return _buildReportResultView();
       default:
@@ -305,7 +318,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   Widget _buildReportResultView() {
     final report = _currentReport;
-    final String userNickname = report?.nickname ?? "@@";
+    final String userNickname = report?.nickname ?? "사용자";
     final String postureType = report?.postureStatus ?? "역C자목";
 
     return ListView(
@@ -322,7 +335,10 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               TextSpan(text: "$userNickname님의 "),
               TextSpan(
                 text: "월간 거북목 측정",
-                style: const TextStyle(color: TColor.darkGreen),
+                style: const TextStyle(
+                  color: TColor.darkGreen,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const TextSpan(text: " 결과를 확인해 보세요!"),
             ],
@@ -666,24 +682,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         ],
       ),
     );
-  }
-
-  List<String> _generateYearList() {
-    return List.generate(
-      (_today.year - firstMeasuredYear) + 1,
-      (index) => "${_today.year - index}년",
-    );
-  }
-
-  List<String> _generateMonthList() {
-    int selectedYInt = int.parse(selectedYear.replaceAll('년', ''));
-    if (selectedYInt == firstMeasuredYear) {
-      return List.generate(
-        12 - firstMeasuredMonth + 1,
-        (index) => "${firstMeasuredMonth + index}월",
-      );
-    }
-    return List.generate(12, (i) => "${i + 1}월");
   }
 
   Widget _buildDropdown(
