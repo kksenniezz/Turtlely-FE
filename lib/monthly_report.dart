@@ -27,6 +27,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   bool _isLoading = false;
   String? _networkErrorMessage;
 
+  bool isDebugDesignMode = true;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +42,28 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       _isLoading = true;
       _networkErrorMessage = null;
     });
+
+    // 더미데이터 추후 삭제 //
+    if (isDebugDesignMode) {
+      await Future.delayed(const Duration(milliseconds: 200)); // 살짝 로딩 효과
+      setState(() {
+        _currentReport = ReportData(
+          status: 2,
+          message: "성공",
+          year: 2026,
+          month: 5,
+          nickname: "kksenniezz", // 닉네임 마음대로 변경 가능
+          postureStatus: "역C자목", // 💡 "거북목", "일자목", "역C자목" 바꾸면 밑에 이미지도 바뀜!
+          postureMessage: "경추 정렬이 반대로 꺾인 상태입니다.",
+          cvaAngle: 69.0,
+          craAngle: 128.5,
+          totalMeasurements: 1, // 0개 락을 뚫기 위해 1로 고정
+        );
+        _isLoading = false;
+      });
+      return; // 🌟 더미 데이터를 넣었으니 여기서 함수를 강제 종료해서 아래 서버 코드로 안 내려가게 막음!
+    }
+    // 더미데이터 추후 삭제 //
 
     final int targetYear = int.parse(selectedYear.replaceAll('년', ''));
     final int targetMonth = int.parse(selectedMonth.replaceAll('월', ''));
@@ -287,10 +311,21 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       children: [
-        Center(
-          child: Text(
-            "$userNickname님의 월간 거북목 측정 결과를 확인해 보세요!",
-            style: TText.caption,
+        RichText(
+          textAlign: TextAlign.center,
+          text: TextSpan(
+            style: TText.caption.copyWith(
+              fontFamily: 'Pretendard',
+              color: Colors.black,
+            ),
+            children: [
+              TextSpan(text: "$userNickname님의 "),
+              TextSpan(
+                text: "월간 거북목 측정",
+                style: const TextStyle(color: TColor.darkGreen),
+              ),
+              const TextSpan(text: " 결과를 확인해 보세요!"),
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -383,8 +418,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
     double cvaDiff = myCVA - 55.0;
     String cvaDesc = cvaDiff > 0
-        ? "이상적인 범위보다 약 ${cvaDiff.toStringAsFixed(1)}° 높게 측정되었습니다."
-        : "이상적인 범위보다 약 ${cvaDiff.abs().toStringAsFixed(1)}° 낮게 측정되었습니다.";
+        ? "이상적인 범위(50~55°)보다 약 ${cvaDiff.toStringAsFixed(1)}° 높게 측정되었습니다."
+        : "이상적인 범위(50~55°)보다 약 ${cvaDiff.abs().toStringAsFixed(1)}° 낮게 측정되었습니다.";
     if (myCVA >= 50.0 && myCVA <= 55.0) {
       cvaDesc = "이상적인 범위(50~55°) 내에 안정적으로 속해 있습니다.";
     }
@@ -410,9 +445,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: _buildImageFrame("정상 기준", "assets/images/normal_cva.png"),
-            ),
+            Expanded(child: _buildImageFrame("정상 기준", "normal_cva.png")),
           ],
         ),
         const SizedBox(height: 8),
@@ -435,9 +468,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: _buildImageFrame("정상 기준", "assets/images/normal_cra.png"),
-            ),
+            Expanded(child: _buildImageFrame("정상 기준", "normal_cra.png")),
           ],
         ),
         const SizedBox(height: 8),
@@ -451,7 +482,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   Widget _buildImageFrame(String title, String imagePath) {
     return Container(
-      height: 150,
+      height: 200,
       decoration: BoxDecoration(
         color: const Color(0xFFF9F9F9),
         borderRadius: BorderRadius.circular(12),
@@ -463,8 +494,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.asset(
-                "assets/$imagePath",
-                fit: BoxFit.cover,
+                imagePath,
+                fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) =>
                     const Center(child: Icon(Icons.image, color: Colors.grey)),
               ),
