@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'style.dart';
+import 'vision.dart';
+import 'services/report_service.dart';
 
 class MonthlyReportView extends StatefulWidget {
   const MonthlyReportView({super.key});
@@ -9,26 +11,92 @@ class MonthlyReportView extends StatefulWidget {
 }
 
 class _MonthlyReportViewState extends State<MonthlyReportView> {
-  final int appInstallYear = 2024;
   final DateTime _today = DateTime.now();
 
   late String selectedYear;
   late String selectedMonth;
-
   static bool isAlarmRegistered = false;
+
+  final int firstMeasuredYear = 2025;
+  final int firstMeasuredMonth = 5;
+  final int firstMeasuredDay = 15;
+
+  final ReportService _reportService = ReportService();
+  ReportData? _currentReport;
+
+  bool _isLoading = false;
+  String? _networkErrorMessage;
 
   @override
   void initState() {
     super.initState();
     selectedYear = "${_today.year}년";
     selectedMonth = "${_today.month}월";
+    _fetchReportData();
+  }
+
+  Future<void> _fetchReportData() async {
+    setState(() {
+      _isLoading = true;
+      _networkErrorMessage = null;
+    });
+
+    final int targetYear = int.parse(selectedYear.replaceAll('년', ''));
+    final int targetMonth = int.parse(selectedMonth.replaceAll('월', ''));
+
+    if (targetYear > _today.year ||
+        (targetYear == _today.year && targetMonth > _today.month)) {
+      setState(() {
+        _currentReport = null;
+        _isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final data = await _reportService.fetchMonthlyReport(
+        loginId: 'kksenniezz',
+        year: targetYear,
+        month: targetMonth,
+      );
+      setState(() {
+        _currentReport = data;
+      });
+    } catch (errorMessage) {
+      _showServerAlternativeDialog(errorMessage.toString());
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showServerAlternativeDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          "시스템 알림",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        content: Text(message, style: const TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "확인",
+              style: TextStyle(color: TColor.buttonGreen),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   int _checkStatus() {
     int selY = int.parse(selectedYear.replaceAll('년', ''));
     int selM = int.parse(selectedMonth.replaceAll('월', ''));
-    if (selY > _today.year || (selY == _today.year && selM > _today.month))
+    if (selY > _today.year || (selY == _today.year && selM > _today.month)) {
       return 0;
+    }
     if (selY == _today.year && selM == _today.month) return 1;
     return 2;
   }
@@ -56,22 +124,63 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             child: Row(
               children: [
                 _buildDropdown(selectedYear, _generateYearList(), (val) {
-                  if (val != null) setState(() => selectedYear = val);
+                  if (val != null) {
+                    setState(() {
+                      selectedYear = val;
+                      List<String> validMonths = _generateMonthList();
+                      if (!validMonths.contains(selectedMonth)) {
+                        selectedMonth = validMonths.first;
+                      }
+                    });
+                    _fetchReportData();
+                  }
                 }),
                 const SizedBox(width: 12),
                 _buildDropdown(selectedMonth, _generateMonthList(), (val) {
-                  if (val != null) setState(() => selectedMonth = val);
+                  if (val != null) {
+                    setState(() => selectedMonth = val);
+                    _fetchReportData();
+                  }
                 }),
               ],
             ),
           ),
-          Expanded(child: _buildMainContent(status)),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: TColor.buttonGreen),
+                  )
+                : _buildMainContent(status),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildMainContent(int status) {
+    final report = _currentReport;
+
+    if (status == 2 && (report == null || _networkErrorMessage != null)) {
+      return _buildReadyView(
+        title: "$selectedMonth 월간 거북목 측정 기록이 없습니다",
+        hideActionButtons: true,
+      );
+    }
+
+    if (status == 1 && _today.day < firstMeasuredDay) {
+      return _buildReadyView(
+        title: "이번 달은 ${firstMeasuredDay}일부터\n월간 거북목 측정을 할 수 있어요",
+        hideActionButtons: true,
+      );
+    }
+
+    if (report != null && report.totalMeasurements == 0) {
+      return _buildReadyView(
+        title: "이번 달은 월간 거북목 측정을\n아직 하지 않았어요!",
+        isMeasureActionMode: true,
+      );
+    }
+
     if (isAlarmRegistered && status != 2) {
       return Center(
         child: Text(
@@ -81,9 +190,12 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         ),
       );
     }
+
     switch (status) {
       case 0:
-        return _buildReadyView(title: "이번 달은 1일부터\n월간 거북목 측정을 할 수 있어요");
+        return _buildReadyView(
+          title: "이번 달은 ${firstMeasuredDay}일부터\n월간 거북목 측정을 할 수 있어요",
+        );
       case 1:
         return _buildReadyView(title: "$selectedMonth 월간 리포트\n준비 중 . . .");
       case 2:
@@ -93,7 +205,11 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     }
   }
 
-  Widget _buildReadyView({required String title}) {
+  Widget _buildReadyView({
+    required String title,
+    bool isMeasureActionMode = false,
+    bool hideActionButtons = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0),
       child: Column(
@@ -105,38 +221,58 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             style: TText.title.copyWith(fontSize: 22, height: 1.5),
           ),
           const Spacer(flex: 3),
-          const Text(
-            "결과가 나오면 알려드릴까요?",
-            style: TextStyle(
-              color: TColor.black,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: isAlarmRegistered
-                ? null
-                : () async {
-                    setState(() => isAlarmRegistered = true);
-                    await Future.delayed(const Duration(milliseconds: 1200));
-                    if (mounted) Navigator.pop(context);
-                  },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isAlarmRegistered
-                  ? const Color(0xFF143601)
-                  : TColor.buttonGreen,
-              minimumSize: const Size(double.infinity, 56),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
+          if (!hideActionButtons) ...[
+            if (!isMeasureActionMode) ...[
+              const Text(
+                "결과가 나오면 알려드릴까요?",
+                style: TextStyle(
+                  color: TColor.black,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              elevation: 0,
+              const SizedBox(height: 16),
+            ],
+            ElevatedButton(
+              onPressed: isAlarmRegistered && !isMeasureActionMode
+                  ? null
+                  : () async {
+                      if (isMeasureActionMode) {
+                        final bool? isMeasured = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const VisionPage(),
+                          ),
+                        );
+                        if (isMeasured == true) {
+                          _fetchReportData();
+                        }
+                      } else {
+                        setState(() => isAlarmRegistered = true);
+                        await Future.delayed(
+                          const Duration(milliseconds: 1200),
+                        );
+                        if (mounted) Navigator.pop(context);
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isAlarmRegistered && !isMeasureActionMode
+                    ? const Color(0xFF143601)
+                    : TColor.buttonGreen,
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                isMeasureActionMode
+                    ? "월간 거북목 측정하러 가기"
+                    : (isAlarmRegistered ? "알림 설정 완료" : "알림 설정"),
+                style: TText.button,
+              ),
             ),
-            child: Text(
-              isAlarmRegistered ? "알림 설정 완료" : "알림 설정",
-              style: TText.button,
-            ),
-          ),
+          ],
           const SizedBox(height: 40),
         ],
       ),
@@ -144,25 +280,30 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   }
 
   Widget _buildReportResultView() {
+    final report = _currentReport;
+    final String userNickname = report?.nickname ?? "@@";
+    final String postureType = report?.postureStatus ?? "역C자목";
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       children: [
-        const Center(
-          child: Text("@@님의 월간 거북목 측정 결과를 확인해 보세요!", style: TText.caption),
+        Center(
+          child: Text(
+            "$userNickname님의 월간 거북목 측정 결과를 확인해 보세요!",
+            style: TText.caption,
+          ),
         ),
         const SizedBox(height: 16),
-        _buildResultCard(),
+        _buildResultCard(userNickname, postureType),
         const SizedBox(height: 32),
         const Text(
           "거북목 각도(CVA) 및 목의 가동 범위(CRA)",
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
-        _buildAnalysisImages(),
+        _buildAnalysisImages(postureType),
         const SizedBox(height: 32),
-
         _buildChartFrame("CVA / CRA 각도 변화 그래프"),
-
         const SizedBox(height: 32),
         const Row(
           children: [
@@ -175,11 +316,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           ],
         ),
         const SizedBox(height: 16),
-
         _buildScoreBoxFrame(),
         const SizedBox(height: 16),
-
-        // 💡 [최종 수정] 이모티콘 제거 & 텍스트-그래프 초밀착 구성
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -195,7 +333,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 24),
-
               _buildSimpleDiseaseItem("목디스크", 0.85),
               const SizedBox(height: 16),
               _buildSimpleDiseaseItem("후두신경통", 0.65),
@@ -204,7 +341,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             ],
           ),
         ),
-
         const SizedBox(height: 32),
         _buildPredictionBoxFrame(),
         const SizedBox(height: 50),
@@ -212,18 +348,187 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     );
   }
 
-  // 💡 군더더기 없이 이름과 그래프만 있는 깔끔한 위젯
+  Widget _buildResultCard(String nickname, String type) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      decoration: BoxDecoration(
+        border: Border.all(color: TColor.buttonGreen),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Text(
+            "$nickname님의 $selectedMonth 거북목 유형은...",
+            style: TText.body.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            type,
+            style: const TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: TColor.darkGreen,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnalysisImages(String postureType) {
+    final report = _currentReport;
+    double myCVA = report?.cvaAngle ?? 69.0;
+    double myCRA = report?.craAngle ?? 128.5;
+
+    double cvaDiff = myCVA - 55.0;
+    String cvaDesc = cvaDiff > 0
+        ? "이상적인 범위보다 약 ${cvaDiff.toStringAsFixed(1)}° 높게 측정되었습니다."
+        : "이상적인 범위보다 약 ${cvaDiff.abs().toStringAsFixed(1)}° 낮게 측정되었습니다.";
+    if (myCVA >= 50.0 && myCVA <= 55.0) {
+      cvaDesc = "이상적인 범위(50~55°) 내에 안정적으로 속해 있습니다.";
+    }
+
+    String craDesc = myCRA <= 145.0
+        ? "이상적인 범위(145° 이하) 내에 속해 목의 가동성이 안정적입니다."
+        : "이상적인 범위(145° 이하)를 약 ${(myCRA - 145.0).toStringAsFixed(1)}° 벗어났습니다.";
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "• 거북목 각도 (CVA) 비교",
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildImageFrame(
+                "내 상태 (CVA)",
+                _getCvaImagePath(postureType),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildImageFrame("정상 기준", "assets/images/normal_cva.png"),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "내 CVA는 ${myCVA}° 이며, $cvaDesc",
+          style: const TextStyle(fontSize: 12, color: Colors.grey, height: 1.4),
+        ),
+        const SizedBox(height: 28),
+        const Text(
+          "• 목 가동 범위 (CRA) 비교",
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildImageFrame(
+                "내 상태 (CRA)",
+                _getCraImagePath(postureType),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildImageFrame("정상 기준", "assets/images/normal_cra.png"),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "내 CRA는 ${myCRA}° 이며, $craDesc",
+          style: const TextStyle(fontSize: 12, color: Colors.grey, height: 1.4),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImageFrame(String title, String imagePath) {
+    return Container(
+      height: 150,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9F9F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                "assets/$imagePath",
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    const Center(child: Icon(Icons.image, color: Colors.grey)),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            left: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.85),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getCvaImagePath(String type) {
+    switch (type) {
+      case "거북목":
+        return "turtle_cva.png";
+      case "일자목":
+        return "military_cva.png";
+      case "역C자목":
+        return "reverse_cva.png";
+      default:
+        return "normal_cva.png";
+    }
+  }
+
+  String _getCraImagePath(String type) {
+    switch (type) {
+      case "거북목":
+        return "turtle_cra.png";
+      case "일자목":
+        return "military_cra.png";
+      case "역C자목":
+        return "reverse_cra.png";
+      default:
+        return "normal_cra.png";
+    }
+  }
+
   Widget _buildSimpleDiseaseItem(String name, double percent) {
     return Row(
       children: [
         SizedBox(
-          width: 75, // 텍스트 영역을 적절히 확보
+          width: 75,
           child: Text(
             name,
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
           ),
         ),
-        // 간격을 아주 좁게 설정
         const SizedBox(width: 2),
         Expanded(
           child: Container(
@@ -248,7 +553,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     );
   }
 
-  // --- 레이아웃 프레임들 (동일하게 유지) ---
   Widget _buildChartFrame(String title) {
     return Container(
       height: 240,
@@ -323,7 +627,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             "거북목 개선 예측",
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 250), // 길어진 그래프 높이 반영
+          SizedBox(height: 250),
           Text(
             "현재 추세 유지 시 3개월 뒤 개선 전망",
             style: TextStyle(fontSize: 13, color: TColor.gray),
@@ -333,51 +637,24 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     );
   }
 
-  Widget _buildResultCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      decoration: BoxDecoration(
-        border: Border.all(color: TColor.buttonGreen),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        children: [
-          Text(
-            "@@님의 $selectedMonth 거북목 유형은...",
-            style: TText.body.copyWith(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            "역C자목",
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: TColor.darkGreen,
-            ),
-          ),
-        ],
-      ),
+  List<String> _generateYearList() {
+    return List.generate(
+      (_today.year - firstMeasuredYear) + 1,
+      (index) => "${_today.year - index}년",
     );
   }
 
-  Widget _buildAnalysisImages() {
-    return Container(
-      height: 180,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: TColor.lightGreen,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: const Center(child: Text("이미지 영역")),
-    );
+  List<String> _generateMonthList() {
+    int selectedYInt = int.parse(selectedYear.replaceAll('년', ''));
+    if (selectedYInt == firstMeasuredYear) {
+      return List.generate(
+        12 - firstMeasuredMonth + 1,
+        (index) => "${firstMeasuredMonth + index}월",
+      );
+    }
+    return List.generate(12, (i) => "${i + 1}월");
   }
 
-  List<String> _generateYearList() => List.generate(
-    (_today.year - appInstallYear) + 1,
-    (index) => "${_today.year - index}년",
-  );
-  List<String> _generateMonthList() => List.generate(12, (i) => "${i + 1}월");
   Widget _buildDropdown(
     String currentValue,
     List<String> items,

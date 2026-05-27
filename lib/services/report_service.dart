@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-// 📦 백엔드 응답 규격 데이터 모델
+// 📦 [모델 내장] 백엔드 응답 규격 데이터 모델 DTO
 class ReportData {
   final int status;
   final String message;
@@ -43,6 +43,7 @@ class ReportData {
   }
 }
 
+// 🌐 네트워크 통신 및 에러 텍스트 가공 서비스
 class ReportService {
   static const String _baseUrl = 'http://localhost:8000/api';
 
@@ -62,15 +63,25 @@ class ReportService {
         return ReportData.fromJson(decodedData);
       }
 
+      // 🚨 500 에러 처리: 백엔드 에러코드를 유저 친화적인 메시지로 변환해 throw
       if (response.statusCode == 500) {
         final decodedData = json.decode(utf8.decode(response.bodyBytes));
-        throw decodedData['errorCode'] ?? 'SERVER_INTERNAL_ERROR';
+        final String errorCode = decodedData['errorCode'] ?? '';
+
+        if (errorCode == "DATABASE_ERROR") {
+          throw "데이터베이스 연결에 실패했습니다. 관리자에게 문의하세요.";
+        } else if (errorCode == "SERVER_INTERNAL_ERROR") {
+          throw "서버 내부 로직 오류가 발생했습니다. 시스템팀이 확인 중입니다.";
+        } else {
+          throw "알 수 없는 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+        }
       }
 
       return null;
     } catch (e) {
+      // 이미 정제된 한글 에러 메시지는 그대로 패스
       if (e is String) rethrow;
-      throw 'UNKNOWN_NETWORK_ERROR';
+      throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
     }
   }
 }
