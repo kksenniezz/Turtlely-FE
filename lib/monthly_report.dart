@@ -75,8 +75,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         _networkErrorMessage = errorMessage.toString();
       });
       _showServerAlternativeDialog(errorMessage.toString());
-    }
-    {
+    } finally {
       setState(() => _isLoading = false);
     }
   }
@@ -195,6 +194,16 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   Widget _buildMainContent(int status) {
     final report = _currentReport;
 
+    if (_networkErrorMessage != null) {
+      return Center(
+        child: Text(
+          "데이터를 불러오지 못했습니다.\n서버 상태나 인터넷 연결을 확인해 주세요.",
+          style: TText.body.copyWith(color: TColor.gray),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
     if (status == 1 &&
         _networkErrorMessage == null &&
         (report == null || report.totalMeasurements == 0)) {
@@ -208,16 +217,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       return _buildReadyView(
         title: "${selectedMonth} 월간 거북목 측정 기록이 없습니다",
         hideActionButtons: true,
-      );
-    }
-
-    if (_networkErrorMessage != null) {
-      return Center(
-        child: Text(
-          "데이터를 불러오지 못했습니다.\n서버 상태나 인터넷 연결을 확인해 주세요.",
-          style: TText.body.copyWith(color: TColor.gray),
-          textAlign: TextAlign.center,
-        ),
       );
     }
 
