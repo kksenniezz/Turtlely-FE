@@ -65,9 +65,12 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       setState(() {
         _currentReport = data;
 
-        if (isInitialFetch && data != null) {
+        if (isInitialFetch && data != null && data.year > 0) {
           _startYear = data.year;
           _startMonth = data.month;
+        } else if (isInitialFetch) {
+          _startYear = _today.year;
+          _startMonth = 1;
         }
       });
     } catch (errorMessage) {
@@ -204,16 +207,14 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       );
     }
 
-    if (status == 1 &&
-        _networkErrorMessage == null &&
-        (report == null || report.totalMeasurements == 0)) {
+    if (status == 1 && (report == null || report.totalMeasurements == 0)) {
       return _buildReadyView(
         title: "이번 달은 월간 거북목 측정을\n아직 하지 않았어요!",
         isMeasureActionMode: true,
       );
     }
 
-    if (status == 2 && report == null && _networkErrorMessage == null) {
+    if (status == 2 && report == null) {
       return _buildReadyView(
         title: "${selectedMonth} 월간 거북목 측정 기록이 없습니다",
         hideActionButtons: true,

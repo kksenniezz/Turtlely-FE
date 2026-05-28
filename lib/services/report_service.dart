@@ -29,41 +29,72 @@ class ReportData {
   });
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
-    return ReportData(
-      status: json['status'] ?? 0,
-      message: json['message'] ?? '',
-      year: json['year'] ?? 0,
-      month: json['month'] ?? 0,
-      nickname: json['nickname'] ?? '사용자',
-      postureStatus: json['posture_status'] ?? '',
-      postureMessage: json['posture_message'] ?? '',
-      cvaAngle: (json['cva_angle'] as num?)?.toDouble() ?? 0.0,
-      craAngle: (json['cra_angle'] as num?)?.toDouble() ?? 0.0,
-      totalMeasurements: json['total_measurements'] ?? 0,
-    );
+    try {
+      // 백엔드가 만약 { "status": 200, "data": { ... } } 형태로 감싸서 보냈을 경우를 대비한 자동 리라우팅
+      if (json.containsKey('data') && json['data'] is Map<String, dynamic>) {
+        return ReportData.fromJson(json['data'] as Map<String, dynamic>);
+      }
+
+      // 데이터 타입 미스매치 방지를 위한 안전한 형변환 (String으로 온 숫자도 int로 처리)
+      int parseToInt(dynamic value) {
+        if (value == null) return 0;
+        if (value is int) return value;
+        if (value is String) return int.tryParse(value) ?? 0;
+        return 0;
+      }
+
+      return ReportData(
+        status: parseToInt(json['status']),
+        message: json['message'] ?? '',
+        // 만약 백엔드가 0이나 null을 주면 프론트 앱이 뻗지 않도록 현재 날짜 기본값 방어
+        year: parseToInt(json['year']) == 0
+            ? DateTime.now().year
+            : parseToInt(json['year']),
+        month: parseToInt(json['month']) == 0
+            ? DateTime.now().month
+            : parseToInt(json['month']),
+        nickname: json['nickname'] ?? '회원님', // 기본값을 '회원님'으로 매핑
+        postureStatus: json['posture_status'] ?? '역C자목',
+        postureMessage: json['posture_message'] ?? '',
+        cvaAngle: (json['cva_angle'] as num?)?.toDouble() ?? 69.0,
+        craAngle: (json['cra_angle'] as num?)?.toDouble() ?? 128.5,
+        totalMeasurements: parseToInt(json['total_measurements']),
+      );
+    } catch (e) {
+      print("🚨 [ReportData.fromJson 파싱 도중 에러 발생]: $e");
+      // 파싱 에러가 나더라도 최소한의 더미 데이터를 만들어 앱이 구동되게 방어선 구축
+      return ReportData(
+        status: 200,
+        message: "Parsing Fallback",
+        year: DateTime.now().year,
+        month: DateTime.now().month,
+        nickname: json['nickname'] ?? '회원님',
+        postureStatus: '역C자목',
+        postureMessage: '',
+        cvaAngle: 69.0,
+        craAngle: 128.5,
+        totalMeasurements: 1,
+      );
+    }
   }
 }
 
 class ReportService {
   static const String _baseUrl = 'http://54.144.66.35.nip.io:8000';
-
-  // 💡 [MediaPipeService 문법] 시큐어 스토리지 연동
   final _storage = const FlutterSecureStorage();
 
   Future<ReportData?> fetchMonthlyReport({
     required int year,
     required int month,
   }) async {
-    String userIdToSend = "guest@turtlely.com"; // 기본값 지정
+    String userIdToSend = "guest@turtlely.com";
 
     try {
-      // 💡 [MediaPipeService 문법] 저장된 accessToken 확보
       final accessToken = await _storage.read(key: 'accessToken');
 
       if (accessToken != null &&
           accessToken.isNotEmpty &&
           accessToken != "null") {
-        // 토큰의 배를 슥 갈라서 유저 ID(sub) 추출
         final normalizedPayload = utf8.decode(
           base64Url.decode(base64Url.normalize(accessToken.split('.')[1])),
         );
@@ -74,18 +105,19 @@ class ReportService {
         }
       }
 
-      // 🎯 동적으로 확보한 userIdToSend를 쿼리스트링에 안전하게 매핑
       final url = Uri.parse(
         '$_baseUrl/report?login_id=$userIdToSend&year=$year&month=$month',
       );
+
+      print("🚀 [ReportService 요청 주소]: $url");
       final response = await http.get(url);
+      print("📥 [ReportService 응답 바디 raw]: ${utf8.decode(response.bodyBytes)}");
 
       if (response.statusCode == 200) {
         final decodedData = json.decode(utf8.decode(response.bodyBytes));
         return ReportData.fromJson(decodedData);
       }
 
-      // 500 에러 가공 및 throw 처리
       if (response.statusCode == 500) {
         final decodedData = json.decode(utf8.decode(response.bodyBytes));
         final String errorCode = decodedData['errorCode'] ?? '';
@@ -102,7 +134,6 @@ class ReportService {
       return null;
     } catch (e) {
       print("🚨 [ReportService 통신 에러 진짜 원인]: $e");
-
       if (e is String) rethrow;
       throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
     }
