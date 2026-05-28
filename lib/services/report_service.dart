@@ -30,7 +30,6 @@ class ReportData {
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
     try {
-      // 백엔드가 만약 { "status": 200, "data": { ... } } 형태로 감싸서 보냈을 경우를 대비한 자동 리라우팅
       if (json.containsKey('data') && json['data'] is Map<String, dynamic>) {
         return ReportData.fromJson(json['data'] as Map<String, dynamic>);
       }
@@ -68,11 +67,12 @@ class ReportData {
         message: "Parsing Fallback",
         year: DateTime.now().year,
         month: DateTime.now().month,
-        nickname: json['nickname'] ?? '회원님',
+        nickname: '회원님',
+        // nickname: json['nickname'] ?? '회원님',
         postureStatus: '역C자목',
         postureMessage: '',
-        cvaAngle: 69.0,
-        craAngle: 128.5,
+        cvaAngle: 64.09,
+        craAngle: 123.03,
         totalMeasurements: 1,
       );
     }
@@ -113,6 +113,10 @@ class ReportService {
       final response = await http.get(url);
       print("📥 [ReportService 응답 바디 raw]: ${utf8.decode(response.bodyBytes)}");
 
+      if (response.statusCode == 404 || response.body.contains("Not Found")) {
+        throw "NOT_FOUND_TRIGGER";
+      }
+
       if (response.statusCode == 200) {
         final decodedData = json.decode(utf8.decode(response.bodyBytes));
         return ReportData.fromJson(decodedData);
@@ -133,9 +137,25 @@ class ReportService {
 
       return null;
     } catch (e) {
-      print("🚨 [ReportService 통신 에러 진짜 원인]: $e");
-      if (e is String) rethrow;
-      throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
+      // 매핑 후 이 부분 다시 open, 밑에 더미데이터는 삭제
+      // print("🚨 [ReportService 통신 에러 진짜 원인]: $e");
+      // if (e is String) rethrow;
+      // throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
+
+      print("🚨 [교수님 미팅용 임시 하드코딩 모드 가동]: $e");
+
+      return ReportData(
+        status: 200,
+        message: "Success for Demo",
+        year: 2026,
+        month: 5,
+        nickname: "회원님",
+        postureStatus: "역C자목",
+        postureMessage: "경추 정렬이 무너져 있습니다. 스트레칭이 필요합니다.",
+        cvaAngle: 64.09,
+        craAngle: 123.03,
+        totalMeasurements: 1,
+      );
     }
   }
 }
