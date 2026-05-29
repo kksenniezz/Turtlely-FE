@@ -343,7 +343,7 @@ class PosePainter extends CustomPainter {
 
     if (eye != Offset.zero) {
       correctedEye = Offset(
-        size.width - (eye.dx * scaleX * stretchX),
+        size.width - (eye.dx * scaleX),
         (eye.dy * scaleY) + offsetY,
       );
     }
