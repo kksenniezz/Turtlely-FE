@@ -325,21 +325,20 @@ class PosePainter extends CustomPainter {
     final double scaleY = size.height / 480.0;
 
     double offsetY = 0.0;
-    double stretchX = 1.0;
 
     if (kIsWeb) {
       if ((size.width / size.height) > (360.0 / 480.0)) {
         offsetY = -(size.height * 0.08); // 위아래 밀림 방지
-        stretchX = 1.15; // 정면/측면 왜곡 방지
       }
     } else {
       offsetY = 0.0;
-      stretchX = 1.0;
     }
 
     Offset correctedEye = Offset.zero;
     Offset correctedEar = Offset.zero;
     Offset correctedC7 = Offset.zero;
+
+    double earShiftX = 0.94;
 
     if (eye != Offset.zero) {
       correctedEye = Offset(
@@ -349,7 +348,7 @@ class PosePainter extends CustomPainter {
     }
     if (ear != Offset.zero) {
       correctedEar = Offset(
-        size.width - (ear.dx * scaleX),
+        size.width - (ear.dx * scaleX * earShiftX),
         (ear.dy * scaleY) + offsetY,
       );
     }
