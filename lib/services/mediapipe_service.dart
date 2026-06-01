@@ -9,8 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:js' as js;
 
 class MediaPipeService {
-  static String loginId = "";
-  // 1. 서버 주소랑 좌표 바구니 선언
+  static int memberId = 1;
   final String baseUrl = "http://54.144.66.35.nip.io:8000";
   final storage = const FlutterSecureStorage();
   // 임시적으로 3초간 측정한 좌표를 담는 바구니 (초당 10-15프레임 가정 -> 30-45개 좌표)
@@ -18,7 +17,6 @@ class MediaPipeService {
 
   bool isCapturing = false;
   int _frameCounter = 0;
-
   Offset? _lastEyePoint;
 
   CameraController? cameraController;
@@ -34,6 +32,12 @@ class MediaPipeService {
   Stream<Map<String, Offset>> get poseStream => _poseStreamController.stream;
 
   // 📸 카메라 초기화 및 실시간 프레임 리슨 시작
+  String _generateTimestamp() {
+    final now = DateTime.now();
+    String maroon(int value) => value.toString().padLeft(2, '0');
+    return "${now.year}-${maroon(now.month)}-${maroon(now.day)} ${maroon(now.hour)}:${maroon(now.minute)}:${maroon(now.second)}";
+  }
+
   Future<void> initializeCamera() async {
     try {
       final cameras = await availableCameras();
@@ -82,17 +86,14 @@ class MediaPipeService {
           );
         };
       } else {
-        // 📱 [스마트폰 모바일 앱 환경 실행]
+        // 스마트폰 모바일 앱 환경 실행
         cameraController!.startImageStream((CameraImage image) async {
           final inputImage = _convertCameraImageToInputImage(image);
           if (inputImage == null) return;
 
           final List<Pose> poses = await _poseDetector.processImage(inputImage);
-
           double scaleX = 0.5;
           double scaleY = 0.5;
-
-          // 모바일 기기 고유의 카메라 프리뷰 가로/세로 실시간 해상도 확보 (정규화용 분모 값)
           double imgWidth = image.width.toDouble();
           double imgHeight = image.height.toDouble();
 
@@ -162,9 +163,8 @@ class MediaPipeService {
     // ⏳ 3초 타이머 활성화됐을 때만 바구니에 차곡차곡 적재
     if (isCapturing) {
       _frameCounter++;
-
       if (_frameCounter % 2 == 0) {
-        // 🚀 백엔드 전송용 바구니에는 웹/앱 구별 없이 완벽하게 정규화된 0.0 ~ 1.0 값만 저장!
+        // 백엔드 전송용 바구니에는 웹/앱 구별 없이 완벽하게 정규화된 0.0 ~ 1.0 값만 저장!
         coordinateBatch.add({
           "c7_x": rawC7X,
           "c7_y": rawC7Y,
@@ -172,6 +172,7 @@ class MediaPipeService {
           "eye_y": rawEyeY,
           "tragus_x": rawEarX,
           "tragus_y": rawEarY,
+          "timestamp": _generateTimestamp(),
         });
       }
     }
@@ -182,49 +183,39 @@ class MediaPipeService {
     _lastEyePoint = null;
     _frameCounter = 0;
     isCapturing = true;
-    print("🎬 [터틀리] 3초 데이터 수집 파이프라인 가동 개시");
+    print("3초 데이터 수집 파이프라인 가동 개시");
   }
 
-  // 🚀 [연동의 정수] vision.dart 한 줄도 안 고치고 이메일 연동 완료하는 마법 구역
+  // [연동의 정수] vision.dart 한 줄도 안 고치고 이메일 연동 완료하는 마법 구역
   Future<bool> sendBatchVisionData() async {
     isCapturing = false;
 
-    if (coordinateBatch.isEmpty) {
-      print("❌ [터틀리 전송 실패] 수집된 데이터 프레임이 아예 없습니다.");
-      return false;
-    }
+    if (coordinateBatch.isEmpty) return false;
 
-    String userIdToSend = "guest@turtlely.com"; // 기본값 지정
+    int activeMemberId = 1;
 
     try {
-      // 1️⃣ 오리지널 AuthService가 안전하게 서랍장에 넣어둔 accessToken을 확보합니다.
       final accessToken = await storage.read(key: 'accessToken');
-
       if (accessToken != null &&
           accessToken.isNotEmpty &&
           accessToken != "null") {
-        // 2️⃣ 토큰의 배를 슥 갈라서 암호화된 내부 명부(Payload)를 열어 유저 ID를 획득합니다.
         final normalizedPayload = utf8.decode(
           base64Url.decode(base64Url.normalize(accessToken.split('.')[1])),
         );
         final Map<String, dynamic> payloadMap = jsonDecode(normalizedPayload);
 
-        if (payloadMap['sub'] != null) {
-          userIdToSend = payloadMap['sub'].toString();
-          MediaPipeService.loginId = userIdToSend; // 동기화 방도 같이 백업
+        // [토큰 디코딩 보안 분석 기법] 토큰 배를 갈라 숫자 member_id 원천 추출
+        if (payloadMap['member_id'] != null) {
+          activeMemberId = int.parse(payloadMap['member_id'].toString());
+          MediaPipeService.memberId = activeMemberId; // 전역 스태틱 공간 공유 백업
         }
       }
     } catch (e) {
-      print("⚠️ 미디어파이프 전송 직전 토큰 파싱 에러 (게스트 계정으로 처리): $e");
+      print("비전 데이터 송신 전 member_id 토큰 파싱 에러 (기본값 처리): $e");
     }
-
-    print(
-      "📤 [터틀리 전송] 유저($userIdToSend)로 총 ${coordinateBatch.length}개의 프레임을 전송합니다.",
-    );
 
     final Map<String, dynamic> requestPayload = {
       "frames": coordinateBatch.map((frame) {
-        // 💡 [핵심 치트키] .toStringAsFixed(2)로 소수점 둘째자리 반올림 후 double로 재생성!
         return {
           "c7_x": double.parse(
             double.parse(frame["c7_x"].toString()).toStringAsFixed(2),
@@ -244,19 +235,25 @@ class MediaPipeService {
           "tragus_y": double.parse(
             double.parse(frame["tragus_y"].toString()).toStringAsFixed(2),
           ),
+          "timestamp": frame["timestamp"], // 타임스탬프 데이터 결합
         };
       }).toList(),
-      "login_id": userIdToSend.trim(), // 백엔드 스네이크 케이스 규격 준수
+      "member_id": activeMemberId,
     };
 
-    // 5️⃣ 슈팅 직전의 데이터 모양 콘솔 확인용 로그
-    print("📦 [터틀리 백엔드 슈팅 직전 최종 바디]: ${jsonEncode(requestPayload)}");
-
+    print("터틀리 백엔드 POST /report/analyze 최종 바디: ${jsonEncode(requestPayload)}");
     final response = await _postRequest("/report/analyze", requestPayload);
 
-    print(
-      "📥 [터틀리 분석 서버 최종 응답]: success=${response['success']}, message=${response['message']}",
-    );
+    if (response['success'] == true && response['result'] != null) {
+      try {
+        final resData = response['result']['data'] ?? response['result'];
+        print(
+          "🎯 [분석 성공 완벽 동기화] 생성된 리포트 ID: ${resData['report_id']}, 측정시간: ${resData['measured_at']}",
+        );
+      } catch (e) {
+        print("응답 바디 로그 출력 도중 미세 파싱 에러 방어: $e");
+      }
+    }
     return response['success'] == true;
   }
 
@@ -267,7 +264,6 @@ class MediaPipeService {
         allBytes.putUint8List(plane.bytes);
       }
       final bytes = allBytes.done().buffer.asUint8List();
-
       final imageRotation = InputImageRotation.rotation0deg;
       final inputImageFormat =
           InputImageFormatValue.fromRawValue(image.format.raw) ??
@@ -279,7 +275,6 @@ class MediaPipeService {
         format: inputImageFormat,
         bytesPerRow: image.planes[0].bytesPerRow,
       );
-
       return InputImage.fromBytes(bytes: bytes, metadata: metadata);
     } catch (e) {
       print("MLKit 바이트 변환 에러: $e");
