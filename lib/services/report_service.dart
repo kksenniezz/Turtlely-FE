@@ -60,8 +60,7 @@ class ReportData {
         totalMeasurements: parseToInt(json['total_measurements']),
       );
     } catch (e) {
-      print("🚨 [ReportData.fromJson 파싱 도중 에러 발생]: $e");
-      // 파싱 에러가 나더라도 최소한의 더미 데이터를 만들어 앱이 구동되게 방어선 구축
+      print("[ReportData.fromJson 파싱 도중 에러 발생]: $e");
       return ReportData(
         status: 200,
         message: "Parsing Fallback",
@@ -87,7 +86,7 @@ class ReportService {
     required int year,
     required int month,
   }) async {
-    String userIdToSend = "guest@turtlely.com";
+    int activeMemberId = 1;
 
     try {
       final accessToken = await _storage.read(key: 'accessToken');
@@ -100,13 +99,14 @@ class ReportService {
         );
         final Map<String, dynamic> payloadMap = jsonDecode(normalizedPayload);
 
-        if (payloadMap['sub'] != null) {
-          userIdToSend = payloadMap['sub'].toString().trim();
+        // 🔑 [조회용 토큰 배가르기] member_id 추출 연동
+        if (payloadMap['member_id'] != null) {
+          activeMemberId = int.parse(payloadMap['member_id'].toString().trim());
         }
       }
 
       final url = Uri.parse(
-        '$_baseUrl/report?login_id=$userIdToSend&year=$year&month=$month',
+        '$_baseUrl/report/monthly?member_id=$activeMemberId&year=$year&month=$month',
       );
 
       print("🚀 [ReportService 요청 주소]: $url");
@@ -134,7 +134,6 @@ class ReportService {
           throw "알 수 없는 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
         }
       }
-
       return null;
     } catch (e) {
       // 매핑 후 이 부분 다시 open, 밑에 더미데이터는 삭제
@@ -147,8 +146,8 @@ class ReportService {
       return ReportData(
         status: 200,
         message: "Success for Demo",
-        year: 2026,
-        month: 5,
+        year: year,
+        month: month,
         nickname: "회원님",
         postureStatus: "역C자목",
         postureMessage: "경추 정렬이 무너져 있습니다. 스트레칭이 필요합니다.",
