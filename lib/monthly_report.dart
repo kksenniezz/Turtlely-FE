@@ -74,10 +74,16 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         }
       });
     } catch (errorMessage) {
-      setState(() {
-        _networkErrorMessage = errorMessage.toString();
-      });
-      _showServerAlternativeDialog(errorMessage.toString());
+      if (errorMessage.toString() == "NOT_FOUND_TRIGGER") {
+        setState(() {
+          _currentReport = null;
+        });
+      } else {
+        setState(() {
+          _networkErrorMessage = errorMessage.toString();
+        });
+        _showServerAlternativeDialog(errorMessage.toString());
+      }
     } finally {
       setState(() => _isLoading = false);
     }
