@@ -338,7 +338,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               color: Colors.black,
             ),
             children: [
-              TextSpan(text: "$userNickname의 "), // 추후 '님' 추가
+              TextSpan(text: "$userNickname님의 "), // 추후 '님' 추가
               TextSpan(
                 text: "월간 거북목 측정",
                 style: const TextStyle(
@@ -416,7 +416,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       child: Column(
         children: [
           Text(
-            "$nickname의 $selectedMonth 거북목 유형은...", // 추후 '님' 추가
+            "$nickname님의 $selectedMonth 거북목 유형은...", // 추후 '님' 추가
             style: TText.body.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
