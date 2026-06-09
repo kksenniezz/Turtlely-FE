@@ -408,7 +408,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   Widget _buildResultCard(String nickname, String type) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 32),
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
       decoration: BoxDecoration(
         border: Border.all(color: TColor.buttonGreen),
         borderRadius: BorderRadius.circular(20),
@@ -416,7 +416,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       child: Column(
         children: [
           Text(
-            "$nickname님의 $selectedMonth 거북목 유형은...", // 추후 '님' 추가
+            "$nickname님의 $selectedMonth 추정 거북목 유형은...",
             style: TText.body.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
@@ -426,6 +426,17 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               fontSize: 32,
               fontWeight: FontWeight.bold,
               color: TColor.darkGreen,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            "본 서비스는 카메라 측정 기반의 '자세 참고용' 결과이며, 의학적 진단을 대신할 수 없습니다\n정확한 진단이 필요한 경우 전문가에게 문의하세요",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 10,
+              color: TColor.gray,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
