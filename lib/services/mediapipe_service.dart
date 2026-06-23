@@ -145,13 +145,26 @@ class MediaPipeService {
     if (isCapturing) {
       _frameCounter++;
       if (_frameCounter % 2 == 0) {
+        double cosT = math.cos(-currentTiltAngleRad);
+        double sinT = math.sin(-currentTiltAngleRad);
+
+        double dxEar = rawEarX - rawC7X;
+        double dyEar = rawEarY - rawC7Y;
+        double calibratedRawEarX = rawC7X + (dxEar * cosT - dyEar * sinT);
+        double calibratedRawEarY = rawC7Y + (dxEar * sinT + dyEar * cosT);
+
+        double dxEye = rawEyeX - rawC7X;
+        double dyEye = rawEyeY - rawC7Y;
+        double calibratedRawEyeX = rawC7X + (dxEye * cosT - dyEye * sinT);
+        double calibratedRawEyeY = rawC7Y + (dxEye * sinT + dyEye * cosT);
+
         coordinateBatch.add({
           "c7_x": rawC7X,
           "c7_y": rawC7Y,
-          "eye_x": rawEyeX,
-          "eye_y": rawEyeY,
-          "tragus_x": rawEarX,
-          "tragus_y": rawEarY,
+          "eye_x": calibratedRawEyeX,
+          "eye_y": calibratedRawEyeY,
+          "tragus_x": calibratedRawEarX,
+          "tragus_y": calibratedRawEarY,
           "timestamp": _generateTimestamp(),
         });
       }
