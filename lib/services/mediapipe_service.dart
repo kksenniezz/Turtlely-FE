@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sensors_plus/sensors_plus.dart';
+import 'dart:math' as math;
 
 class MediaPipeService {
   static int memberId = 1;
@@ -18,6 +20,10 @@ class MediaPipeService {
   int _frameCounter = 0;
   Offset? _lastEyePoint;
 
+  // 실시간 기기 기울기 각도(라디안 단위)를 저장할 변수
+  double currentTiltAngleRad = 0.0;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
+
   CameraController? cameraController;
   bool isInitialized = false;
 
@@ -26,9 +32,9 @@ class MediaPipeService {
     options: PoseDetectorOptions(mode: PoseDetectionMode.stream),
   );
 
-  final StreamController<Map<String, Offset>> _poseStreamController =
-      StreamController<Map<String, Offset>>.broadcast();
-  Stream<Map<String, Offset>> get poseStream => _poseStreamController.stream;
+  final StreamController<Map<String, dynamic>> _poseStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get poseStream => _poseStreamController.stream;
 
   // 📸 카메라 초기화 및 실시간 프레임 리슨 시작
   String _generateTimestamp() {
@@ -39,6 +45,14 @@ class MediaPipeService {
 
   Future<void> initializeCamera() async {
     try {
+      // 📡 1. 자이로 가속도 센서 활성화 및 데이터 추출
+      _accelerometerSubscription = accelerometerEventStream().listen((
+        AccelerometerEvent event,
+      ) {
+        // 스마트폰 수직 거치 기준 핏 조율 연산식
+        currentTiltAngleRad = math.atan2(event.y, event.z) - (math.pi / 2);
+      });
+
       final cameras = await availableCameras();
       final frontCamera = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.front,
@@ -124,13 +138,13 @@ class MediaPipeService {
       'eye': Offset(filteredEyeX, filteredEyeY),
       'ear': Offset(earX, earY),
       'c7': Offset(c7X, c7Y),
+      'tilt': currentTiltAngleRad,
     });
 
     // ⏳ 3초 타이머 활성화됐을 때만 바구니에 차곡차곡 적재
     if (isCapturing) {
       _frameCounter++;
       if (_frameCounter % 2 == 0) {
-        // 백엔드 전송용 바구니에는 웹/앱 구별 없이 완벽하게 정규화된 0.0 ~ 1.0 값만 저장!
         coordinateBatch.add({
           "c7_x": rawC7X,
           "c7_y": rawC7Y,
@@ -155,9 +169,7 @@ class MediaPipeService {
   // [연동의 정수] vision.dart 한 줄도 안 고치고 이메일 연동 완료하는 마법 구역
   Future<bool> sendBatchVisionData() async {
     isCapturing = false;
-
     if (coordinateBatch.isEmpty) return false;
-
     int activeMemberId = 1;
 
     try {
@@ -207,19 +219,7 @@ class MediaPipeService {
       "member_id": activeMemberId,
     };
 
-    print("터틀리 백엔드 POST /report/analyze 최종 바디: ${jsonEncode(requestPayload)}");
     final response = await _postRequest("/report/analyze", requestPayload);
-
-    if (response['success'] == true && response['result'] != null) {
-      try {
-        final resData = response['result']['data'] ?? response['result'];
-        print(
-          "[분석 성공 완벽 동기화] 생성된 리포트 ID: ${resData['report_id']}, 측정시간: ${resData['measured_at']}",
-        );
-      } catch (e) {
-        print("응답 바디 로그 출력 도중 미세 파싱 에러 방어: $e");
-      }
-    }
     return response['success'] == true;
   }
 
@@ -268,6 +268,7 @@ class MediaPipeService {
   }
 
   void dispose() {
+    _accelerometerSubscription?.cancel();
     cameraController?.dispose();
     _poseDetector.close();
     _poseStreamController.close();
