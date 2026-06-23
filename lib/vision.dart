@@ -326,14 +326,6 @@ class PosePainter extends CustomPainter {
 
     double offsetY = 0.0;
 
-    if (kIsWeb) {
-      if ((size.width / size.height) > (360.0 / 480.0)) {
-        offsetY = -(size.height * 0.08); // 위아래 밀림 방지
-      }
-    } else {
-      offsetY = 0.0;
-    }
-
     Offset correctedEye = Offset.zero;
     Offset correctedEar = Offset.zero;
     Offset correctedC7 = Offset.zero;

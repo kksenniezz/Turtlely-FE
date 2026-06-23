@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'dart:js' as js;
 
 class MediaPipeService {
   static int memberId = 1;
@@ -56,73 +55,40 @@ class MediaPipeService {
       await cameraController!.initialize();
       isInitialized = true;
 
-      if (kIsWeb) {
-        // 🌐 [웹 브라우저 환경 실행]
-        Timer(const Duration(milliseconds: 500), () {
-          js.context.callMethod('startWebMediaPipe');
-        });
+      cameraController!.startImageStream((CameraImage image) async {
+        final inputImage = _convertCameraImageToInputImage(image);
+        if (inputImage == null) return;
 
-        // 자바스크립트(index.html)가 꺼내온 오른쪽 좌표 리시버 등록
-        js.context['onWebPoseDetected'] = (String jsonPayload) {
-          final data = jsonDecode(jsonPayload);
+        final List<Pose> poses = await _poseDetector.processImage(inputImage);
+        double scaleX = 0.5;
+        double scaleY = 0.5;
+        double imgWidth = image.width.toDouble();
+        double imgHeight = image.height.toDouble();
 
-          // 웹 미디어파이프 기본 스케일 보정 (화면 가이드라인 테두리 안쪽으로 안착)
-          double xRatio = 360.0;
-          double yRatio = 480.0;
+        for (Pose pose in poses) {
+          final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
+          final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
+          final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
 
-          _dispatchCoordinates(
-            eyeX: (data['eyeX'] ?? 0.5) * xRatio,
-            eyeY: (data['eyeY'] ?? 0.3) * yRatio,
-            earX: (data['earX'] ?? 0.5) * xRatio,
-            earY: (data['earY'] ?? 0.4) * yRatio,
-            c7X: (data['c7X'] ?? 0.5) * xRatio,
-            c7Y: (data['c7Y'] ?? 0.6) * yRatio,
-            rawEyeX: data['eyeX'] ?? 0.5,
-            rawEyeY: data['eyeY'] ?? 0.3,
-            rawEarX: data['earX'] ?? 0.5,
-            rawEarY: data['earY'] ?? 0.4,
-            rawC7X: data['c7X'] ?? 0.5,
-            rawC7Y: data['c7Y'] ?? 0.6,
-          );
-        };
-      } else {
-        // 스마트폰 모바일 앱 환경 실행
-        cameraController!.startImageStream((CameraImage image) async {
-          final inputImage = _convertCameraImageToInputImage(image);
-          if (inputImage == null) return;
-
-          final List<Pose> poses = await _poseDetector.processImage(inputImage);
-          double scaleX = 0.5;
-          double scaleY = 0.5;
-          double imgWidth = image.width.toDouble();
-          double imgHeight = image.height.toDouble();
-
-          for (Pose pose in poses) {
-            final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
-            final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
-            final rightShoulder =
-                pose.landmarks[PoseLandmarkType.rightShoulder];
-
-            if (rightEye != null && rightEar != null && rightShoulder != null) {
-              // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
-              _dispatchCoordinates(
-                eyeX: rightEye.x * scaleX,
-                eyeY: rightEye.y * scaleY,
-                earX: rightEar.x * scaleX,
-                earY: rightEar.y * scaleY,
-                c7X: rightShoulder.x * scaleX,
-                c7Y: rightShoulder.y * scaleY,
-                rawEyeX: rightEye.x / imgWidth,
-                rawEyeY: rightEye.y / imgHeight,
-                rawEarX: rightEar.x / imgWidth,
-                rawEarY: rightEar.y / imgHeight,
-                rawC7X: rightShoulder.x / imgWidth,
-                rawC7Y: rightShoulder.y / imgHeight,
-              );
-            }
+          if (rightEye != null && rightEar != null && rightShoulder != null) {
+            // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
+            _dispatchCoordinates(
+              eyeX: rightEye.x * scaleX,
+              eyeY: rightEye.y * scaleY,
+              earX: rightEar.x * scaleX,
+              earY: rightEar.y * scaleY,
+              c7X: rightShoulder.x * scaleX,
+              c7Y: rightShoulder.y * scaleY,
+              rawEyeX: rightEye.x / imgWidth,
+              rawEyeY: rightEye.y / imgHeight,
+              rawEarX: rightEar.x / imgWidth,
+              rawEarY: rightEar.y / imgHeight,
+              rawC7X: rightShoulder.x / imgWidth,
+              rawC7Y: rightShoulder.y / imgHeight,
+            );
           }
-        });
-      }
+        }
+      });
     } catch (e) {
       print("카메라 및 AI 엔진 초기화 에러: $e");
     }
@@ -248,7 +214,7 @@ class MediaPipeService {
       try {
         final resData = response['result']['data'] ?? response['result'];
         print(
-          "🎯 [분석 성공 완벽 동기화] 생성된 리포트 ID: ${resData['report_id']}, 측정시간: ${resData['measured_at']}",
+          "[분석 성공 완벽 동기화] 생성된 리포트 ID: ${resData['report_id']}, 측정시간: ${resData['measured_at']}",
         );
       } catch (e) {
         print("응답 바디 로그 출력 도중 미세 파싱 에러 방어: $e");
