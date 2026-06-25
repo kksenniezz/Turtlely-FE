@@ -5,7 +5,7 @@ class SocialLoginService {
     try {
       final GoogleSignIn googleSignIn = GoogleSignIn(
         clientId:
-            "394605628068-nunr251v554jder3oi47vvhf6lehvitr.apps.googleusercontent.com",
+            "313213943885-9fko3i9flu4p9s2fodn24aigojd67nkt.apps.googleusercontent.com",
         scopes: <String>[
           'email',
           'https://www.googleapis.com/auth/userinfo.profile',
