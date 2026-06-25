@@ -29,7 +29,7 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        addManifestPlaceholders(["flutterImpellerBackend": "false"])
+        manifestPlaceholders["flutterImpellerBackend"] = "false"
     }
 
     buildTypes {
