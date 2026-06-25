@@ -46,8 +46,15 @@ class MediaPipeService {
   }
 
   Future<void> initializeCamera() async {
+    await cameraController?.dispose();
+    cameraController = null;
+
     try {
       // 📡 1. 자이로 가속도 센서 활성화 및 데이터 추출
+      if (cameraController != null) {
+        await cameraController!.dispose();
+        cameraController = null;
+      }
       _accelerometerSubscription = accelerometerEventStream().listen((
         AccelerometerEvent event,
       ) {
@@ -255,8 +262,8 @@ class MediaPipeService {
 
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
-      final int rawRotation = cameraController!.description.sensorOrientation;
-      final imageRotation = InputImageRotationValue.fromRawValue(rawRotation)!;
+      if (image.planes.isEmpty || image.planes[0].bytes.isEmpty) return null;
+      final imageRotation = InputImageRotation.rotation270deg;
 
       if (Platform.isAndroid) {
         final imageFormat = InputImageFormat.yuv420;
@@ -290,7 +297,6 @@ class MediaPipeService {
         final bytes = image.planes[0].bytes;
         return InputImage.fromBytes(bytes: bytes, metadata: metadata);
       }
-
       return null;
     } catch (e) {
       print("iOS/Android 통합 이미지 변환 처리 중 에러 발생: $e");
