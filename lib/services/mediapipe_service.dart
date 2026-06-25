@@ -8,6 +8,7 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'dart:math' as math;
+import 'dart:io';
 
 class MediaPipeService {
   static int memberId = 1;
@@ -238,25 +239,34 @@ class MediaPipeService {
 
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
-      final WriteBuffer allBytes = WriteBuffer();
-      for (final Plane plane in image.planes) {
-        allBytes.putUint8List(plane.bytes);
-      }
-      final bytes = allBytes.done().buffer.asUint8List();
-      final imageRotation = InputImageRotation.rotation0deg;
-      final inputImageFormat =
+      final int rawRotation = cameraController!.description.sensorOrientation;
+      final imageRotation = InputImageRotationValue.fromRawValue(rawRotation)!;
+      final imageFormat =
           InputImageFormatValue.fromRawValue(image.format.raw) ??
-          InputImageFormat.nv21;
+          InputImageFormat.yuv420;
 
       final metadata = InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: imageRotation,
-        format: inputImageFormat,
+        format: imageFormat,
         bytesPerRow: image.planes[0].bytesPerRow,
       );
-      return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+
+      if (Platform.isAndroid) {
+        final WriteBuffer allBytes = WriteBuffer();
+        for (final Plane plane in image.planes) {
+          allBytes.putUint8List(plane.bytes);
+        }
+        final bytes = allBytes.done().buffer.asUint8List();
+        return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+      } else if (Platform.isIOS) {
+        final bytes = image.planes[0].bytes;
+        return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+      }
+
+      return null;
     } catch (e) {
-      print("MLKit 바이트 변환 에러: $e");
+      print("iOS/Android 통합 이미지 변환 처리 중 에러 발생: $e");
       return null;
     }
   }
