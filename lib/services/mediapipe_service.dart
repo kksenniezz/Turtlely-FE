@@ -20,6 +20,7 @@ class MediaPipeService {
   bool isCapturing = false;
   int _frameCounter = 0;
   Offset? _lastEyePoint;
+  bool _isProcessing = false;
 
   // 실시간 기기 기울기 각도(라디안 단위)를 저장할 변수
   double currentTiltAngleRad = 0.0;
@@ -64,44 +65,59 @@ class MediaPipeService {
         frontCamera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.bgra8888, // 앱/웹 공통 처리용 포맷
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.yuv420
+            : ImageFormatGroup.bgra8888,
       );
 
       await cameraController!.initialize();
       isInitialized = true;
 
       cameraController!.startImageStream((CameraImage image) async {
-        final inputImage = _convertCameraImageToInputImage(image);
-        if (inputImage == null) return;
+        if (_isProcessing) return;
+        _isProcessing = true;
 
-        final List<Pose> poses = await _poseDetector.processImage(inputImage);
-        double scaleX = 0.5;
-        double scaleY = 0.5;
-        double imgWidth = image.width.toDouble();
-        double imgHeight = image.height.toDouble();
-
-        for (Pose pose in poses) {
-          final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
-          final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
-          final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
-
-          if (rightEye != null && rightEar != null && rightShoulder != null) {
-            // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
-            _dispatchCoordinates(
-              eyeX: rightEye.x * scaleX,
-              eyeY: rightEye.y * scaleY,
-              earX: rightEar.x * scaleX,
-              earY: rightEar.y * scaleY,
-              c7X: rightShoulder.x * scaleX,
-              c7Y: rightShoulder.y * scaleY,
-              rawEyeX: rightEye.x / imgWidth,
-              rawEyeY: rightEye.y / imgHeight,
-              rawEarX: rightEar.x / imgWidth,
-              rawEarY: rightEar.y / imgHeight,
-              rawC7X: rightShoulder.x / imgWidth,
-              rawC7Y: rightShoulder.y / imgHeight,
-            );
+        try {
+          final inputImage = _convertCameraImageToInputImage(image);
+          if (inputImage == null) {
+            _isProcessing = false;
+            return;
           }
+
+          final List<Pose> poses = await _poseDetector.processImage(inputImage);
+          double scaleX = 0.5;
+          double scaleY = 0.5;
+          double imgWidth = image.width.toDouble();
+          double imgHeight = image.height.toDouble();
+
+          for (Pose pose in poses) {
+            final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
+            final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
+            final rightShoulder =
+                pose.landmarks[PoseLandmarkType.rightShoulder];
+
+            if (rightEye != null && rightEar != null && rightShoulder != null) {
+              // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
+              _dispatchCoordinates(
+                eyeX: rightEye.x * scaleX,
+                eyeY: rightEye.y * scaleY,
+                earX: rightEar.x * scaleX,
+                earY: rightEar.y * scaleY,
+                c7X: rightShoulder.x * scaleX,
+                c7Y: rightShoulder.y * scaleY,
+                rawEyeX: rightEye.x / imgWidth,
+                rawEyeY: rightEye.y / imgHeight,
+                rawEarX: rightEar.x / imgWidth,
+                rawEarY: rightEar.y / imgHeight,
+                rawC7X: rightShoulder.x / imgWidth,
+                rawC7Y: rightShoulder.y / imgHeight,
+              );
+            }
+          }
+        } catch (e) {
+          print("실시간 프레임 AI 추론 연산 중 예외 발생: $e");
+        } finally {
+          _isProcessing = false;
         }
       });
     } catch (e) {
