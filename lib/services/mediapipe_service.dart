@@ -241,25 +241,36 @@ class MediaPipeService {
     try {
       final int rawRotation = cameraController!.description.sensorOrientation;
       final imageRotation = InputImageRotationValue.fromRawValue(rawRotation)!;
-      final imageFormat =
-          InputImageFormatValue.fromRawValue(image.format.raw) ??
-          InputImageFormat.yuv420;
-
-      final metadata = InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: imageRotation,
-        format: imageFormat,
-        bytesPerRow: image.planes[0].bytesPerRow,
-      );
 
       if (Platform.isAndroid) {
+        final imageFormat = InputImageFormat.yuv420;
+
+        final metadata = InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: imageRotation,
+          format: imageFormat,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        );
+
         final WriteBuffer allBytes = WriteBuffer();
         for (final Plane plane in image.planes) {
           allBytes.putUint8List(plane.bytes);
         }
         final bytes = allBytes.done().buffer.asUint8List();
+
         return InputImage.fromBytes(bytes: bytes, metadata: metadata);
       } else if (Platform.isIOS) {
+        final imageFormat =
+            InputImageFormatValue.fromRawValue(image.format.raw) ??
+            InputImageFormat.bgra8888;
+
+        final metadata = InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: imageRotation,
+          format: imageFormat,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        );
+
         final bytes = image.planes[0].bytes;
         return InputImage.fromBytes(bytes: bytes, metadata: metadata);
       }
