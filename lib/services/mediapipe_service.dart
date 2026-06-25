@@ -6,16 +6,26 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+<<<<<<< HEAD
 
 class MediaPipeService {
   static String loginId = "";
   final String baseUrl = "http://54.144.66.35:8080";
+=======
+import 'package:sensors_plus/sensors_plus.dart';
+import 'dart:math' as math;
+
+class MediaPipeService {
+  static int memberId = 1;
+  final String baseUrl = "http://54.144.66.35.nip.io:8000";
+>>>>>>> origin/feature/auth-integration
   final storage = const FlutterSecureStorage();
   List<Map<String, dynamic>> coordinateBatch = [];
 
   bool isCapturing = false;
   int _frameCounter = 0;
   Offset? _lastEyePoint;
+<<<<<<< HEAD
   CameraController? cameraController;
   bool isInitialized = false;
 
@@ -26,6 +36,95 @@ class MediaPipeService {
   Future<void> initializeCamera() async {
     // 비전 기능 임시 비활성화 (모바일 테스트용)
     isInitialized = false;
+=======
+
+  // 실시간 기기 기울기 각도(라디안 단위)를 저장할 변수
+  double currentTiltAngleRad = 0.0;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
+
+  CameraController? cameraController;
+  bool isInitialized = false;
+
+  // 모바일용 MLKit 포즈 엔진
+  final PoseDetector _poseDetector = PoseDetector(
+    options: PoseDetectorOptions(mode: PoseDetectionMode.stream),
+  );
+
+  final StreamController<Map<String, dynamic>> _poseStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get poseStream => _poseStreamController.stream;
+
+  // 📸 카메라 초기화 및 실시간 프레임 리슨 시작
+  String _generateTimestamp() {
+    final now = DateTime.now();
+    String maroon(int value) => value.toString().padLeft(2, '0');
+    return "${now.year}-${maroon(now.month)}-${maroon(now.day)} ${maroon(now.hour)}:${maroon(now.minute)}:${maroon(now.second)}";
+  }
+
+  Future<void> initializeCamera() async {
+    try {
+      // 📡 1. 자이로 가속도 센서 활성화 및 데이터 추출
+      _accelerometerSubscription = accelerometerEventStream().listen((
+        AccelerometerEvent event,
+      ) {
+        // 스마트폰 수직 거치 기준 핏 조율 연산식
+        currentTiltAngleRad = math.atan2(event.y, event.z) - (math.pi / 2);
+      });
+
+      final cameras = await availableCameras();
+      final frontCamera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+
+      cameraController = CameraController(
+        frontCamera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.bgra8888, // 앱/웹 공통 처리용 포맷
+      );
+
+      await cameraController!.initialize();
+      isInitialized = true;
+
+      cameraController!.startImageStream((CameraImage image) async {
+        final inputImage = _convertCameraImageToInputImage(image);
+        if (inputImage == null) return;
+
+        final List<Pose> poses = await _poseDetector.processImage(inputImage);
+        double scaleX = 0.5;
+        double scaleY = 0.5;
+        double imgWidth = image.width.toDouble();
+        double imgHeight = image.height.toDouble();
+
+        for (Pose pose in poses) {
+          final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
+          final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
+          final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+
+          if (rightEye != null && rightEar != null && rightShoulder != null) {
+            // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
+            _dispatchCoordinates(
+              eyeX: rightEye.x * scaleX,
+              eyeY: rightEye.y * scaleY,
+              earX: rightEar.x * scaleX,
+              earY: rightEar.y * scaleY,
+              c7X: rightShoulder.x * scaleX,
+              c7Y: rightShoulder.y * scaleY,
+              rawEyeX: rightEye.x / imgWidth,
+              rawEyeY: rightEye.y / imgHeight,
+              rawEarX: rightEar.x / imgWidth,
+              rawEarY: rightEar.y / imgHeight,
+              rawC7X: rightShoulder.x / imgWidth,
+              rawC7Y: rightShoulder.y / imgHeight,
+            );
+          }
+        }
+      });
+    } catch (e) {
+      print("카메라 및 AI 엔진 초기화 에러: $e");
+    }
+>>>>>>> origin/feature/auth-integration
   }
 
   void _dispatchCoordinates({
@@ -49,15 +148,40 @@ class MediaPipeService {
       'eye': Offset(filteredEyeX, filteredEyeY),
       'ear': Offset(earX, earY),
       'c7': Offset(c7X, c7Y),
+      'tilt': currentTiltAngleRad,
     });
 
     if (isCapturing) {
       _frameCounter++;
       if (_frameCounter % 2 == 0) {
+<<<<<<< HEAD
         coordinateBatch.add({
           "c7_x": rawC7X, "c7_y": rawC7Y,
           "eye_x": rawEyeX, "eye_y": rawEyeY,
           "tragus_x": rawEarX, "tragus_y": rawEarY,
+=======
+        double cosT = math.cos(-currentTiltAngleRad);
+        double sinT = math.sin(-currentTiltAngleRad);
+
+        double dxEar = rawEarX - rawC7X;
+        double dyEar = rawEarY - rawC7Y;
+        double calibratedRawEarX = rawC7X + (dxEar * cosT - dyEar * sinT);
+        double calibratedRawEarY = rawC7Y + (dxEar * sinT + dyEar * cosT);
+
+        double dxEye = rawEyeX - rawC7X;
+        double dyEye = rawEyeY - rawC7Y;
+        double calibratedRawEyeX = rawC7X + (dxEye * cosT - dyEye * sinT);
+        double calibratedRawEyeY = rawC7Y + (dxEye * sinT + dyEye * cosT);
+
+        coordinateBatch.add({
+          "c7_x": rawC7X,
+          "c7_y": rawC7Y,
+          "eye_x": calibratedRawEyeX,
+          "eye_y": calibratedRawEyeY,
+          "tragus_x": calibratedRawEarX,
+          "tragus_y": calibratedRawEarY,
+          "timestamp": _generateTimestamp(),
+>>>>>>> origin/feature/auth-integration
         });
       }
     }
@@ -68,6 +192,7 @@ class MediaPipeService {
     _lastEyePoint = null;
     _frameCounter = 0;
     isCapturing = true;
+<<<<<<< HEAD
   }
 
   Future<bool> sendBatchVisionData() async {
@@ -96,12 +221,96 @@ class MediaPipeService {
         "tragus_y": double.parse(frame["tragus_y"].toString()),
       }).toList(),
       "login_id": userIdToSend.trim(),
+=======
+    print("3초 데이터 수집 파이프라인 가동 개시");
+  }
+
+  // [연동의 정수] vision.dart 한 줄도 안 고치고 이메일 연동 완료하는 마법 구역
+  Future<bool> sendBatchVisionData() async {
+    isCapturing = false;
+    if (coordinateBatch.isEmpty) return false;
+    int activeMemberId = 1;
+
+    try {
+      final accessToken = await storage.read(key: 'accessToken');
+      if (accessToken != null &&
+          accessToken.isNotEmpty &&
+          accessToken != "null") {
+        final normalizedPayload = utf8.decode(
+          base64Url.decode(base64Url.normalize(accessToken.split('.')[1])),
+        );
+        final Map<String, dynamic> payloadMap = jsonDecode(normalizedPayload);
+
+        // [토큰 디코딩 보안 분석 기법] 토큰 배를 갈라 숫자 member_id 원천 추출
+        if (payloadMap['member_id'] != null) {
+          activeMemberId = int.parse(payloadMap['member_id'].toString());
+          MediaPipeService.memberId = activeMemberId; // 전역 스태틱 공간 공유 백업
+        }
+      }
+    } catch (e) {
+      print("비전 데이터 송신 전 member_id 토큰 파싱 에러 (기본값 처리): $e");
+    }
+
+    final Map<String, dynamic> requestPayload = {
+      "frames": coordinateBatch.map((frame) {
+        return {
+          "c7_x": double.parse(
+            double.parse(frame["c7_x"].toString()).toStringAsFixed(2),
+          ),
+          "c7_y": double.parse(
+            double.parse(frame["c7_y"].toString()).toStringAsFixed(2),
+          ),
+          "eye_x": double.parse(
+            double.parse(frame["eye_x"].toString()).toStringAsFixed(2),
+          ),
+          "eye_y": double.parse(
+            double.parse(frame["eye_y"].toString()).toStringAsFixed(2),
+          ),
+          "tragus_x": double.parse(
+            double.parse(frame["tragus_x"].toString()).toStringAsFixed(2),
+          ),
+          "tragus_y": double.parse(
+            double.parse(frame["tragus_y"].toString()).toStringAsFixed(2),
+          ),
+          "timestamp": frame["timestamp"], // 타임스탬프 데이터 결합
+        };
+      }).toList(),
+      "member_id": activeMemberId,
+>>>>>>> origin/feature/auth-integration
     };
 
     final response = await _postRequest("/report/analyze", requestPayload);
     return response['success'] == true;
   }
 
+<<<<<<< HEAD
+=======
+  InputImage? _convertCameraImageToInputImage(CameraImage image) {
+    try {
+      final WriteBuffer allBytes = WriteBuffer();
+      for (final Plane plane in image.planes) {
+        allBytes.putUint8List(plane.bytes);
+      }
+      final bytes = allBytes.done().buffer.asUint8List();
+      final imageRotation = InputImageRotation.rotation0deg;
+      final inputImageFormat =
+          InputImageFormatValue.fromRawValue(image.format.raw) ??
+          InputImageFormat.nv21;
+
+      final metadata = InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: imageRotation,
+        format: inputImageFormat,
+        bytesPerRow: image.planes[0].bytesPerRow,
+      );
+      return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+    } catch (e) {
+      print("MLKit 바이트 변환 에러: $e");
+      return null;
+    }
+  }
+
+>>>>>>> origin/feature/auth-integration
   Future<Map<String, dynamic>> _postRequest(String path, dynamic body) async {
     final url = Uri.parse('$baseUrl$path');
     try {
@@ -122,6 +331,7 @@ class MediaPipeService {
   }
 
   void dispose() {
+    _accelerometerSubscription?.cancel();
     cameraController?.dispose();
     _poseStreamController.close();
   }

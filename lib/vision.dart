@@ -26,6 +26,7 @@ class _VisionPageState extends State<VisionPage> {
   Offset eyePoint = Offset.zero; // 눈
   Offset earPoint = Offset.zero; // 외이도 (Tragus)
   Offset c7Point = Offset.zero; // C7 (경추 7번)
+  double deviceTilt = 0.0;
 
   @override
   void initState() {
@@ -43,7 +44,7 @@ class _VisionPageState extends State<VisionPage> {
         eyePoint = poses['eye'] ?? Offset.zero;
         earPoint = poses['ear'] ?? Offset.zero;
         c7Point = poses['c7'] ?? Offset.zero;
-        // print("눈: $eyePoint, 외이도: $earPoint, C7: $c7Point");
+        deviceTilt = (poses['tilt'] as double?) ?? 0.0;
       });
     });
 
@@ -55,6 +56,7 @@ class _VisionPageState extends State<VisionPage> {
   @override
   void dispose() {
     _dotTimer?.cancel();
+    _mediaPipeService.dispose();
     super.dispose();
   }
 
@@ -85,9 +87,7 @@ class _VisionPageState extends State<VisionPage> {
 
       if (count == 3) {
         timer.cancel();
-
         bool success = await _mediaPipeService.sendBatchVisionData();
-
         setState(() {
           if (success) {
             step = 4; // 측정 완료 단계
@@ -183,16 +183,13 @@ class _VisionPageState extends State<VisionPage> {
                     _mediaPipeService.cameraController != null
                 ? LayoutBuilder(
                     builder: (context, constraints) {
-                      // 💡 크롬 창을 줄이거나 늘릴 때의 실시간 화면 크기를 가로채서 CustomPaint에 던집니다.
                       return Stack(
                         children: [
-                          // 화면을 꽉 채우는 카메라
                           Positioned.fill(
                             child: CameraPreview(
                               _mediaPipeService.cameraController!,
                             ),
                           ),
-                          // 카메라와 정확히 똑같은 '실시간 크기'의 도화지 배치
                           Positioned.fill(
                             child: CustomPaint(
                               size: Size(
@@ -204,6 +201,7 @@ class _VisionPageState extends State<VisionPage> {
                                 ear: earPoint,
                                 c7: c7Point,
                                 step: step,
+                                tiltAngleRad: deviceTilt,
                               ),
                             ),
                           ),
@@ -311,45 +309,37 @@ class PosePainter extends CustomPainter {
   final Offset ear;
   final Offset c7;
   final int step;
+  final double tiltAngleRad;
 
   PosePainter({
     required this.eye,
     required this.ear,
     required this.c7,
     required this.step,
+    this.tiltAngleRad = 0.0,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final double scaleX = size.width / 360.0;
     final double scaleY = size.height / 480.0;
-
     double offsetY = 0.0;
-    double stretchX = 1.0;
-
-    if (kIsWeb) {
-      if ((size.width / size.height) > (360.0 / 480.0)) {
-        offsetY = -(size.height * 0.08); // 위아래 밀림 방지
-        stretchX = 1.15; // 정면/측면 왜곡 방지
-      }
-    } else {
-      offsetY = 0.0;
-      stretchX = 1.0;
-    }
 
     Offset correctedEye = Offset.zero;
     Offset correctedEar = Offset.zero;
     Offset correctedC7 = Offset.zero;
 
+    double earShiftX = 0.94;
+
     if (eye != Offset.zero) {
       correctedEye = Offset(
-        size.width - (eye.dx * scaleX * stretchX),
+        size.width - (eye.dx * scaleX),
         (eye.dy * scaleY) + offsetY,
       );
     }
     if (ear != Offset.zero) {
       correctedEar = Offset(
-        size.width - (ear.dx * scaleX),
+        size.width - (ear.dx * scaleX * earShiftX),
         (ear.dy * scaleY) + offsetY,
       );
     }
@@ -459,10 +449,16 @@ class PosePainter extends CustomPainter {
       canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
       canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
 
+      double baseLength = 180.0;
+      Offset calibratedHorizontalLeft = Offset(
+        correctedC7.dx - (baseLength * math.cos(tiltAngleRad)),
+        correctedC7.dy - (baseLength * math.sin(tiltAngleRad)),
+      );
+
       // C7 중심의 CVA 수직 기준선 드로잉-
       canvas.drawLine(
         correctedC7,
-        Offset(correctedC7.dx - 180, correctedC7.dy),
+        calibratedHorizontalLeft,
         skeletonPaint
           ..color = TColor.blue
           ..strokeWidth = 3.0,
@@ -477,21 +473,19 @@ class PosePainter extends CustomPainter {
         correctedC7.dy - correctedEar.dy,
         correctedC7.dx - correctedEar.dx,
       );
+      double c7ToEarAngle = math.atan2(
+        correctedEar.dy - correctedC7.dy,
+        correctedEar.dx - correctedC7.dx,
+      );
+      if (c7ToEarAngle < 0) c7ToEarAngle += 2 * math.pi;
 
       // 호가 안쪽(몸 안쪽) 구역으로 싹 감기도록 스윕 각도 조율
       double craSweepAngle = angleToEye - angleToC7;
       if (craSweepAngle < 0) craSweepAngle += 2 * math.pi;
       if (craSweepAngle > math.pi) craSweepAngle = 2 * math.pi - craSweepAngle;
 
-      double c7ToEarAngle = math.atan2(
-        correctedEar.dy - correctedC7.dy,
-        correctedEar.dx - correctedC7.dx,
-      );
-
-      if (c7ToEarAngle < 0) c7ToEarAngle += 2 * math.pi;
-
       double cvaStartAngle = math.pi;
-      double cvaSweepAngle = math.pi - c7ToEarAngle;
+      double cvaSweepAngle = math.pi - c7ToEarAngle + tiltAngleRad;
 
       // CRA 부채꼴 호 드로잉
       final double craArcRadius = 20.0;
