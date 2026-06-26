@@ -814,51 +814,32 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                     ),
                   ],
                   lineTouchData: LineTouchData(
-                    touchCallback: (event, response) {},
+                    enabled: true,
+                    touchSpotThreshold: 40,
+                    handleBuiltInTouches: true,
+
                     touchTooltipData: LineTouchTooltipData(
                       getTooltipColor: (_) => Colors.white,
                       tooltipBorder: const BorderSide(
                         color: TColor.buttonGreen,
-                        width: 1,
+                        width: 1.5,
                       ),
-                      getTooltipItems: (touchedSpots) => touchedSpots
-                          .where((s) => s.barIndex == 0)
-                          .map(
-                            (s) => LineTooltipItem(
-                              "${s.y}°",
-                              const TextStyle(
-                                color: TColor.buttonGreen,
-                                fontWeight: FontWeight.bold,
-                              ),
+                      getTooltipItems: (touchedSpots) {
+                        return touchedSpots.map((spot) {
+                          final isNormalAngle = spot.barIndex == 1;
+
+                          return LineTooltipItem(
+                            "${spot.y}°",
+                            TextStyle(
+                              color: isNormalAngle
+                                  ? TColor.pink
+                                  : TColor.buttonGreen,
+                              fontWeight: FontWeight.bold,
                             ),
-                          )
-                          .toList(),
+                          );
+                        }).toList();
+                      },
                     ),
-                    getTouchedSpotIndicator:
-                        (LineChartBarData barData, List<int> spotIndexes) {
-                          return spotIndexes.map((spotIndex) {
-                            if (barData.color == color) {
-                              return TouchedSpotIndicatorData(
-                                FlLine(
-                                  color: TColor.buttonGreen.withOpacity(0.3),
-                                  strokeWidth: 1,
-                                ),
-                                FlDotData(
-                                  show: true,
-                                  getDotPainter:
-                                      (spot, percent, barData, index) =>
-                                          FlDotCirclePainter(
-                                            radius: 4,
-                                            color: TColor.buttonGreen,
-                                            strokeWidth: 2,
-                                            strokeColor: Colors.white,
-                                          ),
-                                ),
-                              );
-                            }
-                            return null;
-                          }).toList();
-                        },
                   ),
                 ),
               ),
