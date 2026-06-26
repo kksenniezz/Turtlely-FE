@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'dart:js' as js;
+import 'package:sensors_plus/sensors_plus.dart';
+import 'dart:math' as math;
+import 'dart:io';
 
 class MediaPipeService {
   static int memberId = 1;
@@ -18,6 +20,11 @@ class MediaPipeService {
   bool isCapturing = false;
   int _frameCounter = 0;
   Offset? _lastEyePoint;
+  bool _isProcessing = false;
+
+  // 실시간 기기 기울기 각도(라디안 단위)를 저장할 변수
+  double currentTiltAngleRad = 0.0;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
 
   CameraController? cameraController;
   bool isInitialized = false;
@@ -27,9 +34,9 @@ class MediaPipeService {
     options: PoseDetectorOptions(mode: PoseDetectionMode.stream),
   );
 
-  final StreamController<Map<String, Offset>> _poseStreamController =
-      StreamController<Map<String, Offset>>.broadcast();
-  Stream<Map<String, Offset>> get poseStream => _poseStreamController.stream;
+  final StreamController<Map<String, dynamic>> _poseStreamController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get poseStream => _poseStreamController.stream;
 
   // 📸 카메라 초기화 및 실시간 프레임 리슨 시작
   String _generateTimestamp() {
@@ -39,7 +46,22 @@ class MediaPipeService {
   }
 
   Future<void> initializeCamera() async {
+    await cameraController?.dispose();
+    cameraController = null;
+
     try {
+      // 📡 1. 자이로 가속도 센서 활성화 및 데이터 추출
+      if (cameraController != null) {
+        await cameraController!.dispose();
+        cameraController = null;
+      }
+      _accelerometerSubscription = accelerometerEventStream().listen((
+        AccelerometerEvent event,
+      ) {
+        // 스마트폰 수직 거치 기준 핏 조율 연산식
+        currentTiltAngleRad = math.atan2(event.y, event.z) - (math.pi / 2);
+      });
+
       final cameras = await availableCameras();
       final frontCamera = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.front,
@@ -50,46 +72,24 @@ class MediaPipeService {
         frontCamera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.bgra8888, // 앱/웹 공통 처리용 포맷
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.yuv420
+            : ImageFormatGroup.bgra8888,
       );
 
       await cameraController!.initialize();
       isInitialized = true;
 
-      if (kIsWeb) {
-        // 🌐 [웹 브라우저 환경 실행]
-        Timer(const Duration(milliseconds: 500), () {
-          js.context.callMethod('startWebMediaPipe');
-        });
+      cameraController!.startImageStream((CameraImage image) async {
+        if (_isProcessing) return;
+        _isProcessing = true;
 
-        // 자바스크립트(index.html)가 꺼내온 오른쪽 좌표 리시버 등록
-        js.context['onWebPoseDetected'] = (String jsonPayload) {
-          final data = jsonDecode(jsonPayload);
-
-          // 웹 미디어파이프 기본 스케일 보정 (화면 가이드라인 테두리 안쪽으로 안착)
-          double xRatio = 360.0;
-          double yRatio = 480.0;
-
-          _dispatchCoordinates(
-            eyeX: (data['eyeX'] ?? 0.5) * xRatio,
-            eyeY: (data['eyeY'] ?? 0.3) * yRatio,
-            earX: (data['earX'] ?? 0.5) * xRatio,
-            earY: (data['earY'] ?? 0.4) * yRatio,
-            c7X: (data['c7X'] ?? 0.5) * xRatio,
-            c7Y: (data['c7Y'] ?? 0.6) * yRatio,
-            rawEyeX: data['eyeX'] ?? 0.5,
-            rawEyeY: data['eyeY'] ?? 0.3,
-            rawEarX: data['earX'] ?? 0.5,
-            rawEarY: data['earY'] ?? 0.4,
-            rawC7X: data['c7X'] ?? 0.5,
-            rawC7Y: data['c7Y'] ?? 0.6,
-          );
-        };
-      } else {
-        // 스마트폰 모바일 앱 환경 실행
-        cameraController!.startImageStream((CameraImage image) async {
+        try {
           final inputImage = _convertCameraImageToInputImage(image);
-          if (inputImage == null) return;
+          if (inputImage == null) {
+            _isProcessing = false;
+            return;
+          }
 
           final List<Pose> poses = await _poseDetector.processImage(inputImage);
           double scaleX = 0.5;
@@ -121,8 +121,12 @@ class MediaPipeService {
               );
             }
           }
-        });
-      }
+        } catch (e) {
+          print("실시간 프레임 AI 추론 연산 중 예외 발생: $e");
+        } finally {
+          _isProcessing = false;
+        }
+      });
     } catch (e) {
       print("카메라 및 AI 엔진 초기화 에러: $e");
     }
@@ -158,20 +162,33 @@ class MediaPipeService {
       'eye': Offset(filteredEyeX, filteredEyeY),
       'ear': Offset(earX, earY),
       'c7': Offset(c7X, c7Y),
+      'tilt': currentTiltAngleRad,
     });
 
     // ⏳ 3초 타이머 활성화됐을 때만 바구니에 차곡차곡 적재
     if (isCapturing) {
       _frameCounter++;
       if (_frameCounter % 2 == 0) {
-        // 백엔드 전송용 바구니에는 웹/앱 구별 없이 완벽하게 정규화된 0.0 ~ 1.0 값만 저장!
+        double cosT = math.cos(-currentTiltAngleRad);
+        double sinT = math.sin(-currentTiltAngleRad);
+
+        double dxEar = rawEarX - rawC7X;
+        double dyEar = rawEarY - rawC7Y;
+        double calibratedRawEarX = rawC7X + (dxEar * cosT - dyEar * sinT);
+        double calibratedRawEarY = rawC7Y + (dxEar * sinT + dyEar * cosT);
+
+        double dxEye = rawEyeX - rawC7X;
+        double dyEye = rawEyeY - rawC7Y;
+        double calibratedRawEyeX = rawC7X + (dxEye * cosT - dyEye * sinT);
+        double calibratedRawEyeY = rawC7Y + (dxEye * sinT + dyEye * cosT);
+
         coordinateBatch.add({
           "c7_x": rawC7X,
           "c7_y": rawC7Y,
-          "eye_x": rawEyeX,
-          "eye_y": rawEyeY,
-          "tragus_x": rawEarX,
-          "tragus_y": rawEarY,
+          "eye_x": calibratedRawEyeX,
+          "eye_y": calibratedRawEyeY,
+          "tragus_x": calibratedRawEarX,
+          "tragus_y": calibratedRawEarY,
           "timestamp": _generateTimestamp(),
         });
       }
@@ -189,9 +206,7 @@ class MediaPipeService {
   // [연동의 정수] vision.dart 한 줄도 안 고치고 이메일 연동 완료하는 마법 구역
   Future<bool> sendBatchVisionData() async {
     isCapturing = false;
-
     if (coordinateBatch.isEmpty) return false;
-
     int activeMemberId = 1;
 
     try {
@@ -241,43 +256,50 @@ class MediaPipeService {
       "member_id": activeMemberId,
     };
 
-    print("터틀리 백엔드 POST /report/analyze 최종 바디: ${jsonEncode(requestPayload)}");
     final response = await _postRequest("/report/analyze", requestPayload);
-
-    if (response['success'] == true && response['result'] != null) {
-      try {
-        final resData = response['result']['data'] ?? response['result'];
-        print(
-          "🎯 [분석 성공 완벽 동기화] 생성된 리포트 ID: ${resData['report_id']}, 측정시간: ${resData['measured_at']}",
-        );
-      } catch (e) {
-        print("응답 바디 로그 출력 도중 미세 파싱 에러 방어: $e");
-      }
-    }
     return response['success'] == true;
   }
 
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
-      final WriteBuffer allBytes = WriteBuffer();
-      for (final Plane plane in image.planes) {
-        allBytes.putUint8List(plane.bytes);
-      }
-      final bytes = allBytes.done().buffer.asUint8List();
-      final imageRotation = InputImageRotation.rotation0deg;
-      final inputImageFormat =
-          InputImageFormatValue.fromRawValue(image.format.raw) ??
-          InputImageFormat.nv21;
+      if (image.planes.isEmpty || image.planes[0].bytes.isEmpty) return null;
+      final imageRotation = InputImageRotation.rotation270deg;
 
-      final metadata = InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: imageRotation,
-        format: inputImageFormat,
-        bytesPerRow: image.planes[0].bytesPerRow,
-      );
-      return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+      if (Platform.isAndroid) {
+        final imageFormat = InputImageFormat.yuv420;
+
+        final metadata = InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: imageRotation,
+          format: imageFormat,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        );
+
+        final WriteBuffer allBytes = WriteBuffer();
+        for (final Plane plane in image.planes) {
+          allBytes.putUint8List(plane.bytes);
+        }
+        final bytes = allBytes.done().buffer.asUint8List();
+
+        return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+      } else if (Platform.isIOS) {
+        final imageFormat =
+            InputImageFormatValue.fromRawValue(image.format.raw) ??
+            InputImageFormat.bgra8888;
+
+        final metadata = InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: imageRotation,
+          format: imageFormat,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        );
+
+        final bytes = image.planes[0].bytes;
+        return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+      }
+      return null;
     } catch (e) {
-      print("MLKit 바이트 변환 에러: $e");
+      print("iOS/Android 통합 이미지 변환 처리 중 에러 발생: $e");
       return null;
     }
   }
@@ -302,6 +324,7 @@ class MediaPipeService {
   }
 
   void dispose() {
+    _accelerometerSubscription?.cancel();
     cameraController?.dispose();
     _poseDetector.close();
     _poseStreamController.close();
