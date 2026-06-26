@@ -223,7 +223,7 @@ class _VisionPageState extends State<VisionPage> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Image.asset(
-                  'side_turtle.png',
+                  'assets/side_turtle.png',
                   width: 120,
                   height: 120,
                   errorBuilder: (context, error, stackTrace) {
