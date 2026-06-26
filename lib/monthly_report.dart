@@ -479,7 +479,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(child: _buildImageFrame("정상 기준", "normal_cva.png")),
+            Expanded(child: _buildImageFrame("정상 기준", "assets/normal_cva.png")),
           ],
         ),
         const SizedBox(height: 8),
@@ -502,7 +502,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(child: _buildImageFrame("정상 기준", "normal_cra.png")),
+            Expanded(child: _buildImageFrame("정상 기준", "assets/normal_cra.png")),
           ],
         ),
         const SizedBox(height: 8),
@@ -561,26 +561,26 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   String _getCvaImagePath(String type) {
     switch (type) {
       case "거북목":
-        return "turtle_cva.png";
+        return "assets/turtle_cva.png";
       case "일자목":
-        return "military_cva.png";
+        return "assets/military_cva.png";
       case "역C자목":
-        return "reverse_cva.png";
+        return "assets/reverse_cva.png";
       default:
-        return "normal_cva.png";
+        return "assets/normal_cva.png";
     }
   }
 
   String _getCraImagePath(String type) {
     switch (type) {
       case "거북목":
-        return "turtle_cra.png";
+        return "assets/turtle_cra.png";
       case "일자목":
-        return "military_cra.png";
+        return "assets/military_cra.png";
       case "역C자목":
-        return "reverse_cra.png";
+        return "assets/reverse_cra.png";
       default:
-        return "normal_cra.png";
+        return "assets/normal_cra.png";
     }
   }
 
