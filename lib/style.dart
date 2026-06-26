@@ -10,6 +10,7 @@ class TColor {
   static const lightGreen = Color(0xFFEBF2E7);
   static const red = Color(0xFFF05650);
   static const blue = Color(0xFF5151F8);
+  static const pink = Color(0xFFFF2D94);
 }
 
 // 2. 공통 텍스트 스타일 (8배수/4배수 반영)
