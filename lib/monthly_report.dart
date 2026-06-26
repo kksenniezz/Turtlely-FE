@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'style.dart';
 import 'vision.dart';
 import 'services/report_service.dart';
+import 'monthly_alarm.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class MonthlyReportView extends StatefulWidget {
@@ -191,62 +192,21 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           ),
           Expanded(
             child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: TColor.buttonGreen),
-                  )
-                : _buildMainContent(status),
+                ? const Center(child: CircularProgressIndicator())
+                : MonthlyAlarmView(
+                    // 여기서 호출
+                    report: _currentReport,
+                    status: status,
+                    selectedMonth: selectedMonth,
+                    isAlarmRegistered: isAlarmRegistered,
+                    networkErrorMessage: _networkErrorMessage,
+                    buildReadyView: _buildReadyView,
+                    buildReportResultView: _buildReportResultView,
+                  ),
           ),
         ],
       ),
     );
-  }
-
-  Widget _buildMainContent(int status) {
-    final report = _currentReport;
-
-    if (_networkErrorMessage != null) {
-      return Center(
-        child: Text(
-          "데이터를 불러오지 못했습니다.\n서버 상태나 인터넷 연결을 확인해 주세요.",
-          style: TText.body.copyWith(color: TColor.gray),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    if (status == 1 && (report == null || report.totalMeasurements == 0)) {
-      return _buildReadyView(
-        title: "이번 달은 월간 거북목 측정을\n아직 하지 않았어요!",
-        isMeasureActionMode: true,
-      );
-    }
-
-    if (status == 2 && report == null) {
-      return _buildReadyView(
-        title: "${selectedMonth} 월간 거북목 측정 기록이 없습니다",
-        hideActionButtons: true,
-      );
-    }
-
-    if (isAlarmRegistered && status != 2) {
-      return Center(
-        child: Text(
-          status == 0 ? "측정 기간이 되면 알려드릴게요!" : "리포트를 열심히 분석 중이에요!",
-          style: TText.body.copyWith(color: TColor.gray),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    switch (status) {
-      case 0:
-        return _buildReadyView(title: "이번 달은 측정일이 되면\n월간 거북목 측정을 할 수 있어요");
-      case 1:
-      case 2:
-        return _buildReportResultView();
-      default:
-        return const SizedBox();
-    }
   }
 
   Widget _buildReadyView({
