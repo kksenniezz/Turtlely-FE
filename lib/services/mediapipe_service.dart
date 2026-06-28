@@ -1,42 +1,27 @@
-//media pipe
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-<<<<<<< HEAD
+import 'package:sensors_plus/sensors_plus.dart';
+import 'dart:math' as math;
+import 'dart:io';
 
 class MediaPipeService {
   static String loginId = "";
-  final String baseUrl = "http://54.144.66.35:8080";
-=======
-import 'package:sensors_plus/sensors_plus.dart';
-import 'dart:math' as math;
-
-class MediaPipeService {
   static int memberId = 1;
   final String baseUrl = "http://54.144.66.35.nip.io:8000";
->>>>>>> origin/feature/auth-integration
   final storage = const FlutterSecureStorage();
+  // 임시적으로 3초간 측정한 좌표를 담는 바구니 (초당 10-15프레임 가정 -> 30-45개 좌표)
   List<Map<String, dynamic>> coordinateBatch = [];
 
   bool isCapturing = false;
   int _frameCounter = 0;
   Offset? _lastEyePoint;
-<<<<<<< HEAD
-  CameraController? cameraController;
-  bool isInitialized = false;
-
-  final StreamController<Map<String, Offset>> _poseStreamController =
-      StreamController<Map<String, Offset>>.broadcast();
-  Stream<Map<String, Offset>> get poseStream => _poseStreamController.stream;
-
-  Future<void> initializeCamera() async {
-    // 비전 기능 임시 비활성화 (모바일 테스트용)
-    isInitialized = false;
-=======
+  bool _isProcessing = false;
 
   // 실시간 기기 기울기 각도(라디안 단위)를 저장할 변수
   double currentTiltAngleRad = 0.0;
@@ -62,8 +47,15 @@ class MediaPipeService {
   }
 
   Future<void> initializeCamera() async {
+    await cameraController?.dispose();
+    cameraController = null;
+
     try {
       // 📡 1. 자이로 가속도 센서 활성화 및 데이터 추출
+      if (cameraController != null) {
+        await cameraController!.dispose();
+        cameraController = null;
+      }
       _accelerometerSubscription = accelerometerEventStream().listen((
         AccelerometerEvent event,
       ) {
@@ -81,59 +73,80 @@ class MediaPipeService {
         frontCamera,
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.bgra8888, // 앱/웹 공통 처리용 포맷
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.yuv420
+            : ImageFormatGroup.bgra8888,
       );
 
       await cameraController!.initialize();
       isInitialized = true;
 
       cameraController!.startImageStream((CameraImage image) async {
-        final inputImage = _convertCameraImageToInputImage(image);
-        if (inputImage == null) return;
+        if (_isProcessing) return;
+        _isProcessing = true;
 
-        final List<Pose> poses = await _poseDetector.processImage(inputImage);
-        double scaleX = 0.5;
-        double scaleY = 0.5;
-        double imgWidth = image.width.toDouble();
-        double imgHeight = image.height.toDouble();
-
-        for (Pose pose in poses) {
-          final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
-          final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
-          final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
-
-          if (rightEye != null && rightEar != null && rightShoulder != null) {
-            // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
-            _dispatchCoordinates(
-              eyeX: rightEye.x * scaleX,
-              eyeY: rightEye.y * scaleY,
-              earX: rightEar.x * scaleX,
-              earY: rightEar.y * scaleY,
-              c7X: rightShoulder.x * scaleX,
-              c7Y: rightShoulder.y * scaleY,
-              rawEyeX: rightEye.x / imgWidth,
-              rawEyeY: rightEye.y / imgHeight,
-              rawEarX: rightEar.x / imgWidth,
-              rawEarY: rightEar.y / imgHeight,
-              rawC7X: rightShoulder.x / imgWidth,
-              rawC7Y: rightShoulder.y / imgHeight,
-            );
+        try {
+          final inputImage = _convertCameraImageToInputImage(image);
+          if (inputImage == null) {
+            _isProcessing = false;
+            return;
           }
+
+          final List<Pose> poses = await _poseDetector.processImage(inputImage);
+          double scaleX = 0.5;
+          double scaleY = 0.5;
+          double imgWidth = image.width.toDouble();
+          double imgHeight = image.height.toDouble();
+
+          for (Pose pose in poses) {
+            final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
+            final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
+            final rightShoulder =
+                pose.landmarks[PoseLandmarkType.rightShoulder];
+
+            if (rightEye != null && rightEar != null && rightShoulder != null) {
+              // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
+              _dispatchCoordinates(
+                eyeX: rightEye.x * scaleX,
+                eyeY: rightEye.y * scaleY,
+                earX: rightEar.x * scaleX,
+                earY: rightEar.y * scaleY,
+                c7X: rightShoulder.x * scaleX,
+                c7Y: rightShoulder.y * scaleY,
+                rawEyeX: rightEye.x / imgWidth,
+                rawEyeY: rightEye.y / imgHeight,
+                rawEarX: rightEar.x / imgWidth,
+                rawEarY: rightEar.y / imgHeight,
+                rawC7X: rightShoulder.x / imgWidth,
+                rawC7Y: rightShoulder.y / imgHeight,
+              );
+            }
+          }
+        } catch (e) {
+          print("실시간 프레임 AI 추론 연산 중 예외 발생: $e");
+        } finally {
+          _isProcessing = false;
         }
       });
     } catch (e) {
       print("카메라 및 AI 엔진 초기화 에러: $e");
     }
->>>>>>> origin/feature/auth-integration
   }
 
+  // 🔄 좌표 스트림 전송 및 바구니 적재 공통화 함수 (정규화 인자 분리 설계)
   void _dispatchCoordinates({
-    required double eyeX, required double eyeY,
-    required double earX, required double earY,
-    required double c7X,  required double c7Y,
-    required double rawEyeX, required double rawEyeY,
-    required double rawEarX, required double rawEarY,
-    required double rawC7X,  required double rawC7Y,
+    required double eyeX,
+    required double eyeY,
+    required double earX,
+    required double earY,
+    required double c7X,
+    required double c7Y,
+    required double rawEyeX,
+    required double rawEyeY,
+    required double rawEarX,
+    required double rawEarY,
+    required double rawC7X,
+    required double rawC7Y,
   }) {
     double filteredEyeX = eyeX;
     double filteredEyeY = eyeY;
@@ -142,6 +155,7 @@ class MediaPipeService {
       filteredEyeX = (_lastEyePoint!.dx + eyeX) / 2;
       filteredEyeY = (_lastEyePoint!.dy + eyeY) / 2;
     }
+
     _lastEyePoint = Offset(filteredEyeX, filteredEyeY);
 
     _poseStreamController.add({
@@ -154,12 +168,6 @@ class MediaPipeService {
     if (isCapturing) {
       _frameCounter++;
       if (_frameCounter % 2 == 0) {
-<<<<<<< HEAD
-        coordinateBatch.add({
-          "c7_x": rawC7X, "c7_y": rawC7Y,
-          "eye_x": rawEyeX, "eye_y": rawEyeY,
-          "tragus_x": rawEarX, "tragus_y": rawEarY,
-=======
         double cosT = math.cos(-currentTiltAngleRad);
         double sinT = math.sin(-currentTiltAngleRad);
 
@@ -181,7 +189,6 @@ class MediaPipeService {
           "tragus_x": calibratedRawEarX,
           "tragus_y": calibratedRawEarY,
           "timestamp": _generateTimestamp(),
->>>>>>> origin/feature/auth-integration
         });
       }
     }
@@ -192,36 +199,6 @@ class MediaPipeService {
     _lastEyePoint = null;
     _frameCounter = 0;
     isCapturing = true;
-<<<<<<< HEAD
-  }
-
-  Future<bool> sendBatchVisionData() async {
-    isCapturing = false;
-    if (coordinateBatch.isEmpty) return false;
-
-    String userIdToSend = MediaPipeService.loginId;
-    if (userIdToSend.isEmpty || userIdToSend == "null") {
-      final savedId = await storage.read(key: 'savedLoginId');
-      if (savedId != null && savedId.isNotEmpty) {
-        userIdToSend = savedId;
-        MediaPipeService.loginId = savedId;
-      }
-    }
-    if (userIdToSend.isEmpty || userIdToSend == "null") {
-      userIdToSend = "guest@turtlely.com";
-    }
-
-    final Map<String, dynamic> requestPayload = {
-      "frames": coordinateBatch.map((frame) => {
-        "c7_x": double.parse(frame["c7_x"].toString()),
-        "c7_y": double.parse(frame["c7_y"].toString()),
-        "eye_x": double.parse(frame["eye_x"].toString()),
-        "eye_y": double.parse(frame["eye_y"].toString()),
-        "tragus_x": double.parse(frame["tragus_x"].toString()),
-        "tragus_y": double.parse(frame["tragus_y"].toString()),
-      }).toList(),
-      "login_id": userIdToSend.trim(),
-=======
     print("3초 데이터 수집 파이프라인 가동 개시");
   }
 
@@ -276,41 +253,56 @@ class MediaPipeService {
         };
       }).toList(),
       "member_id": activeMemberId,
->>>>>>> origin/feature/auth-integration
     };
 
     final response = await _postRequest("/report/analyze", requestPayload);
     return response['success'] == true;
   }
 
-<<<<<<< HEAD
-=======
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
-      final WriteBuffer allBytes = WriteBuffer();
-      for (final Plane plane in image.planes) {
-        allBytes.putUint8List(plane.bytes);
-      }
-      final bytes = allBytes.done().buffer.asUint8List();
-      final imageRotation = InputImageRotation.rotation0deg;
-      final inputImageFormat =
-          InputImageFormatValue.fromRawValue(image.format.raw) ??
-          InputImageFormat.nv21;
+      if (image.planes.isEmpty || image.planes[0].bytes.isEmpty) return null;
+      final imageRotation = InputImageRotation.rotation270deg;
 
-      final metadata = InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: imageRotation,
-        format: inputImageFormat,
-        bytesPerRow: image.planes[0].bytesPerRow,
-      );
-      return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+      if (Platform.isAndroid) {
+        final imageFormat = InputImageFormat.yuv420;
+
+        final metadata = InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: imageRotation,
+          format: imageFormat,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        );
+
+        final WriteBuffer allBytes = WriteBuffer();
+        for (final Plane plane in image.planes) {
+          allBytes.putUint8List(plane.bytes);
+        }
+        final bytes = allBytes.done().buffer.asUint8List();
+
+        return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+      } else if (Platform.isIOS) {
+        final imageFormat =
+            InputImageFormatValue.fromRawValue(image.format.raw) ??
+            InputImageFormat.bgra8888;
+
+        final metadata = InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: imageRotation,
+          format: imageFormat,
+          bytesPerRow: image.planes[0].bytesPerRow,
+        );
+
+        final bytes = image.planes[0].bytes;
+        return InputImage.fromBytes(bytes: bytes, metadata: metadata);
+      }
+      return null;
     } catch (e) {
-      print("MLKit 바이트 변환 에러: $e");
+      print("iOS/Android 통합 이미지 변환 처리 중 에러 발생: $e");
       return null;
     }
   }
 
->>>>>>> origin/feature/auth-integration
   Future<Map<String, dynamic>> _postRequest(String path, dynamic body) async {
     final url = Uri.parse('$baseUrl$path');
     try {
@@ -321,7 +313,7 @@ class MediaPipeService {
       );
       final data = jsonDecode(utf8.decode(response.bodyBytes));
       return {
-        "success": (response.statusCode == 200 && data['isSuccess'] == true),
+        "success": (response.statusCode == 200),
         "message": data['message'] ?? "에러가 발생했습니다.",
         "result": data['result'],
       };
@@ -333,6 +325,7 @@ class MediaPipeService {
   void dispose() {
     _accelerometerSubscription?.cancel();
     cameraController?.dispose();
+    _poseDetector.close();
     _poseStreamController.close();
   }
 }
