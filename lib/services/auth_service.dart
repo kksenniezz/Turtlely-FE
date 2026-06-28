@@ -37,7 +37,6 @@ class AuthService {
     Map<String, dynamic> body,
   ) async {
     final url = Uri.parse('$baseUrl$path');
-    // 1. 저장된 토큰 불러오기
     final accessToken = await storage.read(key: 'accessToken');
 
     try {
