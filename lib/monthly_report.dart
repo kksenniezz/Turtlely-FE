@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'style.dart';
-import 'vision.dart';
 import 'services/report_service.dart';
 import 'monthly_alarm.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -200,84 +199,10 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                     selectedMonth: selectedMonth,
                     isAlarmRegistered: isAlarmRegistered,
                     networkErrorMessage: _networkErrorMessage,
-                    buildReadyView: _buildReadyView,
+                    onReportDataChanged: _fetchReportData,
                     buildReportResultView: _buildReportResultView,
                   ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReadyView({
-    required String title,
-    bool isMeasureActionMode = false,
-    bool hideActionButtons = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-      child: Column(
-        children: [
-          const Spacer(flex: 2),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: TText.title.copyWith(fontSize: 22, height: 1.5),
-          ),
-          const Spacer(flex: 3),
-          if (!hideActionButtons) ...[
-            if (!isMeasureActionMode) ...[
-              const Text(
-                "결과가 나오면 알려드릴까요?",
-                style: TextStyle(
-                  color: TColor.black,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            ElevatedButton(
-              onPressed: isAlarmRegistered && !isMeasureActionMode
-                  ? null
-                  : () async {
-                      if (isMeasureActionMode) {
-                        final bool? isMeasured = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const VisionPage(),
-                          ),
-                        );
-                        if (isMeasured == true) {
-                          _fetchReportData();
-                        }
-                      } else {
-                        setState(() => isAlarmRegistered = true);
-                        await Future.delayed(
-                          const Duration(milliseconds: 1200),
-                        );
-                        if (mounted) Navigator.pop(context);
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isAlarmRegistered && !isMeasureActionMode
-                    ? const Color(0xFF143601)
-                    : TColor.buttonGreen,
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                elevation: 0,
-              ),
-              child: Text(
-                isMeasureActionMode
-                    ? "월간 거북목 측정하러 가기"
-                    : (isAlarmRegistered ? "알림 설정 완료" : "알림 설정"),
-                style: TText.button,
-              ),
-            ),
-          ],
-          const SizedBox(height: 40),
         ],
       ),
     );
