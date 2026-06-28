@@ -68,7 +68,7 @@ class LoginSelection extends StatelessWidget {
               _buildResponsiveModalButton(
                 context: context,
                 label: '일반 $type',
-                assetPath: 'mail.png',
+                assetPath: 'assets/mail.png',
                 onPressed: () {
                   Navigator.pop(context);
                   Navigator.push(
@@ -86,7 +86,7 @@ class LoginSelection extends StatelessWidget {
               _buildResponsiveModalButton(
                 context: context,
                 label: '구글 $type',
-                assetPath: 'google_icon.png',
+                assetPath: 'assets/google_icon.png',
                 onPressed: () async {
                   try {
                     final socialService = SocialLoginService();
