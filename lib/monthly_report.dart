@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'style.dart';
-import 'vision.dart';
 import 'services/report_service.dart';
+import 'monthly_alarm.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class MonthlyReportView extends StatefulWidget {
   const MonthlyReportView({super.key});
@@ -190,133 +191,18 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           ),
           Expanded(
             child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: TColor.buttonGreen),
-                  )
-                : _buildMainContent(status),
+                ? const Center(child: CircularProgressIndicator())
+                : MonthlyAlarmView(
+                    // 여기서 호출
+                    report: _currentReport,
+                    status: status,
+                    selectedMonth: selectedMonth,
+                    isAlarmRegistered: isAlarmRegistered,
+                    networkErrorMessage: _networkErrorMessage,
+                    onReportDataChanged: _fetchReportData,
+                    buildReportResultView: _buildReportResultView,
+                  ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMainContent(int status) {
-    final report = _currentReport;
-
-    if (_networkErrorMessage != null) {
-      return Center(
-        child: Text(
-          "데이터를 불러오지 못했습니다.\n서버 상태나 인터넷 연결을 확인해 주세요.",
-          style: TText.body.copyWith(color: TColor.gray),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    if (status == 1 && (report == null || report.totalMeasurements == 0)) {
-      return _buildReadyView(
-        title: "이번 달은 월간 거북목 측정을\n아직 하지 않았어요!",
-        isMeasureActionMode: true,
-      );
-    }
-
-    if (status == 2 && report == null) {
-      return _buildReadyView(
-        title: "${selectedMonth} 월간 거북목 측정 기록이 없습니다",
-        hideActionButtons: true,
-      );
-    }
-
-    if (isAlarmRegistered && status != 2) {
-      return Center(
-        child: Text(
-          status == 0 ? "측정 기간이 되면 알려드릴게요!" : "리포트를 열심히 분석 중이에요!",
-          style: TText.body.copyWith(color: TColor.gray),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-
-    switch (status) {
-      case 0:
-        return _buildReadyView(title: "이번 달은 측정일이 되면\n월간 거북목 측정을 할 수 있어요");
-      case 1:
-      case 2:
-        return _buildReportResultView();
-      default:
-        return const SizedBox();
-    }
-  }
-
-  Widget _buildReadyView({
-    required String title,
-    bool isMeasureActionMode = false,
-    bool hideActionButtons = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-      child: Column(
-        children: [
-          const Spacer(flex: 2),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: TText.title.copyWith(fontSize: 22, height: 1.5),
-          ),
-          const Spacer(flex: 3),
-          if (!hideActionButtons) ...[
-            if (!isMeasureActionMode) ...[
-              const Text(
-                "결과가 나오면 알려드릴까요?",
-                style: TextStyle(
-                  color: TColor.black,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            ElevatedButton(
-              onPressed: isAlarmRegistered && !isMeasureActionMode
-                  ? null
-                  : () async {
-                      if (isMeasureActionMode) {
-                        final bool? isMeasured = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const VisionPage(),
-                          ),
-                        );
-                        if (isMeasured == true) {
-                          _fetchReportData();
-                        }
-                      } else {
-                        setState(() => isAlarmRegistered = true);
-                        await Future.delayed(
-                          const Duration(milliseconds: 1200),
-                        );
-                        if (mounted) Navigator.pop(context);
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isAlarmRegistered && !isMeasureActionMode
-                    ? const Color(0xFF143601)
-                    : TColor.buttonGreen,
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                elevation: 0,
-              ),
-              child: Text(
-                isMeasureActionMode
-                    ? "월간 거북목 측정하러 가기"
-                    : (isAlarmRegistered ? "알림 설정 완료" : "알림 설정"),
-                style: TText.button,
-              ),
-            ),
-          ],
-          const SizedBox(height: 40),
         ],
       ),
     );
@@ -478,7 +364,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(child: _buildImageFrame("정상 기준", "normal_cva.png")),
+            Expanded(child: _buildImageFrame("정상 기준", "assets/normal_cva.png")),
           ],
         ),
         const SizedBox(height: 8),
@@ -501,7 +387,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(child: _buildImageFrame("정상 기준", "normal_cra.png")),
+            Expanded(child: _buildImageFrame("정상 기준", "assets/normal_cra.png")),
           ],
         ),
         const SizedBox(height: 8),
@@ -560,26 +446,26 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   String _getCvaImagePath(String type) {
     switch (type) {
       case "거북목":
-        return "turtle_cva.png";
+        return "assets/turtle_cva.png";
       case "일자목":
-        return "military_cva.png";
+        return "assets/military_cva.png";
       case "역C자목":
-        return "reverse_cva.png";
+        return "assets/reverse_cva.png";
       default:
-        return "normal_cva.png";
+        return "assets/normal_cva.png";
     }
   }
 
   String _getCraImagePath(String type) {
     switch (type) {
       case "거북목":
-        return "turtle_cra.png";
+        return "assets/turtle_cra.png";
       case "일자목":
-        return "military_cra.png";
+        return "assets/military_cra.png";
       case "역C자목":
-        return "reverse_cra.png";
+        return "assets/reverse_cra.png";
       default:
-        return "normal_cra.png";
+        return "assets/normal_cra.png";
     }
   }
 
@@ -618,24 +504,230 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   }
 
   Widget _buildChartFrame(String title) {
+    final List<double> cvaData = [52.0, 58.0, -1.0, 54.0, 51.0, 49.0];
+    final List<double> craData = [148.0, 142.0, 138.0, 136.0, -1.0, 135.0];
+
+    final List<int> validIndices = [];
+    for (int i = 0; i < cvaData.length; i++) {
+      if (cvaData[i] != -1.0 && craData[i] != -1.0) {
+        validIndices.add(i);
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _buildSingleChartBox(
+          "CVA",
+          cvaData,
+          50.0,
+          TColor.buttonGreen,
+          validIndices,
+        ),
+        const SizedBox(height: 16),
+        _buildSingleChartBox(
+          "CRA",
+          craData,
+          145.0,
+          TColor.buttonGreen,
+          validIndices,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegend() {
+    return Row(
+      children: [
+        _legendItem(TColor.pink, "정상"),
+        const SizedBox(width: 12),
+        _legendItem(TColor.buttonGreen, "나의 각도"),
+      ],
+    );
+  }
+
+  Widget _legendItem(Color color, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(text, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+      ],
+    );
+  }
+
+  Widget _buildSingleChartBox(
+    String label,
+    List<double> data,
+    double target,
+    Color color,
+    List<int> validIndices,
+  ) {
+    final List<FlSpot> spots = validIndices.asMap().entries.map((e) {
+      int originalIdx = e.value;
+      return FlSpot(e.key.toDouble(), data[originalIdx]);
+    }).toList();
+
+    final int lastIdx = spots.length - 1;
+
     return Container(
+      width: double.infinity,
       height: 240,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+      decoration: ShapeDecoration(
+        color: const Color(0xFFFAFAFA),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shadows: [
+          const BoxShadow(
+            color: Color(0x140D0A2C),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              _buildLegend(),
+            ],
           ),
-          const Expanded(
-            child: Center(
-              child: Text("차트 데이터 영역", style: TextStyle(color: TColor.gray)),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              child: LineChart(
+                LineChartData(
+                  minY: target - 10,
+                  maxY: target + 10,
+                  minX: 0,
+                  maxX: lastIdx.toDouble(),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: true,
+                    drawHorizontalLine: true,
+                    verticalInterval: 1,
+                    horizontalInterval: 5,
+                    getDrawingVerticalLine: (val) => FlLine(
+                      color: Colors.grey.withOpacity(0.3),
+                      strokeWidth: 1,
+                    ),
+                    getDrawingHorizontalLine: (val) => FlLine(
+                      color: Colors.grey.withOpacity(0.3),
+                      strokeWidth: 1,
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        interval: 1,
+                        getTitlesWidget: (val, meta) => Text(
+                          "${validIndices[val.toInt()] + 1}월",
+                          style: const TextStyle(fontSize: 9),
+                        ),
+                      ),
+                    ),
+                    rightTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        interval: 5,
+                        getTitlesWidget: (val, meta) => Padding(
+                          padding: const EdgeInsets.only(left: 8.0),
+                          child: Text(
+                            "${val.toInt()}",
+                            style: TextStyle(
+                              color: (val == target)
+                                  ? TColor.pink
+                                  : Colors.grey,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    topTitles: AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: spots,
+                      isCurved: false,
+                      color: color,
+                      barWidth: 3,
+                      dotData: FlDotData(show: true),
+                    ),
+                    LineChartBarData(
+                      spots: [
+                        FlSpot(0, target),
+                        FlSpot(lastIdx.toDouble(), target),
+                      ],
+                      color: TColor.pink,
+                      barWidth: 2,
+                      dotData: FlDotData(show: false),
+                    ),
+                  ],
+                  lineTouchData: LineTouchData(
+                    enabled: true,
+                    touchSpotThreshold: 40,
+                    handleBuiltInTouches: true,
+
+                    touchTooltipData: LineTouchTooltipData(
+                      getTooltipColor: (_) => Colors.white,
+                      tooltipBorder: const BorderSide(
+                        color: TColor.buttonGreen,
+                        width: 1.5,
+                      ),
+                      getTooltipItems: (touchedSpots) {
+                        return touchedSpots.map((spot) {
+                          final isNormalAngle = spot.barIndex == 1;
+
+                          return LineTooltipItem(
+                            "${spot.y}°",
+                            TextStyle(
+                              color: isNormalAngle
+                                  ? TColor.pink
+                                  : TColor.buttonGreen,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          );
+                        }).toList();
+                      },
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
