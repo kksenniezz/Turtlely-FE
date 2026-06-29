@@ -499,7 +499,10 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           ),
         ),
         const SizedBox(height: 32),
-        _buildPredictionBoxFrame(),
+        PredictionChartWidget(
+          predictionData: [73, 75, 78, 80, 82, 85],
+          predictionMonths: ["6월", "7월", "8월", "9월", "10월", "11월"],
+        ),
         const SizedBox(height: 50),
       ],
     );
@@ -536,31 +539,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildPredictionBoxFrame() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "거북목 개선 예측",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 250),
-          Text(
-            "현재 추세 유지 시 3개월 뒤 개선 전망",
-            style: TextStyle(fontSize: 13, color: TColor.gray),
-          ),
-        ],
-      ),
     );
   }
 
