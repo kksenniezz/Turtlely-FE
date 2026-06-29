@@ -316,7 +316,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           ),
           const SizedBox(height: 24),
           Text(
-            "본 서비스는 카메라 측정 기반의 '자세 참고용' 결과이며, 의학적 진단을 대신할 수 없습니다\n정확한 진단이 필요한 경우 전문가에게 문의하세요",
+            "본 서비스는 카메라 측정 기반의 '자세 참고용' 결과이며,\n의학적 진단을 대신할 수 없습니다\n정확한 진단이 필요한 경우 전문가에게 문의하세요",
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 10,
