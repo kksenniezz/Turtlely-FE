@@ -299,14 +299,18 @@ class MediaPipeService {
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
       if (image.planes.isEmpty || image.planes[0].bytes.isEmpty) return null;
-      final imageRotation = InputImageRotation.rotation270deg;
+      final sensorOrientation = cameraController!.description.sensorOrientation;
+
+      InputImageRotation rotation =
+          InputImageRotationValue.fromRawValue(sensorOrientation) ??
+          InputImageRotation.rotation0deg;
 
       if (Platform.isAndroid) {
         final imageFormat = InputImageFormat.yuv420;
 
         final metadata = InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: imageRotation,
+          rotation: rotation,
           format: imageFormat,
           bytesPerRow: image.planes[0].bytesPerRow,
         );
@@ -325,7 +329,7 @@ class MediaPipeService {
 
         final metadata = InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: imageRotation,
+          rotation: rotation,
           format: imageFormat,
           bytesPerRow: image.planes[0].bytesPerRow,
         );
