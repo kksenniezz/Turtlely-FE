@@ -178,7 +178,7 @@ class _VisionPageState extends State<VisionPage> {
         children: [
           Positioned.fill(
             child: Container(
-              color: Colors.white,
+              color: TColor.lightGreen,
               child:
                   _mediaPipeService.isInitialized &&
                       _mediaPipeService.cameraController != null
@@ -222,84 +222,53 @@ class _VisionPageState extends State<VisionPage> {
 
           // 2. 거북이와 말풍선 배치
           Positioned(
-            bottom: 50,
+            bottom: 30,
             left: 20,
             right: 20,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Image.asset(
-                  'assets/side_turtle.png',
-                  width: 120,
-                  height: 120,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 120,
-                      height: 120,
-                      color: Colors.grey[800],
-                      child: const Icon(
-                        Icons.image_not_supported,
-                        color: Colors.grey,
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildSpeechBubble(
-                    _getStepText(),
-                    _shouldShowButton(),
-                    nextStep,
+            child: GestureDetector(
+              onTap: _shouldShowButton() ? nextStep : null,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Image.asset(
+                    'assets/side_turtle.png',
+                    width: 120,
+                    height: 120,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 120,
+                        height: 120,
+                        color: Colors.grey[800],
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          color: Colors.grey,
+                        ),
+                      );
+                    },
                   ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 말풍선 위젯
-  Widget _buildSpeechBubble(
-    String text,
-    bool showNextButton,
-    VoidCallback? onTap,
-  ) {
-    return Container(
-      width: 220,
-      constraints: BoxConstraints(minHeight: 110),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: TColor.lightGreen,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-          bottomLeft: Radius.circular(0),
-        ),
-      ),
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Text(
-              text,
-              style: TextStyle(color: TColor.darkGreen, fontSize: 16),
-            ),
-          ),
-          if (showNextButton)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: GestureDetector(
-                onTap: onTap,
-                child: CustomPaint(
-                  size: const Size(20, 15),
-                  painter: TrianglePainter(color: TColor.darkGreen),
-                ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Text(
+                      _getStepText(),
+                      style: TextStyle(
+                        color: TColor.darkGreen,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (_shouldShowButton())
+                    Padding(
+                      padding: const EdgeInsets.only(left: 10),
+                      child: CustomPaint(
+                        size: const Size(25, 20),
+                        painter: TrianglePainter(color: TColor.darkGreen),
+                      ),
+                    ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
