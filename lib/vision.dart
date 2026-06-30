@@ -203,6 +203,19 @@ class _VisionPageState extends State<VisionPage> {
                                   c7: c7Point,
                                   step: step,
                                   tiltAngleRad: deviceTilt,
+
+                                  imageSize: Size(
+                                    _mediaPipeService
+                                        .cameraController!
+                                        .value
+                                        .previewSize!
+                                        .height,
+                                    _mediaPipeService
+                                        .cameraController!
+                                        .value
+                                        .previewSize!
+                                        .width,
+                                  ),
                                 ),
                               ),
                             ),
@@ -311,6 +324,7 @@ class PosePainter extends CustomPainter {
   final Offset c7;
   final int step;
   final double tiltAngleRad;
+  final Size imageSize;
 
   PosePainter({
     required this.eye,
@@ -318,13 +332,14 @@ class PosePainter extends CustomPainter {
     required this.c7,
     required this.step,
     this.tiltAngleRad = 0.0,
+    required this.imageSize,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final bool isMeasuring = (step == 3);
-    final double scaleX = size.width / 360.0;
-    final double scaleY = size.height / 480.0;
+    final double scaleX = size.width / imageSize.width;
+    final double scaleY = size.height / imageSize.height;
     double offsetY = 0.0;
 
     Offset correctedEye = Offset.zero;
