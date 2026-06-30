@@ -57,17 +57,20 @@ class _ReportViewState extends State<ReportView> {
   Future<void> _loadRecordedDays() async {
     final api = ApiService();
     final reports = await api.getCalendarReports();
-    if (reports == null) return;
 
     setState(() {
-      _calendarReports = reports;
+      _calendarReports = reports; // null 체크 제거!
       _recordedDays.clear();
       for (final report in reports) {
         if (report['hasReport'] == true) {
           final dateStr = report['reportDate'] as String;
           final parts = dateStr.split('-');
           if (parts.length == 3) {
-            _recordedDays.add(DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2])));
+            _recordedDays.add(DateTime(
+              int.parse(parts[0]),
+              int.parse(parts[1]),
+              int.parse(parts[2]),
+            ));
           }
         }
       }

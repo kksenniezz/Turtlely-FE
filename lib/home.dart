@@ -31,7 +31,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
   double lastEstimatedCva = 0.0;
   String postureResult    = 'normal';
 
-  // 히스토리 변수
   List<double> cvaHistory     = [];
   List<String> timeHistory    = [];
   List<String> postureHistory = [];
@@ -99,7 +98,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
       }
     });
 
-    // 💡 실시간 수신 대기 시작
     await _ble.startNotify(parseSensorData);
   }
 
@@ -117,7 +115,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
     dailyApiTimer?.cancel();
     dailyApiTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      // 💡 이제 업데이트된 최신 실시간 센서 값을 들고 파이썬 서버로 갑니다!
       final result = await _api.sendDaily(
         accX: lastAccX,
         accY: lastAccY,
@@ -128,14 +125,19 @@ class _HomeViewContentState extends State<HomeViewContent> {
       final estimatedCva     = result["estimatedCva"] as double;
       final isBad            = result["isWarning"] as bool;
 
+      // 경고 로그 + 진동
       if (newPostureResult == "warning") {
-        debugPrint("🚨 경고! 진동 울림");
+        debugPrint("🚨 경고! CVA: $estimatedCva | 진동 울림");
         await _ble.sendCommand("VIBRATE");
       } else if (newPostureResult == "caution") {
-        debugPrint("⚠️ 주의! 진동 연속 울림");
+        debugPrint("⚠️ 주의! CVA: $estimatedCva | 진동 연속 울림");
         await _ble.sendCommand("VIBRATE");
         await Future.delayed(const Duration(milliseconds: 150));
         await _ble.sendCommand("VIBRATE");
+        await Future.delayed(const Duration(milliseconds: 150));
+        await _ble.sendCommand("VIBRATE");
+      } else {
+        debugPrint("✅ 자세 정상 | CVA: $estimatedCva");
       }
 
       final now = DateTime.now();
@@ -179,7 +181,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
         final avgX = double.tryParse(parts[0]) ?? 0.0;
         final avgY = double.tryParse(parts[1]) ?? 0.0;
         final avgZ = double.tryParse(parts[2]) ?? 0.0;
-        debugPrint("📊 캘리브레이션 완료 평균값 세팅");
+        debugPrint("📊 캘리브레이션 완료 | avgX: $avgX, avgY: $avgY, avgZ: $avgZ");
 
         _api.sendCalibration(avgX, avgY, avgZ).then((result) {
           setState(() {
@@ -209,7 +211,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
     final accZ = double.tryParse(parts[2]);
     if (accX == null) return;
 
-    // 💡 중요: 수신된 센서 패킷 수치를 실시간 변수에 쉼 없이 갱신해 줍니다!
     setState(() {
       lastAccX = accX;
       lastAccY = accY ?? 0.0;
@@ -223,7 +224,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
     await _ble.sendCommand("STOP");
     await _ble.stopNotify();
 
-    // Hive 로컬 백업 저장
     if (cvaHistory.isNotEmpty) {
       final today = DateTime.now();
       final dateKey = "${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}";
@@ -240,22 +240,12 @@ class _HomeViewContentState extends State<HomeViewContent> {
         duration       : totalDuration,
         normalDuration : normalDuration,
       );
-      debugPrint("✅ Hive 저장 완료: $dateKey");
+      debugPrint("✅ Hive 저장 완료: $dateKey | 평균CVA: $avgCva | 경고: $warningCount | 주의: $cautionCount");
     }
 
-    // 💡 [수정 완료] 고정된 false 대신, 경고 유무에 맞춰 진짜 상태 전달!
-    final result = await _api.saveReport(
-      isBadPosture: warningCount > 0 || cautionCount > 0, 
-      monitoringSeconds: monitoringSeconds,
-      level: _level,
-      angle: lastEstimatedCva,
-    );
+    _showSnackBar("측정 결과가 저장되었어요");
 
     setState(() {
-      _lastStatusCode   = result["statusCode"] ?? 0;
-      _lastResponseBody = result["body"] ?? "No Response";
-      _hasToken         = (result["token"] as String? ?? "").isNotEmpty;
-      _showDebug        = true;
       isMonitoring      = false;
       isCalibrating     = false;
       isBadPosture      = false;
@@ -276,10 +266,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
       normalDuration = 0;
       totalDuration  = 0;
     });
-
-    if (_lastStatusCode == 200 || _lastStatusCode == 201) {
-      _showSnackBar("측정 결과가 안전하게 저장되었어요");
-    }
   }
 
   @override
@@ -473,12 +459,21 @@ class _HomeViewContentState extends State<HomeViewContent> {
                   children: [
                     const Text(
                       "🛠️ 개발자 도구 (터치시 닫힘)",
-                      style: TextStyle(color: Colors.greenAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: Colors.greenAccent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        decoration: TextDecoration.none,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       "응답코드: $_lastStatusCode\n바디: $_lastResponseBody\n토큰있음: $_hasToken",
-                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        decoration: TextDecoration.none,
+                      ),
                     ),
                   ],
                 ),

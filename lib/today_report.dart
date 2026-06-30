@@ -55,7 +55,7 @@ class _TodayReportViewState extends State<TodayReportView> {
     } else {
       // 🟢 Case B: 그냥 리포트 탭으로 들어와서 id가 없을 때 ➡️ 오늘 날짜 데이터 매핑 시도
       final reports = await api.getCalendarReports();
-      if (reports != null) {
+      if (reports.isNotEmpty) {
         final targetDateStr = "${widget.date.year}-${widget.date.month.toString().padLeft(2,'0')}-${widget.date.day.toString().padLeft(2,'0')}";
         int? foundId;
         for (final report in reports) {

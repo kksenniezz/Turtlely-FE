@@ -28,7 +28,6 @@ class ApiService {
     try {
       final token = await _getToken();
       final currentMonthlyId = await _getMonthlyId();
-
       final response = await http.post(
         Uri.parse("$baseUrl/api/daily/calibration"),
         headers: {
@@ -50,7 +49,7 @@ class ApiService {
         "token": token,
       };
     } catch (e) {
-      debugPrint("❌ 일일 캘리브레이션 오류: $e");
+      debugPrint("❌ 캘리브레이션 오류: $e");
       return {"statusCode": 0, "body": e.toString(), "token": ""};
     }
   }
@@ -65,6 +64,7 @@ class ApiService {
     try {
       final token = await _getToken();
       final currentMonthlyId = await _getMonthlyId();
+      final currentMemberId = await _getMemberId();
 
       final response = await http.post(
         Uri.parse("$baseUrl/api/daily"),
@@ -74,6 +74,7 @@ class ApiService {
         },
         body: jsonEncode({
           "monthly_id"      : currentMonthlyId,
+          "member_id"       : currentMemberId,
           "current_accel_x" : accX,
           "current_accel_y" : accY,
           "current_accel_z" : accZ,
@@ -98,57 +99,6 @@ class ApiService {
     return {"postureResult": "normal", "estimatedCva": 0.0, "isWarning": false};
   }
 
-  // /api/daily/report
-  // 💡 posture_api_service.dart 파일의 saveReport 함수를 이걸로 통째로 변경해 줘!
-  Future<Map<String, dynamic>> saveReport({
-    required bool isBadPosture,
-    required int monitoringSeconds,
-    required String level,
-    required double angle,
-  }) async {
-    try {
-      final token = await _getToken();
-      final realMemberId = await _getMemberId();
-
-      // 💡 500 에러를 뿜던 http.post를 백엔드 규격에 맞춰 확실하게 http.put으로 변경!
-      final response = await http.put(
-        Uri.parse("$springUrl/api/daily/report"),
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer $token",
-        },
-        body: jsonEncode({
-          "member_id"           : realMemberId,
-          "angle"               : angle,
-          "postureStatus"       : isBadPosture ? 'warning' : 'normal',
-          "notificationTrigger" : isBadPosture ? 1 : 0,
-          "duration"            : monitoringSeconds,
-          "level"               : level,
-          "batteryLevel"        : 85,
-        }),
-      );
-
-      debugPrint("📡 리포트 응답 코드: ${response.statusCode}");
-      debugPrint("📡 리포트 응답 바디: ${response.body}");
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return {
-          "statusCode": response.statusCode,
-          "body": response.body,
-          "token": token ?? ""
-        };
-      } else {
-        return {
-          "statusCode": response.statusCode,
-          "body": response.body,
-          "token": token ?? ""
-        };
-      }
-    } catch (e) {
-      debugPrint("❌ 리포트 저장 중 에러 발생: $e");
-      return {"statusCode": 500, "body": e.toString(), "token": ""};
-    }
-  }
   // /api/daily/cal
   Future<List<dynamic>> getCalendarReports() async {
     try {
@@ -163,17 +113,14 @@ class ApiService {
       debugPrint("📅 캘린더 응답: ${response.body}");
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
-        
-        // 💡 result와 calendarReports가 null인지 안전하게 2중 방어막 확인
         if (json['result'] != null && json['result']['calenderReports'] != null) {
-          // 타입을 강제로 맞추지 않고, 있는 그대로의 List로 던져줍니다!
-          return json['result']['calendarReports'] as List<dynamic>;
+          return json['result']['calenderReports'] as List<dynamic>;
         }
       }
     } catch (e) {
       debugPrint("❌ 캘린더 오류: $e");
     }
-    return []; // 에러 나면 안전하게 빈 리스트 뱉기
+    return [];
   }
 
   // /api/daily/{dailyId}
