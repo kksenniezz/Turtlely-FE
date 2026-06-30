@@ -222,9 +222,9 @@ class _VisionPageState extends State<VisionPage> {
 
           // 2. 거북이와 말풍선 배치
           Positioned(
-            bottom: 30,
+            bottom: 20,
             left: 10,
-            right: 10,
+            right: 20,
             child: GestureDetector(
               onTap: _shouldShowButton() ? nextStep : null,
               child: Row(
