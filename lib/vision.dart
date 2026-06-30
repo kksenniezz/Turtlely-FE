@@ -190,21 +190,22 @@ class _VisionPageState extends State<VisionPage> {
                               _mediaPipeService.cameraController!,
                             ),
                           ),
-                          Positioned.fill(
-                            child: CustomPaint(
-                              size: Size(
-                                constraints.maxWidth,
-                                constraints.maxHeight,
-                              ),
-                              painter: PosePainter(
-                                eye: eyePoint,
-                                ear: earPoint,
-                                c7: c7Point,
-                                step: step,
-                                tiltAngleRad: deviceTilt,
+                          if (step >= 1 && step <= 3)
+                            Positioned.fill(
+                              child: CustomPaint(
+                                size: Size(
+                                  constraints.maxWidth,
+                                  constraints.maxHeight,
+                                ),
+                                painter: PosePainter(
+                                  eye: eyePoint,
+                                  ear: earPoint,
+                                  c7: c7Point,
+                                  step: step,
+                                  tiltAngleRad: deviceTilt,
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       );
                     },
@@ -321,6 +322,7 @@ class PosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final bool isMeasuring = (step == 3);
     final double scaleX = size.width / 360.0;
     final double scaleY = size.height / 480.0;
     double offsetY = 0.0;
@@ -359,9 +361,9 @@ class PosePainter extends CustomPainter {
 
     // 내 포즈 스켈레톤 선
     final skeletonPaint = Paint()
-      ..color = TColor.blue
+      ..color = isMeasuring ? TColor.blue : TColor.blue.withOpacity(0.3)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 5.0
+      ..strokeWidth = isMeasuring ? 5.0 : 2.0
       ..strokeCap = StrokeCap.round;
 
     final arcPaint = Paint()
@@ -449,110 +451,113 @@ class PosePainter extends CustomPainter {
       canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
       canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
 
-      double baseLength = 180.0;
-      Offset calibratedHorizontalLeft = Offset(
-        correctedC7.dx - (baseLength * math.cos(tiltAngleRad)),
-        correctedC7.dy - (baseLength * math.sin(tiltAngleRad)),
-      );
+      if (isMeasuring) {
+        double baseLength = 180.0;
+        Offset calibratedHorizontalLeft = Offset(
+          correctedC7.dx - (baseLength * math.cos(tiltAngleRad)),
+          correctedC7.dy - (baseLength * math.sin(tiltAngleRad)),
+        );
 
-      // C7 중심의 CVA 수직 기준선 드로잉-
-      canvas.drawLine(
-        correctedC7,
-        calibratedHorizontalLeft,
-        skeletonPaint
-          ..color = TColor.blue
-          ..strokeWidth = 3.0,
-      );
+        // C7 중심의 CVA 수직 기준선 드로잉-
+        canvas.drawLine(
+          correctedC7,
+          calibratedHorizontalLeft,
+          skeletonPaint
+            ..color = TColor.blue
+            ..strokeWidth = 3.0,
+        );
 
-      // CRA 부채꼴 호
-      double angleToEye = math.atan2(
-        correctedEye.dy - correctedEar.dy,
-        correctedEye.dx - correctedEar.dx,
-      );
-      double angleToC7 = math.atan2(
-        correctedC7.dy - correctedEar.dy,
-        correctedC7.dx - correctedEar.dx,
-      );
-      double c7ToEarAngle = math.atan2(
-        correctedEar.dy - correctedC7.dy,
-        correctedEar.dx - correctedC7.dx,
-      );
-      if (c7ToEarAngle < 0) c7ToEarAngle += 2 * math.pi;
+        // CRA 부채꼴 호
+        double angleToEye = math.atan2(
+          correctedEye.dy - correctedEar.dy,
+          correctedEye.dx - correctedEar.dx,
+        );
+        double angleToC7 = math.atan2(
+          correctedC7.dy - correctedEar.dy,
+          correctedC7.dx - correctedEar.dx,
+        );
+        double c7ToEarAngle = math.atan2(
+          correctedEar.dy - correctedC7.dy,
+          correctedEar.dx - correctedC7.dx,
+        );
+        if (c7ToEarAngle < 0) c7ToEarAngle += 2 * math.pi;
 
-      // 호가 안쪽(몸 안쪽) 구역으로 싹 감기도록 스윕 각도 조율
-      double craSweepAngle = angleToEye - angleToC7;
-      if (craSweepAngle < 0) craSweepAngle += 2 * math.pi;
-      if (craSweepAngle > math.pi) craSweepAngle = 2 * math.pi - craSweepAngle;
+        // 호가 안쪽(몸 안쪽) 구역으로 싹 감기도록 스윕 각도 조율
+        double craSweepAngle = angleToEye - angleToC7;
+        if (craSweepAngle < 0) craSweepAngle += 2 * math.pi;
+        if (craSweepAngle > math.pi)
+          craSweepAngle = 2 * math.pi - craSweepAngle;
 
-      double cvaStartAngle = math.pi;
-      double cvaSweepAngle = math.pi - c7ToEarAngle + tiltAngleRad;
+        double cvaStartAngle = math.pi;
+        double cvaSweepAngle = math.pi - c7ToEarAngle + tiltAngleRad;
 
-      // CRA 부채꼴 호 드로잉
-      final double craArcRadius = 20.0;
-      canvas.drawArc(
-        Rect.fromCircle(center: correctedEar, radius: craArcRadius),
-        angleToC7,
-        craSweepAngle,
-        false,
-        arcPaint..color = TColor.blue.withOpacity(0.8),
-      );
+        // CRA 부채꼴 호 드로잉
+        final double craArcRadius = 20.0;
+        canvas.drawArc(
+          Rect.fromCircle(center: correctedEar, radius: craArcRadius),
+          angleToC7,
+          craSweepAngle,
+          false,
+          arcPaint..color = TColor.blue.withOpacity(0.8),
+        );
 
-      if (cvaSweepAngle < 0) {
-        cvaStartAngle = math.pi;
-        cvaSweepAngle = c7ToEarAngle - math.pi;
+        if (cvaSweepAngle < 0) {
+          cvaStartAngle = math.pi;
+          cvaSweepAngle = c7ToEarAngle - math.pi;
+        }
+
+        // CVA 부채꼴 호 드로잉
+        final double cvaArcRadius = 40.0;
+        canvas.drawArc(
+          Rect.fromCircle(center: correctedC7, radius: cvaArcRadius),
+          cvaStartAngle,
+          cvaSweepAngle,
+          false,
+          arcPaint..color = TColor.blue.withOpacity(0.8),
+        );
+
+        _drawTextLabel(
+          canvas,
+          "눈",
+          correctedEye.dx - 10,
+          correctedEye.dy - 28,
+          fontSize: 16,
+          textColor: TColor.blue,
+        );
+        _drawTextLabel(
+          canvas,
+          "귀",
+          correctedEar.dx + 20,
+          correctedEar.dy,
+          fontSize: 16,
+          textColor: TColor.blue,
+        );
+        _drawTextLabel(
+          canvas,
+          "경추",
+          correctedC7.dx + 20,
+          correctedC7.dy - 5,
+          fontSize: 16,
+          textColor: TColor.blue,
+        );
+
+        _drawTextLabel(
+          canvas,
+          "CRA",
+          correctedEar.dx - 45,
+          correctedEar.dy + 25,
+          fontSize: 15,
+          textColor: TColor.blue,
+        );
+        _drawTextLabel(
+          canvas,
+          "CVA",
+          correctedC7.dx - 75,
+          correctedC7.dy - 25,
+          fontSize: 15,
+          textColor: TColor.blue,
+        );
       }
-
-      // CVA 부채꼴 호 드로잉
-      final double cvaArcRadius = 40.0;
-      canvas.drawArc(
-        Rect.fromCircle(center: correctedC7, radius: cvaArcRadius),
-        cvaStartAngle,
-        cvaSweepAngle,
-        false,
-        arcPaint..color = TColor.blue.withOpacity(0.8),
-      );
-
-      _drawTextLabel(
-        canvas,
-        "눈",
-        correctedEye.dx - 10,
-        correctedEye.dy - 28,
-        fontSize: 16,
-        textColor: TColor.blue,
-      );
-      _drawTextLabel(
-        canvas,
-        "귀",
-        correctedEar.dx + 20,
-        correctedEar.dy,
-        fontSize: 16,
-        textColor: TColor.blue,
-      );
-      _drawTextLabel(
-        canvas,
-        "경추",
-        correctedC7.dx + 20,
-        correctedC7.dy - 5,
-        fontSize: 16,
-        textColor: TColor.blue,
-      );
-
-      _drawTextLabel(
-        canvas,
-        "CRA",
-        correctedEar.dx - 45,
-        correctedEar.dy + 25,
-        fontSize: 15,
-        textColor: TColor.blue,
-      );
-      _drawTextLabel(
-        canvas,
-        "CVA",
-        correctedC7.dx - 75,
-        correctedC7.dy - 25,
-        fontSize: 15,
-        textColor: TColor.blue,
-      );
 
       // 랜드마크 점 찍기
       final List<Offset> points = [correctedEye, correctedEar, correctedC7];
@@ -585,7 +590,9 @@ class PosePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant PosePainter oldDelegate) {
+    return oldDelegate.step != step || oldDelegate.eye != eye;
+  }
 }
 
 class TrianglePainter extends CustomPainter {
