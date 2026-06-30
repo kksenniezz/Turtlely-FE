@@ -262,7 +262,7 @@ class _VisionPageState extends State<VisionPage> {
                   ),
                   if (_shouldShowButton())
                     Padding(
-                      padding: const EdgeInsets.only(left: 10),
+                      padding: const EdgeInsets.only(left: 10, bottom: -30),
                       child: CustomPaint(
                         size: const Size(20, 15),
                         painter: TrianglePainter(color: TColor.darkGreen),
