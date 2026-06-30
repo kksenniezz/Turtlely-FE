@@ -181,51 +181,41 @@ class _VisionPageState extends State<VisionPage> {
             child:
                 _mediaPipeService.isInitialized &&
                     _mediaPipeService.cameraController != null
-                ? LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Stack(
-                        children: [
+                ? AspectRatio(
+                    // 카메라 프리뷰의 실제 비율을 강제로 고정
+                    aspectRatio:
+                        _mediaPipeService.cameraController!.value.aspectRatio,
+                    child: Stack(
+                      children: [
+                        CameraPreview(_mediaPipeService.cameraController!),
+                        if (step >= 1 && step <= 3)
                           Positioned.fill(
-                            child: CameraPreview(
-                              _mediaPipeService.cameraController!,
-                            ),
-                          ),
-                          if (step >= 1 && step <= 3)
-                            Positioned.fill(
-                              child: CustomPaint(
-                                size: Size(
-                                  constraints.maxWidth,
-                                  constraints.maxHeight,
-                                ),
-                                painter: PosePainter(
-                                  eye: eyePoint,
-                                  ear: earPoint,
-                                  c7: c7Point,
-                                  step: step,
-                                  tiltAngleRad: deviceTilt,
-
-                                  imageSize: Size(
-                                    _mediaPipeService
-                                        .cameraController!
-                                        .value
-                                        .previewSize!
-                                        .height,
-                                    _mediaPipeService
-                                        .cameraController!
-                                        .value
-                                        .previewSize!
-                                        .width,
-                                  ),
+                            child: CustomPaint(
+                              painter: PosePainter(
+                                eye: eyePoint,
+                                ear: earPoint,
+                                c7: c7Point,
+                                step: step,
+                                tiltAngleRad: deviceTilt,
+                                imageSize: Size(
+                                  _mediaPipeService
+                                      .cameraController!
+                                      .value
+                                      .previewSize!
+                                      .width,
+                                  _mediaPipeService
+                                      .cameraController!
+                                      .value
+                                      .previewSize!
+                                      .height,
                                 ),
                               ),
                             ),
-                        ],
-                      );
-                    },
+                          ),
+                      ],
+                    ),
                   )
-                : const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
+                : const Center(child: CircularProgressIndicator()),
           ),
 
           // 2. 거북이와 말풍선 배치
@@ -340,7 +330,7 @@ class PosePainter extends CustomPainter {
     final bool isMeasuring = (step == 3);
     final double scaleX = size.width / imageSize.width;
     final double scaleY = size.height / imageSize.height;
-    double offsetY = 0.0;
+    // double offsetY = 0.0;
 
     Offset correctedEye = Offset.zero;
     Offset correctedEar = Offset.zero;
@@ -349,22 +339,22 @@ class PosePainter extends CustomPainter {
     double earShiftX = 0.94;
 
     if (eye != Offset.zero) {
-      correctedEye = Offset(
-        size.width - (eye.dx * scaleX),
-        (eye.dy * scaleY) + offsetY,
-      );
+      // correctedEye = Offset(size.width - (eye.dx * scaleX), (eye.dy * scaleY)+ offsetY);
+      correctedEye = Offset((eye.dx * scaleX), (eye.dy * scaleY));
     }
     if (ear != Offset.zero) {
-      correctedEar = Offset(
-        size.width - (ear.dx * scaleX * earShiftX),
-        (ear.dy * scaleY) + offsetY,
-      );
+      // correctedEar = Offset(
+      //   size.width - (ear.dx * scaleX * earShiftX),
+      //   (ear.dy * scaleY) + offsetY,
+      // );
+      correctedEar = Offset((ear.dx * scaleX * earShiftX), (ear.dy * scaleY));
     }
     if (c7 != Offset.zero) {
-      correctedC7 = Offset(
-        size.width - (c7.dx * scaleX),
-        (c7.dy * scaleY) + (offsetY * 0.5),
-      );
+      // correctedC7 = Offset(
+      //   size.width - (c7.dx * scaleX),
+      //   (c7.dy * scaleY) + (offsetY * 0.5),
+      // );
+      correctedC7 = Offset((c7.dx * scaleX), (c7.dy * scaleY));
     }
 
     // 🎨 2. 페인트 스타일 세팅
