@@ -176,50 +176,44 @@ class _VisionPageState extends State<VisionPage> {
       ),
       body: Stack(
         children: [
-          // 🎯 1. [카메라 & 스켈레톤] 다시 예전처럼 화면 전체(fill)로 시원하게 꽉 채우기!
           Positioned.fill(
             child: Container(
               color: Colors.white,
               child:
                   _mediaPipeService.isInitialized &&
                       _mediaPipeService.cameraController != null
-                  ? Center(
-                      child: AspectRatio(
-                        // 카메라 프리뷰의 실제 비율을 강제로 고정
-                        aspectRatio: _mediaPipeService
-                            .cameraController!
-                            .value
-                            .aspectRatio,
-                        child: Stack(
-                          children: [
-                            CameraPreview(_mediaPipeService.cameraController!),
-                            if (step >= 1 && step <= 3)
-                              Positioned.fill(
-                                child: CustomPaint(
-                                  size: Size.infinite,
-                                  painter: PosePainter(
-                                    eye: eyePoint,
-                                    ear: earPoint,
-                                    c7: c7Point,
-                                    step: step,
-                                    tiltAngleRad: deviceTilt,
-                                    imageSize: Size(
-                                      _mediaPipeService
-                                          .cameraController!
-                                          .value
-                                          .previewSize!
-                                          .width,
-                                      _mediaPipeService
-                                          .cameraController!
-                                          .value
-                                          .previewSize!
-                                          .height,
-                                    ),
+                  ? AspectRatio(
+                      // 카메라 프리뷰의 실제 비율을 강제로 고정
+                      aspectRatio:
+                          _mediaPipeService.cameraController!.value.aspectRatio,
+                      child: Stack(
+                        children: [
+                          CameraPreview(_mediaPipeService.cameraController!),
+                          if (step >= 1 && step <= 3)
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: PosePainter(
+                                  eye: eyePoint,
+                                  ear: earPoint,
+                                  c7: c7Point,
+                                  step: step,
+                                  tiltAngleRad: deviceTilt,
+                                  imageSize: Size(
+                                    _mediaPipeService
+                                        .cameraController!
+                                        .value
+                                        .previewSize!
+                                        .width,
+                                    _mediaPipeService
+                                        .cameraController!
+                                        .value
+                                        .previewSize!
+                                        .height,
                                   ),
                                 ),
                               ),
-                          ],
-                        ),
+                            ),
+                        ],
                       ),
                     )
                   : const Center(child: CircularProgressIndicator()),
