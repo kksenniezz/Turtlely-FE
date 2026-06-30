@@ -73,7 +73,7 @@ class MediaPipeService {
         ResolutionPreset.low,
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid
-            ? ImageFormatGroup.yuv420
+            ? ImageFormatGroup.nv21
             : ImageFormatGroup.bgra8888,
       );
 
@@ -305,7 +305,7 @@ class MediaPipeService {
           InputImageRotation.rotation0deg;
 
       if (Platform.isAndroid) {
-        final imageFormat = InputImageFormat.yuv420;
+        final imageFormat = InputImageFormat.nv21;
 
         final metadata = InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
