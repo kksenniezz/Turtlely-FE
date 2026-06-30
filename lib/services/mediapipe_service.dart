@@ -23,6 +23,8 @@ class MediaPipeService {
   Offset? _lastEyePoint;
   bool _isProcessing = false;
 
+  Map<String, dynamic>? _lastValidPose;
+
   // 실시간 기기 기울기 각도(라디안 단위)를 저장할 변수
   double currentTiltAngleRad = 0.0;
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
@@ -47,15 +49,12 @@ class MediaPipeService {
   }
 
   Future<void> initializeCamera() async {
-    await cameraController?.dispose();
-    cameraController = null;
+    if (cameraController != null) {
+      await cameraController!.dispose();
+      cameraController = null;
+    }
 
     try {
-      // 📡 1. 자이로 가속도 센서 활성화 및 데이터 추출
-      if (cameraController != null) {
-        await cameraController!.dispose();
-        cameraController = null;
-      }
       _accelerometerSubscription = accelerometerEventStream().listen((
         AccelerometerEvent event,
       ) {
@@ -71,7 +70,7 @@ class MediaPipeService {
 
       cameraController = CameraController(
         frontCamera,
-        ResolutionPreset.medium,
+        ResolutionPreset.low,
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid
             ? ImageFormatGroup.yuv420
@@ -82,48 +81,60 @@ class MediaPipeService {
       isInitialized = true;
 
       cameraController!.startImageStream((CameraImage image) async {
-        if (_isProcessing) return;
+        double scaleX = 0.5;
+        double scaleY = 0.5;
+        double imgWidth = image.width.toDouble();
+        double imgHeight = image.height.toDouble();
+
+        if (isCapturing && _lastValidPose != null) {
+          _addBatchFromCache(imgWidth, imgHeight);
+        }
+
+        // 프레임 스키핑 (5프레임당 1회 AI 추론)
+        if (_isProcessing || _frameCounter++ % 5 != 0) return;
         _isProcessing = true;
 
         try {
           final inputImage = _convertCameraImageToInputImage(image);
-          if (inputImage == null) {
-            _isProcessing = false;
-            return;
-          }
+          if (inputImage != null) {
+            final List<Pose> poses = await _poseDetector.processImage(
+              inputImage,
+            );
 
-          final List<Pose> poses = await _poseDetector.processImage(inputImage);
-          double scaleX = 0.5;
-          double scaleY = 0.5;
-          double imgWidth = image.width.toDouble();
-          double imgHeight = image.height.toDouble();
+            for (Pose pose in poses) {
+              final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
+              final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
+              final rightShoulder =
+                  pose.landmarks[PoseLandmarkType.rightShoulder];
 
-          for (Pose pose in poses) {
-            final rightEye = pose.landmarks[PoseLandmarkType.rightEye];
-            final rightEar = pose.landmarks[PoseLandmarkType.rightEar];
-            final rightShoulder =
-                pose.landmarks[PoseLandmarkType.rightShoulder];
-
-            if (rightEye != null && rightEar != null && rightShoulder != null) {
-              // 🎯 중요: 모바일 앱 픽셀 기반 좌표를 해상도로 나누어 0.0 ~ 1.0 비율로 실시간 정규화 처리!
-              _dispatchCoordinates(
-                eyeX: rightEye.x * scaleX,
-                eyeY: rightEye.y * scaleY,
-                earX: rightEar.x * scaleX,
-                earY: rightEar.y * scaleY,
-                c7X: rightShoulder.x * scaleX,
-                c7Y: rightShoulder.y * scaleY,
-                rawEyeX: rightEye.x / imgWidth,
-                rawEyeY: rightEye.y / imgHeight,
-                rawEarX: rightEar.x / imgWidth,
-                rawEarY: rightEar.y / imgHeight,
-                rawC7X: rightShoulder.x / imgWidth,
-                rawC7Y: rightShoulder.y / imgHeight,
-              );
+              if (rightEye != null &&
+                  rightEar != null &&
+                  rightShoulder != null) {
+                // UI용 데이터 갱신
+                _dispatchCoordinates(
+                  eyeX: rightEye.x * scaleX,
+                  eyeY: rightEye.y * scaleY,
+                  earX: rightEar.x * scaleX,
+                  earY: rightEar.y * scaleY,
+                  c7X: rightShoulder.x * scaleX,
+                  c7Y: rightShoulder.y * scaleY,
+                  rawEyeX: rightEye.x / imgWidth,
+                  rawEyeY: rightEye.y / imgHeight,
+                  rawEarX: rightEar.x / imgWidth,
+                  rawEarY: rightEar.y / imgHeight,
+                  rawC7X: rightShoulder.x / imgWidth,
+                  rawC7Y: rightShoulder.y / imgHeight,
+                );
+                _lastValidPose = {
+                  'eye': rightEye,
+                  'ear': rightEar,
+                  'c7': rightShoulder,
+                };
+              }
             }
           }
         } catch (e) {
-          print("실시간 프레임 AI 추론 연산 중 예외 발생: $e");
+          print("AI 추론 에러: $e");
         } finally {
           _isProcessing = false;
         }
@@ -131,6 +142,31 @@ class MediaPipeService {
     } catch (e) {
       print("카메라 및 AI 엔진 초기화 에러: $e");
     }
+  }
+
+  void _addBatchFromCache(double imgWidth, double imgHeight) {
+    double cosT = math.cos(-currentTiltAngleRad);
+    double sinT = math.sin(-currentTiltAngleRad);
+    final rawEye = _lastValidPose!['eye'];
+    final rawEar = _lastValidPose!['ear'];
+    final rawC7 = _lastValidPose!['c7'];
+
+    double rawC7X = rawC7.x / imgWidth;
+    double rawC7Y = rawC7.y / imgHeight;
+    double dxEar = (rawEar.x / imgWidth) - rawC7X;
+    double dyEar = (rawEar.y / imgHeight) - rawC7Y;
+    double dxEye = (rawEye.x / imgWidth) - rawC7X;
+    double dyEye = (rawEye.y / imgHeight) - rawC7Y;
+
+    coordinateBatch.add({
+      "c7_x": rawC7X,
+      "c7_y": rawC7Y,
+      "eye_x": rawC7X + (dxEye * cosT - dyEye * sinT),
+      "eye_y": rawC7Y + (dxEye * sinT + dyEye * cosT),
+      "tragus_x": rawC7X + (dxEar * cosT - dyEar * sinT),
+      "tragus_y": rawC7Y + (dxEar * sinT + dyEar * cosT),
+      "timestamp": _generateTimestamp(),
+    });
   }
 
   // 🔄 좌표 스트림 전송 및 바구니 적재 공통화 함수 (정규화 인자 분리 설계)
@@ -262,14 +298,18 @@ class MediaPipeService {
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
       if (image.planes.isEmpty || image.planes[0].bytes.isEmpty) return null;
-      final imageRotation = InputImageRotation.rotation270deg;
+      final sensorOrientation = cameraController!.description.sensorOrientation;
+
+      InputImageRotation rotation =
+          InputImageRotationValue.fromRawValue(sensorOrientation) ??
+          InputImageRotation.rotation0deg;
 
       if (Platform.isAndroid) {
         final imageFormat = InputImageFormat.yuv420;
 
         final metadata = InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: imageRotation,
+          rotation: rotation,
           format: imageFormat,
           bytesPerRow: image.planes[0].bytesPerRow,
         );
@@ -288,7 +328,7 @@ class MediaPipeService {
 
         final metadata = InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: imageRotation,
+          rotation: rotation,
           format: imageFormat,
           bytesPerRow: image.planes[0].bytesPerRow,
         );
