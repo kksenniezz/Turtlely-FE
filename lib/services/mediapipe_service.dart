@@ -6,37 +6,21 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-<<<<<<< HEAD
-
-class MediaPipeService {
-  static String loginId = "";
-  final String baseUrl = "http://54.144.66.35:8080";
-=======
 import 'package:sensors_plus/sensors_plus.dart';
 import 'dart:math' as math;
+
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 
 class MediaPipeService {
   static int memberId = 1;
   final String baseUrl = "http://54.144.66.35.nip.io:8000";
->>>>>>> origin/feature/auth-integration
   final storage = const FlutterSecureStorage();
   List<Map<String, dynamic>> coordinateBatch = [];
 
   bool isCapturing = false;
   int _frameCounter = 0;
   Offset? _lastEyePoint;
-<<<<<<< HEAD
-  CameraController? cameraController;
-  bool isInitialized = false;
-
-  final StreamController<Map<String, Offset>> _poseStreamController =
-      StreamController<Map<String, Offset>>.broadcast();
-  Stream<Map<String, Offset>> get poseStream => _poseStreamController.stream;
-
-  Future<void> initializeCamera() async {
-    // 비전 기능 임시 비활성화 (모바일 테스트용)
-    isInitialized = false;
-=======
 
   // 실시간 기기 기울기 각도(라디안 단위)를 저장할 변수
   double currentTiltAngleRad = 0.0;
@@ -124,7 +108,6 @@ class MediaPipeService {
     } catch (e) {
       print("카메라 및 AI 엔진 초기화 에러: $e");
     }
->>>>>>> origin/feature/auth-integration
   }
 
   void _dispatchCoordinates({
@@ -154,12 +137,6 @@ class MediaPipeService {
     if (isCapturing) {
       _frameCounter++;
       if (_frameCounter % 2 == 0) {
-<<<<<<< HEAD
-        coordinateBatch.add({
-          "c7_x": rawC7X, "c7_y": rawC7Y,
-          "eye_x": rawEyeX, "eye_y": rawEyeY,
-          "tragus_x": rawEarX, "tragus_y": rawEarY,
-=======
         double cosT = math.cos(-currentTiltAngleRad);
         double sinT = math.sin(-currentTiltAngleRad);
 
@@ -181,7 +158,6 @@ class MediaPipeService {
           "tragus_x": calibratedRawEarX,
           "tragus_y": calibratedRawEarY,
           "timestamp": _generateTimestamp(),
->>>>>>> origin/feature/auth-integration
         });
       }
     }
@@ -192,36 +168,6 @@ class MediaPipeService {
     _lastEyePoint = null;
     _frameCounter = 0;
     isCapturing = true;
-<<<<<<< HEAD
-  }
-
-  Future<bool> sendBatchVisionData() async {
-    isCapturing = false;
-    if (coordinateBatch.isEmpty) return false;
-
-    String userIdToSend = MediaPipeService.loginId;
-    if (userIdToSend.isEmpty || userIdToSend == "null") {
-      final savedId = await storage.read(key: 'savedLoginId');
-      if (savedId != null && savedId.isNotEmpty) {
-        userIdToSend = savedId;
-        MediaPipeService.loginId = savedId;
-      }
-    }
-    if (userIdToSend.isEmpty || userIdToSend == "null") {
-      userIdToSend = "guest@turtlely.com";
-    }
-
-    final Map<String, dynamic> requestPayload = {
-      "frames": coordinateBatch.map((frame) => {
-        "c7_x": double.parse(frame["c7_x"].toString()),
-        "c7_y": double.parse(frame["c7_y"].toString()),
-        "eye_x": double.parse(frame["eye_x"].toString()),
-        "eye_y": double.parse(frame["eye_y"].toString()),
-        "tragus_x": double.parse(frame["tragus_x"].toString()),
-        "tragus_y": double.parse(frame["tragus_y"].toString()),
-      }).toList(),
-      "login_id": userIdToSend.trim(),
-=======
     print("3초 데이터 수집 파이프라인 가동 개시");
   }
 
@@ -276,15 +222,12 @@ class MediaPipeService {
         };
       }).toList(),
       "member_id": activeMemberId,
->>>>>>> origin/feature/auth-integration
     };
 
     final response = await _postRequest("/report/analyze", requestPayload);
     return response['success'] == true;
   }
 
-<<<<<<< HEAD
-=======
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
     try {
       final WriteBuffer allBytes = WriteBuffer();
@@ -310,7 +253,6 @@ class MediaPipeService {
     }
   }
 
->>>>>>> origin/feature/auth-integration
   Future<Map<String, dynamic>> _postRequest(String path, dynamic body) async {
     final url = Uri.parse('$baseUrl$path');
     try {

@@ -30,11 +30,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  sqflite: ^2.3.0
+  path: ^1.9.0
   vibration: ^2.0.0
 
   google_sign_in: ^6.2.1
   flutter_secure_storage: ^10.2.0
   camera: ^0.10.5+9
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
   
 
   google_mlkit_pose_detection: ^0.12.0
