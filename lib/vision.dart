@@ -228,7 +228,7 @@ class _VisionPageState extends State<VisionPage> {
             child: GestureDetector(
               onTap: _shouldShowButton() ? nextStep : null,
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Image.asset(
                     'assets/side_turtle.png',
@@ -618,7 +618,7 @@ void _showExitDialog(BuildContext context) {
                   '월간 거북목 측정을 종료하시겠습니까?\n\n현재 측정은 저장되지 않습니다',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Colors.black,
                   ),
