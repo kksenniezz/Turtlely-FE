@@ -222,9 +222,9 @@ class _VisionPageState extends State<VisionPage> {
 
           // 2. 거북이와 말풍선 배치
           Positioned(
-            bottom: 30,
-            left: 10,
-            right: 10,
+            bottom: 50,
+            left: 20,
+            right: 20,
             child: GestureDetector(
               onTap: _shouldShowButton() ? nextStep : null,
               child: Row(
@@ -248,12 +248,15 @@ class _VisionPageState extends State<VisionPage> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      _getStepText(),
-                      style: TextStyle(
-                        color: TColor.darkGreen,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 30),
+                      child: Text(
+                        _getStepText(),
+                        style: TextStyle(
+                          color: TColor.darkGreen,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
