@@ -498,11 +498,11 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             ],
           ),
         ),
-        const SizedBox(height: 32),
-        PredictionChartWidget(
-          predictionData: [73, 75, 78, 80, 82, 85],
-          predictionMonths: ["6월", "7월", "8월", "9월", "10월", "11월"],
-        ),
+        // const SizedBox(height: 32),
+        // PredictionChartWidget(
+        //   predictionData: [73, 75, 78, 80, 82, 85],
+        //   predictionMonths: ["6월", "7월", "8월", "9월", "10월", "11월"],
+        // ),
         const SizedBox(height: 50),
       ],
     );

@@ -249,138 +249,138 @@ class MonthlyChartWidget extends StatelessWidget {
   }
 }
 
-// 거북목 개선 예측 차트
-class PredictionChartWidget extends StatelessWidget {
-  final List<double> predictionData;
-  final List<String> predictionMonths;
+// 거북목 개선 예측 차트 -> 스트레칭 스켈레톤 이후 추가
+// class PredictionChartWidget extends StatelessWidget {
+//   final List<double> predictionData;
+//   final List<String> predictionMonths;
 
-  const PredictionChartWidget({
-    super.key,
-    required this.predictionData,
-    required this.predictionMonths,
-  });
+//   const PredictionChartWidget({
+//     super.key,
+//     required this.predictionData,
+//     required this.predictionMonths,
+//   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "거북목 개선 예측",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 240,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: LineChart(
-                LineChartData(
-                  minY: 0,
-                  maxY: 100,
-                  minX: 0,
-                  maxX: (predictionData.length - 1).toDouble(),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: true,
-                    drawHorizontalLine: true,
-                    verticalInterval: 1,
-                    horizontalInterval: 20,
-                    getDrawingVerticalLine: (val) => FlLine(
-                      color: Colors.grey.withOpacity(0.3),
-                      strokeWidth: 1,
-                    ),
-                    getDrawingHorizontalLine: (val) => FlLine(
-                      color: Colors.grey.withOpacity(0.3),
-                      strokeWidth: 1,
-                    ),
-                  ),
-                  titlesData: FlTitlesData(
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        interval: 1,
-                        getTitlesWidget: (val, meta) => Text(
-                          predictionMonths[val.toInt()],
-                          style: const TextStyle(fontSize: 9),
-                        ),
-                      ),
-                    ),
-                    rightTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        reservedSize: 40,
-                        interval: 20,
-                        getTitlesWidget: (val, meta) => Padding(
-                          padding: const EdgeInsets.only(left: 8.0),
-                          child: Text(
-                            "${val.toInt()}점",
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 9,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                  ),
-                  borderData: FlBorderData(
-                    show: true,
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                  ),
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: predictionData.asMap().entries.map((e) {
-                        return FlSpot(e.key.toDouble(), e.value);
-                      }).toList(),
-                      isCurved: false,
-                      color: TColor.buttonGreen,
-                      barWidth: 3,
-                      dotData: FlDotData(show: true),
-                    ),
-                  ],
-                  lineTouchData: LineTouchData(
-                    enabled: true,
-                    touchSpotThreshold: 40,
-                    handleBuiltInTouches: true,
-                    touchTooltipData: LineTouchTooltipData(
-                      getTooltipColor: (_) => Colors.white,
-                      tooltipBorder: const BorderSide(
-                        color: TColor.buttonGreen,
-                        width: 1.5,
-                      ),
-                      getTooltipItems: (touchedSpots) {
-                        return touchedSpots.map((spot) {
-                          return LineTooltipItem(
-                            "${spot.y.toInt()}점",
-                            const TextStyle(
-                              color: TColor.buttonGreen,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          );
-                        }).toList();
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         color: Colors.white,
+//         borderRadius: BorderRadius.circular(16),
+//         border: Border.all(color: Colors.grey.shade200),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           const Text(
+//             "거북목 개선 예측",
+//             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+//           ),
+//           const SizedBox(height: 16),
+//           SizedBox(
+//             height: 240,
+//             child: Padding(
+//               padding: const EdgeInsets.symmetric(horizontal: 20.0),
+//               child: LineChart(
+//                 LineChartData(
+//                   minY: 0,
+//                   maxY: 100,
+//                   minX: 0,
+//                   maxX: (predictionData.length - 1).toDouble(),
+//                   gridData: FlGridData(
+//                     show: true,
+//                     drawVerticalLine: true,
+//                     drawHorizontalLine: true,
+//                     verticalInterval: 1,
+//                     horizontalInterval: 20,
+//                     getDrawingVerticalLine: (val) => FlLine(
+//                       color: Colors.grey.withOpacity(0.3),
+//                       strokeWidth: 1,
+//                     ),
+//                     getDrawingHorizontalLine: (val) => FlLine(
+//                       color: Colors.grey.withOpacity(0.3),
+//                       strokeWidth: 1,
+//                     ),
+//                   ),
+//                   titlesData: FlTitlesData(
+//                     bottomTitles: AxisTitles(
+//                       sideTitles: SideTitles(
+//                         showTitles: true,
+//                         interval: 1,
+//                         getTitlesWidget: (val, meta) => Text(
+//                           predictionMonths[val.toInt()],
+//                           style: const TextStyle(fontSize: 9),
+//                         ),
+//                       ),
+//                     ),
+//                     rightTitles: AxisTitles(
+//                       sideTitles: SideTitles(
+//                         showTitles: true,
+//                         reservedSize: 40,
+//                         interval: 20,
+//                         getTitlesWidget: (val, meta) => Padding(
+//                           padding: const EdgeInsets.only(left: 8.0),
+//                           child: Text(
+//                             "${val.toInt()}점",
+//                             style: const TextStyle(
+//                               color: Colors.grey,
+//                               fontSize: 9,
+//                             ),
+//                           ),
+//                         ),
+//                       ),
+//                     ),
+//                     leftTitles: AxisTitles(
+//                       sideTitles: SideTitles(showTitles: false),
+//                     ),
+//                     topTitles: AxisTitles(
+//                       sideTitles: SideTitles(showTitles: false),
+//                     ),
+//                   ),
+//                   borderData: FlBorderData(
+//                     show: true,
+//                     border: Border.all(color: Colors.grey.withOpacity(0.3)),
+//                   ),
+//                   lineBarsData: [
+//                     LineChartBarData(
+//                       spots: predictionData.asMap().entries.map((e) {
+//                         return FlSpot(e.key.toDouble(), e.value);
+//                       }).toList(),
+//                       isCurved: false,
+//                       color: TColor.buttonGreen,
+//                       barWidth: 3,
+//                       dotData: FlDotData(show: true),
+//                     ),
+//                   ],
+//                   lineTouchData: LineTouchData(
+//                     enabled: true,
+//                     touchSpotThreshold: 40,
+//                     handleBuiltInTouches: true,
+//                     touchTooltipData: LineTouchTooltipData(
+//                       getTooltipColor: (_) => Colors.white,
+//                       tooltipBorder: const BorderSide(
+//                         color: TColor.buttonGreen,
+//                         width: 1.5,
+//                       ),
+//                       getTooltipItems: (touchedSpots) {
+//                         return touchedSpots.map((spot) {
+//                           return LineTooltipItem(
+//                             "${spot.y.toInt()}점",
+//                             const TextStyle(
+//                               color: TColor.buttonGreen,
+//                               fontWeight: FontWeight.bold,
+//                             ),
+//                           );
+//                         }).toList();
+//                       },
+//                     ),
+//                   ),
+//                 ),
+//               ),
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }
