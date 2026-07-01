@@ -87,9 +87,11 @@ class _VisionPageState extends State<VisionPage> {
 
       if (count == 3) {
         timer.cancel();
-        bool success = await _mediaPipeService.sendBatchVisionData();
+        final response = await _mediaPipeService.sendBatchVisionData();
         setState(() {
-          if (success) {
+          if (response["success"] == true) {
+            final resultData = response['result'];
+            print("분석 결과 수신 성공: $resultData");
             step = 4; // 측정 완료 단계
           } else {
             step = 7; // 예외 발생 단계
