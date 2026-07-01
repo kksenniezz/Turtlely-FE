@@ -98,12 +98,11 @@ class _VisionPageState extends State<VisionPage> {
         final response = await _mediaPipeService.sendBatchVisionData();
         if (!mounted) return;
         setState(() {
-          if (response.isNotEmpty && response["success"] == true) {
-            monthlyId = response['result']['monthly_id'];
+          if (response["success"] == true && response["result"] != null) {
+            monthlyId = response["result"]["monthly_id"];
             step = 4;
           } else {
-            print("❌ 서버 응답 실패 또는 null: $response");
-            step = 7; // 예외 발생 단계
+            step = 7;
           }
         });
       }
