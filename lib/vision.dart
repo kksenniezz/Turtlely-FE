@@ -16,7 +16,7 @@ class VisionPage extends StatefulWidget {
 
 class _VisionPageState extends State<VisionPage> {
   int step =
-      0; // 0: 인사, 1: 자세 안내, 2: 측정 안내, 3: 측정 중, 4: 측정 완료, 5: 리포트 안내, 6: 종료 안내, 7: 예외 발생
+      0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
   int? monthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
@@ -63,9 +63,9 @@ class _VisionPageState extends State<VisionPage> {
 
   void nextStep() {
     setState(() {
-      if (step == 2) {
+      if (step == 3) {
         _startMeasurement();
-      } else if (step < 6) {
+      } else if (step < 7) {
         step++;
       }
     });
@@ -73,7 +73,7 @@ class _VisionPageState extends State<VisionPage> {
 
   void _startMeasurement() {
     setState(() {
-      step = 3;
+      step = 4;
     }); // 측정 시작 단계로 이동
 
     _mediaPipeService.start3SecondCapture();
@@ -100,9 +100,9 @@ class _VisionPageState extends State<VisionPage> {
         setState(() {
           if (response["success"] == true && response["result"] != null) {
             monthlyId = response["result"]["monthly_id"];
-            step = 4;
+            step = 5;
           } else {
-            step = 7;
+            step = 8;
           }
         });
       }
@@ -112,20 +112,22 @@ class _VisionPageState extends State<VisionPage> {
   String _getStepText() {
     switch (step) {
       case 0:
-        return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!\n거북목 측정을 위해 터틀훅을 연결해 주세요";
+        return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!";
       case 1:
-        return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
+        return "거북목 측정을 위해\n터틀훅을 연결해 주세요";
       case 2:
-        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요 \n버튼을 누르면 바로 시작됩니다!";
+        return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 3:
-        return "거북목 측정중 $loadingDots";
+        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요 \n버튼을 누르면 바로 시작됩니다!";
       case 4:
-        return "월간 거북목 측정이 \n완료되었습니다!";
+        return "거북목 측정중 $loadingDots";
       case 5:
-        return "월간 거북목 측정 결과는 \n월간 리포트에서 확인해 주세요";
+        return "월간 거북목 측정이 \n완료되었습니다!";
       case 6:
-        return "종료 버튼을 누르면 \n월간 거북목 측정이 종료됩니다 \n다음 달에 다시 만나요!";
+        return "월간 거북목 측정 결과는 \n월간 리포트에서 확인해 주세요";
       case 7:
+        return "종료 버튼을 누르면 \n월간 거북목 측정이 종료됩니다 \n다음 달에 다시 만나요!";
+      case 8:
         return "거북목 측정이 어렵습니다 \n다시 시도해 주세요";
       default:
         return "";
@@ -133,8 +135,8 @@ class _VisionPageState extends State<VisionPage> {
   }
 
   bool _shouldShowButton() {
-    // 3단계(측정중), 6단계(종료 안내), 7단계(재시도)는 역삼각형 버튼 숨김
-    if ([3, 6, 7].contains(step)) return false;
+    // 4단계(측정중), 7단계(종료 안내), 8단계(예외 발생)는 역삼각형 버튼 숨김
+    if ([4, 7, 8].contains(step)) return false;
     return true;
   }
 
@@ -159,19 +161,19 @@ class _VisionPageState extends State<VisionPage> {
           ),
         ),
         actions: [
-          if (step == 6 || step == 7) ...[
+          if (step == 7 || step == 8) ...[
             GestureDetector(
               onTap: () {
-                if (step == 6) {
+                if (step == 7) {
                   Navigator.pop(context);
                 } else {
-                  setState(() => step = 1);
+                  setState(() => step = 2);
                 }
               },
               child: Container(
                 alignment: Alignment.center,
                 child: Text(
-                  step == 6 ? "종료" : "재시도",
+                  step == 7 ? "종료" : "재시도",
                   style: TextStyle(
                     color: TColor.darkGreen,
                     fontSize: 18,
@@ -199,7 +201,7 @@ class _VisionPageState extends State<VisionPage> {
                       child: Stack(
                         children: [
                           CameraPreview(_mediaPipeService.cameraController!),
-                          if (step >= 1 && step <= 3)
+                          if (step >= 2 && step <= 4)
                             Positioned.fill(
                               child: CustomPaint(
                                 painter: PosePainter(
@@ -259,7 +261,7 @@ class _VisionPageState extends State<VisionPage> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 30),
+                      padding: const EdgeInsets.only(top: 25, bottom: 30),
                       child: Text(
                         _getStepText(),
                         style: TextStyle(
@@ -272,7 +274,7 @@ class _VisionPageState extends State<VisionPage> {
                   ),
                   if (_shouldShowButton())
                     Padding(
-                      padding: const EdgeInsets.only(left: 10),
+                      padding: const EdgeInsets.only(left: 10, top: 25),
                       child: CustomPaint(
                         size: const Size(20, 15),
                         painter: TrianglePainter(color: TColor.darkGreen),
@@ -311,7 +313,7 @@ class PosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bool isMeasuring = (step >= 1 && step <= 3);
+    final bool isMeasuring = (step >= 2 && step <= 4);
     final double xShift = 0.0; // -20.0; // 왼쪽으로 옮기려면 음수
     final double yShift = 0.0; //30.0; // 아래로 내리려면 양수
     final double scaleX = size.width / imageSize.width;
