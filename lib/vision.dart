@@ -17,6 +17,7 @@ class VisionPage extends StatefulWidget {
 class _VisionPageState extends State<VisionPage> {
   int step =
       0; // 0: 인사, 1: 자세 안내, 2: 측정 안내, 3: 측정 중, 4: 측정 완료, 5: 리포트 안내, 6: 종료 안내, 7: 예외 발생
+  int? monthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
 
@@ -79,6 +80,7 @@ class _VisionPageState extends State<VisionPage> {
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
 
     int count = 0;
+
     _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       setState(() {
         count++;
@@ -90,8 +92,7 @@ class _VisionPageState extends State<VisionPage> {
         final response = await _mediaPipeService.sendBatchVisionData();
         setState(() {
           if (response["success"] == true) {
-            final resultData = response['result'];
-            print("분석 결과 수신 성공: $resultData");
+            monthlyId = response['result']['monthly_id'];
             step = 4; // 측정 완료 단계
           } else {
             step = 7; // 예외 발생 단계
