@@ -17,6 +17,7 @@ class VisionPage extends StatefulWidget {
 class _VisionPageState extends State<VisionPage> {
   int step =
       0; // 0: 인사, 1: 자세 안내, 2: 측정 안내, 3: 측정 중, 4: 측정 완료, 5: 리포트 안내, 6: 종료 안내, 7: 예외 발생
+  int? latestMonthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
 
@@ -79,6 +80,7 @@ class _VisionPageState extends State<VisionPage> {
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
 
     int count = 0;
+
     _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       setState(() {
         count++;
@@ -90,8 +92,7 @@ class _VisionPageState extends State<VisionPage> {
         final response = await _mediaPipeService.sendBatchVisionData();
         setState(() {
           if (response["success"] == true) {
-            final resultData = response['result'];
-            print("분석 결과 수신 성공: $resultData");
+            latestMonthlyId = response['result']['monthly_id'];
             step = 4; // 측정 완료 단계
           } else {
             step = 7; // 예외 발생 단계
@@ -304,6 +305,8 @@ class PosePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final bool isMeasuring = (step >= 1 && step <= 3);
+    final double xShift = -20.0; // 왼쪽으로 옮기려면 음수
+    final double yShift = 30.0; // 아래로 내리려면 양수
     final double scaleX = size.width / imageSize.width;
     final double scaleY = size.height / imageSize.height;
     // double offsetY = 0.0;
@@ -315,25 +318,22 @@ class PosePainter extends CustomPainter {
     double earShiftX = 0.94;
 
     if (eye != Offset.zero) {
-      // correctedEye = Offset(size.width - (eye.dx * scaleX), (eye.dy * scaleY)+ offsetY);
-      correctedEye = Offset(size.width - (eye.dx * scaleX), (eye.dy * scaleY));
+      correctedEye = Offset(
+        (size.width - (eye.dx * scaleX)) + xShift,
+        (eye.dy * scaleY) + yShift,
+      );
     }
     if (ear != Offset.zero) {
-      // correctedEar = Offset(
-      //   size.width - (ear.dx * scaleX * earShiftX),
-      //   (ear.dy * scaleY) + offsetY,
-      // );
       correctedEar = Offset(
-        size.width - (ear.dx * scaleX * earShiftX),
-        (ear.dy * scaleY),
+        (size.width - (ear.dx * scaleX * earShiftX)) + xShift,
+        (ear.dy * scaleY) + yShift,
       );
     }
     if (c7 != Offset.zero) {
-      // correctedC7 = Offset(
-      //   size.width - (c7.dx * scaleX),
-      //   (c7.dy * scaleY) + (offsetY * 0.5),
-      // );
-      correctedC7 = Offset(size.width - (c7.dx * scaleX), (c7.dy * scaleY));
+      correctedC7 = Offset(
+        (size.width - (c7.dx * scaleX)) + xShift,
+        (c7.dy * scaleY) + yShift,
+      );
     }
 
     // 🎨 2. 페인트 스타일 세팅
@@ -361,6 +361,9 @@ class PosePainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     // 파트 A: 사람 외형 프로필 가이드라인 (배경 고정)
+    final double yOffset = -50;
+    canvas.translate(0, yOffset);
+
     var profilePath = Path();
 
     // 스마트폰 화면 비율에 절대 찌그러지지 않도록 중심점과 반지름(반응형 방어 크기) 정의

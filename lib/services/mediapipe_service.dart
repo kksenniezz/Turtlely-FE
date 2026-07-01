@@ -81,8 +81,6 @@ class MediaPipeService {
       isInitialized = true;
 
       cameraController!.startImageStream((CameraImage image) async {
-        double scaleX = 0.5;
-        double scaleY = 0.5;
         double imgWidth = image.width.toDouble();
         double imgHeight = image.height.toDouble();
 
@@ -112,12 +110,12 @@ class MediaPipeService {
                   rightShoulder != null) {
                 // UI용 데이터 갱신
                 _dispatchCoordinates(
-                  eyeX: rightEye.x * scaleX,
-                  eyeY: rightEye.y * scaleY,
-                  earX: rightEar.x * scaleX,
-                  earY: rightEar.y * scaleY,
-                  c7X: rightShoulder.x * scaleX,
-                  c7Y: rightShoulder.y * scaleY,
+                  eyeX: rightEye.x,
+                  eyeY: rightEye.y,
+                  earX: rightEar.x,
+                  earY: rightEar.y,
+                  c7X: rightShoulder.x,
+                  c7Y: rightShoulder.y,
                   rawEyeX: rightEye.x / imgWidth,
                   rawEyeY: rightEye.y / imgHeight,
                   rawEarX: rightEar.x / imgWidth,
