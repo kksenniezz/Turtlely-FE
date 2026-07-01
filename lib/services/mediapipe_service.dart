@@ -255,11 +255,16 @@ class MediaPipeService {
         };
       }).toList(),
     };
-    final response = await _postRequest(
-      "/api/monthly/measurements",
-      requestPayload,
-    );
-    return response;
+    try {
+      final response = await _postRequest(
+        "/api/monthly/measurements",
+        requestPayload,
+      );
+      return response;
+    } catch (e) {
+      print("전송 에러 발생: $e");
+      return {"success": false, "message": "네트워크 에러"};
+    }
   }
 
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
