@@ -102,6 +102,7 @@ class _VisionPageState extends State<VisionPage> {
             monthlyId = response["result"]["monthly_id"];
             step = 5;
           } else {
+            print("측정 실패: ${response["code"]} / ${response["message"]}");
             step = 8;
           }
         });
