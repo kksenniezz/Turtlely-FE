@@ -261,7 +261,7 @@ class _VisionPageState extends State<VisionPage> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.only(top: 15, bottom: 30),
+                      padding: const EdgeInsets.only(bottom: 30),
                       child: Text(
                         _getStepText(),
                         style: TextStyle(
@@ -274,7 +274,7 @@ class _VisionPageState extends State<VisionPage> {
                   ),
                   if (_shouldShowButton())
                     Padding(
-                      padding: const EdgeInsets.only(left: 10, top: 40),
+                      padding: const EdgeInsets.only(left: 10, top: 60),
                       child: CustomPaint(
                         size: const Size(20, 15),
                         painter: TrianglePainter(color: TColor.darkGreen),
