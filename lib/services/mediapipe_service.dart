@@ -261,6 +261,7 @@ class MediaPipeService {
         "/api/monthly/measurements",
         requestPayload,
       );
+      print("sendBatchVisionData 응답: $response");
       return response;
     } catch (e) {
       print("전송 에러 발생: $e");
@@ -329,11 +330,13 @@ class MediaPipeService {
         body: jsonEncode(body),
       );
       final data = jsonDecode(utf8.decode(response.bodyBytes));
+      print("응답: $data");
       return {
-        "success": (response.statusCode == 200 || response.statusCode == 202),
+        "success": data["isSuccess"] ?? false,
         "statusCode": response.statusCode,
         "code": data['code'],
-        "message": data['message'] ?? "에러가 발생했습니다.",
+        "message": data['message'],
+        "result": data["result"],
       };
     } catch (e) {
       return {"success": false, "message": "네트워크 연결을 확인해주세요."};
