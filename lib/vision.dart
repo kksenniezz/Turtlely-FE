@@ -112,7 +112,7 @@ class _VisionPageState extends State<VisionPage> {
   String _getStepText() {
     switch (step) {
       case 0:
-        return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!";
+        return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!\n거북목 측정을 위해 터틀훅을 연결해 주세요";
       case 1:
         return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 2:
