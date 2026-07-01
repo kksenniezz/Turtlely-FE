@@ -305,6 +305,8 @@ class PosePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final bool isMeasuring = (step >= 1 && step <= 3);
+    final double xShift = -20.0; // 왼쪽으로 옮기려면 음수
+    final double yShift = 30.0; // 아래로 내리려면 양수
     final double scaleX = size.width / imageSize.width;
     final double scaleY = size.height / imageSize.height;
     // double offsetY = 0.0;
@@ -316,25 +318,22 @@ class PosePainter extends CustomPainter {
     double earShiftX = 0.94;
 
     if (eye != Offset.zero) {
-      // correctedEye = Offset(size.width - (eye.dx * scaleX), (eye.dy * scaleY)+ offsetY);
-      correctedEye = Offset(size.width - (eye.dx * scaleX), (eye.dy * scaleY));
+      correctedEye = Offset(
+        (size.width - (eye.dx * scaleX)) + xShift,
+        (eye.dy * scaleY) + yShift,
+      );
     }
     if (ear != Offset.zero) {
-      // correctedEar = Offset(
-      //   size.width - (ear.dx * scaleX * earShiftX),
-      //   (ear.dy * scaleY) + offsetY,
-      // );
       correctedEar = Offset(
-        size.width - (ear.dx * scaleX * earShiftX),
-        (ear.dy * scaleY),
+        (size.width - (ear.dx * scaleX * earShiftX)) + xShift,
+        (ear.dy * scaleY) + yShift,
       );
     }
     if (c7 != Offset.zero) {
-      // correctedC7 = Offset(
-      //   size.width - (c7.dx * scaleX),
-      //   (c7.dy * scaleY) + (offsetY * 0.5),
-      // );
-      correctedC7 = Offset(size.width - (c7.dx * scaleX), (c7.dy * scaleY));
+      correctedC7 = Offset(
+        (size.width - (c7.dx * scaleX)) + xShift,
+        (c7.dy * scaleY) + yShift,
+      );
     }
 
     // 🎨 2. 페인트 스타일 세팅
