@@ -17,7 +17,7 @@ class VisionPage extends StatefulWidget {
 class _VisionPageState extends State<VisionPage> {
   int step =
       0; // 0: 인사, 1: 자세 안내, 2: 측정 안내, 3: 측정 중, 4: 측정 완료, 5: 리포트 안내, 6: 종료 안내, 7: 예외 발생
-  int? monthlyId;
+  int? latestMonthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
 
@@ -92,7 +92,7 @@ class _VisionPageState extends State<VisionPage> {
         final response = await _mediaPipeService.sendBatchVisionData();
         setState(() {
           if (response["success"] == true) {
-            monthlyId = response['result']['monthly_id'];
+            latestMonthlyId = response['result']['monthly_id'];
             step = 4; // 측정 완료 단계
           } else {
             step = 7; // 예외 발생 단계
@@ -362,6 +362,9 @@ class PosePainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     // 파트 A: 사람 외형 프로필 가이드라인 (배경 고정)
+    final double yOffset = -50;
+    canvas.translate(0, yOffset);
+
     var profilePath = Path();
 
     // 스마트폰 화면 비율에 절대 찌그러지지 않도록 중심점과 반지름(반응형 방어 크기) 정의
