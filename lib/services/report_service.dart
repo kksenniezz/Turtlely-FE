@@ -97,7 +97,7 @@ class ReportData {
 }
 
 class ReportService {
-  static const String _baseUrl = 'http://54.144.66.35.nip.io:8000';
+  static const String _baseUrl = 'http://54.144.66.35.nip.io:8080';
   final _storage = const FlutterSecureStorage();
 
   Future<ReportData?> fetchMonthlyReport({
