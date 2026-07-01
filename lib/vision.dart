@@ -305,8 +305,8 @@ class PosePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final bool isMeasuring = (step >= 1 && step <= 3);
-    final double xShift = -20.0; // 왼쪽으로 옮기려면 음수
-    final double yShift = 30.0; // 아래로 내리려면 양수
+    final double xShift = 0.0; // -20.0; // 왼쪽으로 옮기려면 음수
+    final double yShift = 0.0; //30.0; // 아래로 내리려면 양수
     final double scaleX = size.width / imageSize.width;
     final double scaleY = size.height / imageSize.height;
     // double offsetY = 0.0;
