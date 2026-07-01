@@ -113,8 +113,8 @@ class ApiService {
       debugPrint("📅 캘린더 응답: ${response.body}");
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
-        if (json['result'] != null && json['result']['calenderReports'] != null) {
-          return json['result']['calenderReports'] as List<dynamic>;
+        if (json['result'] != null && json['result']['calendarReports'] != null) {
+          return json['result']['calendarReports'] as List<dynamic>;
         }
       }
     } catch (e) {

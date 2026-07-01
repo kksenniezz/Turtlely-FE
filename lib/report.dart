@@ -108,17 +108,14 @@ class _ReportViewState extends State<ReportView> {
   }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
-    setState(() { 
-      _selectedDay = selectedDay; 
-      _focusedDay = focusedDay; 
-      _selectedScore = null;
-      _avgCva = 0.0;
-      _cvaHistory = [];
+    setState(() {
+      _selectedDay = selectedDay;
+      _focusedDay = focusedDay;
     });
-    
+
     final id = _getDailyId(selectedDay);
     if (id != null) {
-      await _loadFullData(selectedDay, id);
+      _goToTodayReport(selectedDay, dailyId: id); // 바로 이동!
     }
   }
 
