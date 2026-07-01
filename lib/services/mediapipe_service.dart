@@ -12,7 +12,7 @@ import 'dart:io';
 
 class MediaPipeService {
   static int memberId = 1;
-  final String baseUrl = "http://54.144.66.35.nip.io:8000";
+  final String baseUrl = "http://54.144.66.35.nip.io:8080";
   final storage = const FlutterSecureStorage();
   // 임시적으로 3초간 측정한 좌표를 담는 바구니 (초당 10-15프레임 가정 -> 30-45개 좌표)
   List<Map<String, dynamic>> coordinateBatch = [];
@@ -339,8 +339,9 @@ class MediaPipeService {
 
   void dispose() {
     _accelerometerSubscription?.cancel();
-    cameraController?.dispose();
     _poseDetector.close();
     _poseStreamController.close();
+    cameraController?.dispose();
+    cameraController = null;
   }
 }
