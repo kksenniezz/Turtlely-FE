@@ -337,17 +337,22 @@ class MediaPipeService {
 
   Future<Map<String, dynamic>> _postRequest(String path, dynamic body) async {
     final url = Uri.parse('$baseUrl$path');
+    final accessToken = await storage.read(key: 'accessToken');
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
         body: jsonEncode(body),
       );
       final data = jsonDecode(utf8.decode(response.bodyBytes));
       return {
-        "success": (response.statusCode == 200),
+        "success": (response.statusCode == 200 || response.statusCode == 202),
+        "statusCode": response.statusCode,
+        "code": data['code'],
         "message": data['message'] ?? "에러가 발생했습니다.",
-        "result": data['result'],
       };
     } catch (e) {
       return {"success": false, "message": "네트워크 연결을 확인해주세요."};
