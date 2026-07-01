@@ -205,12 +205,12 @@ class _VisionPageState extends State<VisionPage> {
                                         .cameraController!
                                         .value
                                         .previewSize!
-                                        .width,
+                                        .height,
                                     _mediaPipeService
                                         .cameraController!
                                         .value
                                         .previewSize!
-                                        .height,
+                                        .width,
                                   ),
                                 ),
                               ),
@@ -303,7 +303,7 @@ class PosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bool isMeasuring = (step == 3);
+    final bool isMeasuring = (step >= 1 && step <= 3);
     final double scaleX = size.width / imageSize.width;
     final double scaleY = size.height / imageSize.height;
     // double offsetY = 0.0;
