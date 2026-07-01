@@ -245,27 +245,6 @@ class MediaPipeService {
     if (coordinateBatch.isEmpty) {
       return {"success": false, "message": "측정된 데이터가 없습니다."};
     }
-    int activeMemberId = 1;
-
-    try {
-      final accessToken = await storage.read(key: 'accessToken');
-      if (accessToken != null &&
-          accessToken.isNotEmpty &&
-          accessToken != "null") {
-        final normalizedPayload = utf8.decode(
-          base64Url.decode(base64Url.normalize(accessToken.split('.')[1])),
-        );
-        final Map<String, dynamic> payloadMap = jsonDecode(normalizedPayload);
-
-        // [토큰 디코딩 보안 분석 기법] 토큰 배를 갈라 숫자 member_id 원천 추출
-        if (payloadMap['member_id'] != null) {
-          activeMemberId = int.parse(payloadMap['member_id'].toString());
-          MediaPipeService.memberId = activeMemberId; // 전역 스태틱 공간 공유 백업
-        }
-      }
-    } catch (e) {
-      print("비전 데이터 송신 전 member_id 토큰 파싱 에러 (기본값 처리): $e");
-    }
 
     final Map<String, dynamic> requestPayload = {
       "frames": coordinateBatch.map((frame) {
@@ -279,7 +258,6 @@ class MediaPipeService {
         };
       }).toList(),
     };
-
     final response = await _postRequest(
       "/api/monthly/measurements",
       requestPayload,
