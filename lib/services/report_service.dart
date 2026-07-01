@@ -14,6 +14,11 @@ class ReportData {
   final double cvaAngle;
   final double craAngle;
   final int totalMeasurements;
+  final int? score;
+  final List<dynamic>? cvaHistory;
+  final List<dynamic>? craHistory;
+  final List<String>? predictedDiseases;
+  final Map<String, dynamic>? predictionData;
 
   ReportData({
     required this.status,
@@ -26,9 +31,15 @@ class ReportData {
     required this.cvaAngle,
     required this.craAngle,
     required this.totalMeasurements,
+    this.score,
+    this.cvaHistory,
+    this.craHistory,
+    this.predictedDiseases,
+    this.predictionData,
   });
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
+    final result = json['result'];
     try {
       if (json.containsKey('data') && json['data'] is Map<String, dynamic>) {
         return ReportData.fromJson(json['data'] as Map<String, dynamic>);
@@ -58,6 +69,13 @@ class ReportData {
         cvaAngle: (json['cva_angle'] as num?)?.toDouble() ?? 69.0,
         craAngle: (json['cra_angle'] as num?)?.toDouble() ?? 128.5,
         totalMeasurements: parseToInt(json['total_measurements']),
+        score: result(['score']),
+        cvaHistory: result['cva_history'] as List<dynamic>?,
+        craHistory: result['cra_history'] as List<dynamic>?,
+        predictedDiseases: List<String>.from(
+          result['predicted_diseases'] ?? [],
+        ),
+        predictionData: result['prediction_data'],
       );
     } catch (e) {
       print("[ReportData.fromJson 파싱 도중 에러 발생]: $e");
@@ -113,62 +131,32 @@ class ReportService {
       final response = await http.get(url);
       print("📥 [ReportService 응답 바디 raw]: ${utf8.decode(response.bodyBytes)}");
 
-      // if (response.statusCode == 404 || response.body.contains("Not Found")) {
-      //   throw "NOT_FOUND_TRIGGER";
-      // }
+      if (response.statusCode == 404 || response.body.contains("Not Found")) {
+        throw "NOT_FOUND_TRIGGER";
+      }
 
-      // if (response.statusCode == 200) {
-      //   final decodedData = json.decode(utf8.decode(response.bodyBytes));
-      //   return ReportData.fromJson(decodedData);
-      // }
+      if (response.statusCode == 200) {
+        final decodedData = json.decode(utf8.decode(response.bodyBytes));
+        return ReportData.fromJson(decodedData);
+      }
 
-      // if (response.statusCode == 500) {
-      //   final decodedData = json.decode(utf8.decode(response.bodyBytes));
-      //   final String errorCode = decodedData['errorCode'] ?? '';
+      if (response.statusCode == 500) {
+        final decodedData = json.decode(utf8.decode(response.bodyBytes));
+        final String errorCode = decodedData['errorCode'] ?? '';
 
-      //   if (errorCode == "DATABASE_ERROR") {
-      //     throw "데이터베이스 연결에 실패했습니다. 관리자에게 문의하세요.";
-      //   } else if (errorCode == "SERVER_INTERNAL_ERROR") {
-      //     throw "서버 내부 로직 오류가 발생했습니다. 시스템팀이 확인 중입니다.";
-      //   } else {
-      //     throw "알 수 없는 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
-      //   }
-      // }
-      // return null;
-
-      // 발표용 하드코딩 -> 추후 삭제 //
-      return ReportData(
-        status: 200,
-        message: "Success for Demo",
-        year: year,
-        month: month,
-        nickname: "kksenniezz",
-        postureStatus: "역C자목",
-        postureMessage: "경추 정렬이 무너져 있습니다. 스트레칭이 필요합니다.",
-        cvaAngle: 64.09,
-        craAngle: 123.03,
-        totalMeasurements: 1,
-      );
+        if (errorCode == "DATABASE_ERROR") {
+          throw "데이터베이스 연결에 실패했습니다. 관리자에게 문의하세요.";
+        } else if (errorCode == "SERVER_INTERNAL_ERROR") {
+          throw "서버 내부 로직 오류가 발생했습니다. 시스템팀이 확인 중입니다.";
+        } else {
+          throw "알 수 없는 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+        }
+      }
+      return null;
     } catch (e) {
-      // 매핑 후 이 부분 다시 open, 밑에 더미데이터는 삭제
-      // print("🚨 [ReportService 통신 에러 진짜 원인]: $e");
-      // if (e is String) rethrow;
-      // throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
-
-      print("임시 하드코딩 가동: $e");
-
-      return ReportData(
-        status: 200,
-        message: "Success for Demo",
-        year: year,
-        month: month,
-        nickname: "kksenniezz",
-        postureStatus: "역C자목",
-        postureMessage: "경추 정렬이 무너져 있습니다. 스트레칭이 필요합니다.",
-        cvaAngle: 64.09,
-        craAngle: 123.03,
-        totalMeasurements: 1,
-      );
+      print("🚨 [ReportService 통신 에러 진짜 원인]: $e");
+      if (e is String) rethrow;
+      throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
     }
   }
 }

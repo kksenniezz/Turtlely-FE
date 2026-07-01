@@ -424,6 +424,18 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     final String userNickname = report?.nickname ?? "사용자";
     final String postureType = report?.postureStatus ?? "역C자목";
 
+    // 1. 차트 데이터 가공 (서버 응답을 차트가 원하는 List<double>로 변환)
+    final List<double> cvaHistory =
+        report?.cvaHistory?.map((e) => e['angle'] as double).toList() ?? [];
+    final List<double> craHistory =
+        report?.craHistory?.map((e) => e['angle'] as double).toList() ?? [];
+
+    // 2. 예측 데이터 가공
+    final List<double> predScores =
+        report?.predictionData?['prediction_scores']?.cast<double>() ?? [];
+    final List<String> predMonths =
+        report?.predictionData?['prediction_months']?.cast<String>() ?? [];
+
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       children: [
@@ -457,10 +469,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         const SizedBox(height: 16),
         _buildAnalysisImages(postureType),
         const SizedBox(height: 32),
-        MonthlyChartWidget(
-          cvaData: [52.0, 58.0, -1.0, 54.0, 51.0, 49.0],
-          craData: [148.0, 142.0, 138.0, 136.0, -1.0, 135.0],
-        ),
+        MonthlyChartWidget(cvaData: cvaHistory, craData: craHistory),
         const SizedBox(height: 32),
         const Row(
           children: [
@@ -498,11 +507,11 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             ],
           ),
         ),
-        // const SizedBox(height: 32),
-        // PredictionChartWidget(
-        //   predictionData: [73, 75, 78, 80, 82, 85],
-        //   predictionMonths: ["6월", "7월", "8월", "9월", "10월", "11월"],
-        // ),
+        const SizedBox(height: 32),
+        PredictionChartWidget(
+          predictionData: predScores,
+          predictionMonths: predMonths,
+        ),
         const SizedBox(height: 50),
       ],
     );
