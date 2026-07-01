@@ -239,9 +239,11 @@ class MediaPipeService {
   }
 
   // [연동의 정수] vision.dart 한 줄도 안 고치고 이메일 연동 완료하는 마법 구역
-  Future<bool> sendBatchVisionData() async {
+  Future<Map<String, dynamic>> sendBatchVisionData() async {
     isCapturing = false;
-    if (coordinateBatch.isEmpty) return false;
+    if (coordinateBatch.isEmpty) {
+      return {"success": false, "message": "측정된 데이터가 없습니다."};
+    }
     int activeMemberId = 1;
 
     try {
@@ -267,32 +269,21 @@ class MediaPipeService {
     final Map<String, dynamic> requestPayload = {
       "frames": coordinateBatch.map((frame) {
         return {
-          "c7_x": double.parse(
-            double.parse(frame["c7_x"].toString()).toStringAsFixed(2),
-          ),
-          "c7_y": double.parse(
-            double.parse(frame["c7_y"].toString()).toStringAsFixed(2),
-          ),
-          "eye_x": double.parse(
-            double.parse(frame["eye_x"].toString()).toStringAsFixed(2),
-          ),
-          "eye_y": double.parse(
-            double.parse(frame["eye_y"].toString()).toStringAsFixed(2),
-          ),
-          "tragus_x": double.parse(
-            double.parse(frame["tragus_x"].toString()).toStringAsFixed(2),
-          ),
-          "tragus_y": double.parse(
-            double.parse(frame["tragus_y"].toString()).toStringAsFixed(2),
-          ),
-          "timestamp": frame["timestamp"], // 타임스탬프 데이터 결합
+          "eye_x": double.parse(frame["eye_x"].toString()),
+          "eye_y": double.parse(frame["eye_y"].toString()),
+          "tragus_x": double.parse(frame["tragus_x"].toString()),
+          "tragus_y": double.parse(frame["tragus_y"].toString()),
+          "c7_x": double.parse(frame["c7_x"].toString()),
+          "c7_y": double.parse(frame["c7_y"].toString()),
         };
       }).toList(),
-      "member_id": activeMemberId,
     };
 
-    final response = await _postRequest("/report/analyze", requestPayload);
-    return response['success'] == true;
+    final response = await _postRequest(
+      "/api/monthly/measurements",
+      requestPayload,
+    );
+    return response;
   }
 
   InputImage? _convertCameraImageToInputImage(CameraImage image) {
@@ -345,17 +336,22 @@ class MediaPipeService {
 
   Future<Map<String, dynamic>> _postRequest(String path, dynamic body) async {
     final url = Uri.parse('$baseUrl$path');
+    final accessToken = await storage.read(key: 'accessToken');
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
         body: jsonEncode(body),
       );
       final data = jsonDecode(utf8.decode(response.bodyBytes));
       return {
-        "success": (response.statusCode == 200),
+        "success": (response.statusCode == 200 || response.statusCode == 202),
+        "statusCode": response.statusCode,
+        "code": data['code'],
         "message": data['message'] ?? "에러가 발생했습니다.",
-        "result": data['result'],
       };
     } catch (e) {
       return {"success": false, "message": "네트워크 연결을 확인해주세요."};
