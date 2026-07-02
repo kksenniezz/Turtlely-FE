@@ -2,7 +2,30 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-// 📦 백엔드 DB 구조 및 연동 명세 데이터 모델
+class MonthlySummary {
+  final int monthlyId;
+  final int year;
+  final int month;
+  final DateTime measuredAt;
+
+  MonthlySummary({
+    required this.monthlyId,
+    required this.year,
+    required this.month,
+    required this.measuredAt,
+  });
+
+  factory MonthlySummary.fromJson(Map<String, dynamic> json) {
+    return MonthlySummary(
+      monthlyId: json['monthly_id'],
+      year: json['report_year'],
+      month: json['report_month'],
+      measuredAt: DateTime.parse(json['measured_at']),
+    );
+  }
+}
+
+// 백엔드 DB 구조 및 연동 명세 데이터 모델
 class ReportData {
   final String message;
   final String dataStatus;
@@ -74,6 +97,7 @@ class ReportService {
   static const String _baseUrl = 'http://54.144.66.35.nip.io:8080';
   final _storage = const FlutterSecureStorage();
 
+  // 1. 월간 리포트 조회
   Future<ReportData?> fetchMonthlyReport({required int monthlyId}) async {
     try {
       final accessToken = await _storage.read(key: 'accessToken');
@@ -95,7 +119,6 @@ class ReportService {
       }
 
       if (response.statusCode == 200) {
-        print(decodedData["code"]);
         return ReportData.fromJson(decodedData);
       }
 
@@ -105,35 +128,71 @@ class ReportService {
       }
 
       if (response.statusCode == 404) {
-        print(decodedData["code"]); // REPORT_NOT_FOUND
         print("리포트를 찾을 수 없습니다.");
         return null;
       }
 
       if (response.statusCode == 500) {
-        print(decodedData["code"]); // LLM_SERVER_ERROR
         print("AI 서버 연산 중 오류가 발생했습니다.");
         return null;
       }
 
       if (response.statusCode == 400) {
-        print(decodedData["code"]); // INVALID_REPORT_ID
         print("잘못된 리포트 ID입니다.");
         return null;
       }
 
       if (response.statusCode == 401) {
-        print(decodedData["code"]); // AUTH_TOKEN_INVALID
         print("인증에 실패했습니다.");
         return null;
       }
-
-      print("예상하지 못한 응답: ${response.statusCode}");
       return null;
     } catch (e) {
       print("[ReportService 통신 에러 진짜 원인]: $e");
-      if (e is String) rethrow;
       throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
     }
   }
+
+  // 2. 월 목록 조회 (드롭다운 시)
+  Future<List<MonthlySummary>> fetchMonthlyList() async {
+    try {
+      final accessToken = await _storage.read(key: 'accessToken');
+      final url = Uri.parse('$_baseUrl/api/monthly/list');
+
+      print("🚀 [Monthly List 요청]: $url");
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        print("월 목록 조회 실패: ${response.statusCode}");
+        return [];
+      }
+
+      final List<dynamic> decoded = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
+
+      return decoded.map((e) => MonthlySummary.fromJson(e)).toList();
+    } catch (e) {
+      print("[fetchMonthlyList 에러]: $e");
+      return [];
+    }
+  }
+  //  // 3. 최신 월 자동 선택
+  //   Future<MonthlySummary?> fetchLatestMonthly() async {
+  //   final list = await fetchMonthlyList();
+
+  //   if (list.isEmpty) return null;
+
+  //   // measured_at 기준 최신 1개
+  //   list.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
+
+  //   return list.first;
+  // }
 }
