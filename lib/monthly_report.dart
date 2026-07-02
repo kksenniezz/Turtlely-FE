@@ -54,13 +54,13 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     }
 
     try {
+      const int monthlyId = 33; // 더미데이터
       final data = await _reportService.fetchMonthlyReport(
-        year: targetYear,
-        month: targetMonth,
+        monthlyId: monthlyId,
       );
 
       print(
-        "🔍 [월간리포트 수신 데이터] 닉네임: ${data?.nickname}, 측정횟수: ${data?.totalMeasurements}, CVA: ${data?.cvaAngle}",
+        "🔍 [월간리포트 수신 데이터] 닉네임: ${data?.nickname}, 상태: ${data?.dataStatus}, CVA: ${data?.cvaAngle}",
       );
 
       setState(() {
@@ -387,13 +387,14 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   }
 
   Widget _buildScoreBoxFrame() {
+    final score = _currentReport?.score ?? 0;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade200),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -407,7 +408,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           ),
           SizedBox(height: 8),
           Text(
-            "73점",
+            "$score점",
             style: TextStyle(
               fontSize: 36,
               fontWeight: FontWeight.bold,
@@ -426,15 +427,25 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
     // 1. 차트 데이터 가공 (서버 응답을 차트가 원하는 List<double>로 변환)
     final List<double> cvaHistory =
-        report?.cvaHistory?.map((e) => e['angle'] as double).toList() ?? [];
+        report?.cvaHistory
+            ?.map((e) => (e['angle'] as num).toDouble())
+            .toList() ??
+        [];
     final List<double> craHistory =
-        report?.craHistory?.map((e) => e['angle'] as double).toList() ?? [];
+        report?.craHistory
+            ?.map((e) => (e['angle'] as num).toDouble())
+            .toList() ??
+        [];
 
     // 2. 예측 데이터 가공
     final List<double> predScores =
-        report?.predictionData?['prediction_scores']?.cast<double>() ?? [];
+        (report?.predictionData?['prediction_scores'] as List?)
+            ?.map((e) => (e as num).toDouble())
+            .toList() ??
+        [];
     final List<String> predMonths =
         report?.predictionData?['prediction_months']?.cast<String>() ?? [];
+    final diseases = report?.predictedDiseases ?? [];
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -499,11 +510,15 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 24),
-              _buildSimpleDiseaseItem("목디스크", 0.85),
-              const SizedBox(height: 16),
-              _buildSimpleDiseaseItem("후두신경통", 0.65),
-              const SizedBox(height: 16),
-              _buildSimpleDiseaseItem("척추측만증", 0.35),
+              ...List.generate(diseases.length, (index) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildSimpleDiseaseItem(
+                    diseases[index],
+                    (3 - index) / 3,
+                  ),
+                );
+              }),
             ],
           ),
         ),

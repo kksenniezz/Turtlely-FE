@@ -21,12 +21,10 @@ class MonthlyChartWidget extends StatelessWidget {
     // final List<double> cvaData = [52.0, 58.0, -1.0, 54.0, 51.0, 49.0];
     // final List<double> craData = [148.0, 142.0, 138.0, 136.0, -1.0, 135.0];
 
-    final List<int> validIndices = [];
-    for (int i = 0; i < cvaData.length; i++) {
-      if (cvaData[i] != -1.0 && craData[i] != -1.0) {
-        validIndices.add(i);
-      }
-    }
+    final validIndices = List.generate(
+      cvaData.length,
+      (i) => (cvaData[i] != -1 && craData[i] != -1) ? i : -1,
+    )..removeWhere((e) => e == -1);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -95,6 +93,9 @@ class MonthlyChartWidget extends StatelessWidget {
       return FlSpot(e.key.toDouble(), data[originalIdx]);
     }).toList();
 
+    if (spots.isEmpty) {
+      return const SizedBox();
+    }
     final int lastIdx = spots.length - 1;
 
     return Container(
@@ -136,7 +137,7 @@ class MonthlyChartWidget extends StatelessWidget {
                   minY: target - 10,
                   maxY: target + 10,
                   minX: 0,
-                  maxX: lastIdx.toDouble(),
+                  maxX: cvaData.length - 1,
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: true,
@@ -307,10 +308,16 @@ class PredictionChartWidget extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         interval: 1,
-                        getTitlesWidget: (val, meta) => Text(
-                          predictionMonths[val.toInt()],
-                          style: const TextStyle(fontSize: 9),
-                        ),
+                        getTitlesWidget: (val, meta) {
+                          final i = val.toInt();
+                          if (i >= predictionMonths.length)
+                            return const SizedBox();
+
+                          return Text(
+                            predictionMonths[i],
+                            style: const TextStyle(fontSize: 9),
+                          );
+                        },
                       ),
                     ),
                     rightTitles: AxisTitles(
@@ -365,7 +372,7 @@ class PredictionChartWidget extends StatelessWidget {
                       getTooltipItems: (touchedSpots) {
                         return touchedSpots.map((spot) {
                           return LineTooltipItem(
-                            "${spot.y.toInt()}점",
+                            "${(spot.y).toInt()}점",
                             const TextStyle(
                               color: TColor.buttonGreen,
                               fontWeight: FontWeight.bold,
