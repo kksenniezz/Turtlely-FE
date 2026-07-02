@@ -2,25 +2,26 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-class MonthlySummary {
+class MonthlyListItem {
   final int monthlyId;
   final int year;
   final int month;
   final DateTime measuredAt;
 
-  MonthlySummary({
+  MonthlyListItem({
     required this.monthlyId,
     required this.year,
     required this.month,
     required this.measuredAt,
   });
 
-  factory MonthlySummary.fromJson(Map<String, dynamic> json) {
-    return MonthlySummary(
-      monthlyId: json['monthly_id'],
-      year: json['report_year'],
-      month: json['report_month'],
-      measuredAt: DateTime.parse(json['measured_at']),
+  factory MonthlyListItem.fromJson(Map<String, dynamic> json) {
+    return MonthlyListItem(
+      monthlyId: json['monthly_id'] ?? 0,
+      year: json['report_year'] ?? 0,
+      month: json['report_month'] ?? 0,
+      measuredAt:
+          DateTime.tryParse(json['measured_at'] ?? '') ?? DateTime(2000),
     );
   }
 }
@@ -58,7 +59,7 @@ class ReportData {
   });
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
-    final result = json['result'] as Map<String, dynamic>;
+    final result = (json['result'] ?? json['data']) as Map<String, dynamic>;
     try {
       return ReportData(
         message: json['message'] ?? '',
@@ -154,7 +155,7 @@ class ReportService {
   }
 
   // 2. 월 목록 조회 (드롭다운 시)
-  Future<List<MonthlySummary>> fetchMonthlyList() async {
+  Future<List<MonthlyListItem>> fetchMonthlyList() async {
     try {
       final accessToken = await _storage.read(key: 'accessToken');
       final url = Uri.parse('$_baseUrl/api/monthly/list');
@@ -170,7 +171,7 @@ class ReportService {
       );
 
       if (response.statusCode != 200) {
-        print("월 목록 조회 실패: ${response.statusCode}");
+        print("월 목록 실패 body: ${response.body}");
         return [];
       }
 
@@ -178,14 +179,14 @@ class ReportService {
         utf8.decode(response.bodyBytes),
       );
 
-      return decoded.map((e) => MonthlySummary.fromJson(e)).toList();
+      return decoded.map((e) => MonthlyListItem.fromJson(e)).toList();
     } catch (e) {
       print("[fetchMonthlyList 에러]: $e");
       return [];
     }
   }
   //  // 3. 최신 월 자동 선택
-  //   Future<MonthlySummary?> fetchLatestMonthly() async {
+  //   Future<MonthlyListItem?> fetchLatestMonthly() async {
   //   final list = await fetchMonthlyList();
 
   //   if (list.isEmpty) return null;
