@@ -41,6 +41,9 @@ class ReportData {
   final List<dynamic>? craHistory;
   final List<Map<String, dynamic>> predictedDiseases;
   final Map<String, dynamic>? predictionData;
+  final bool measurementAlarm;
+  final bool reportAlarm;
+  final DateTime? measuredAt;
 
   ReportData({
     required this.message,
@@ -56,6 +59,9 @@ class ReportData {
     required this.craHistory,
     required this.predictedDiseases,
     required this.predictionData,
+    required this.measurementAlarm,
+    required this.reportAlarm,
+    required this.measuredAt,
   });
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
@@ -90,9 +96,15 @@ class ReportData {
               };
             }).toList() ??
             [],
+        predictionData: Map<String, dynamic>.from(
+          result['prediction_data'] ?? {},
+        ),
 
-        predictionData:
-            result['prediction_data'] as Map<String, dynamic>? ?? {},
+        measurementAlarm: result['measurement_alarm'] ?? false,
+        reportAlarm: result['report_alarm'] ?? false,
+        measuredAt: result['measured_at'] == null
+            ? null
+            : DateTime.tryParse(result['measured_at']),
       );
     } catch (e) {
       print("[ReportData.fromJson 파싱 오류] $e");
@@ -192,7 +204,37 @@ class ReportService {
       return [];
     }
   }
-  //  // 3. 최신 월 자동 선택
+
+  // 3. 월간 알림 설정
+  Future<bool> registerMonthlyAlarm({required String alarmType}) async {
+    try {
+      final accessToken = await _storage.read(key: 'accessToken');
+
+      final url = Uri.parse('$_baseUrl/api/monthly/alarm');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({"alarmType": alarmType}),
+      );
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(utf8.decode(response.bodyBytes));
+        return decoded["isSuccess"] == true;
+      }
+
+      print("알림 설정 실패 : ${response.body}");
+      return false;
+    } catch (e) {
+      print("[registerMonthlyAlarm 오류] $e");
+      return false;
+    }
+  }
+
+  //  // 4. 최신 월 자동 선택
   //   Future<MonthlyListItem?> fetchLatestMonthly() async {
   //   final list = await fetchMonthlyList();
 

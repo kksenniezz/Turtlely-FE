@@ -272,7 +272,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             "본 서비스는 카메라 측정 기반의 '자세 참고용' 결과이며,\n의학적 진단을 대신할 수 없습니다\n정확한 진단이 필요한 경우 전문가에게 문의하세요",
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 12,
               color: TColor.gray,
               height: 1.5,
               fontWeight: FontWeight.w500,
@@ -295,13 +295,9 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     final double myCVA = report.cvaAngle;
     final double myCRA = report.craAngle;
 
-    double cvaDiff = myCVA - 55.0;
-    String cvaDesc = cvaDiff > 0
-        ? "이상적인 범위(50~55°)보다 약 ${cvaDiff.toStringAsFixed(1)}° 높게 측정되었습니다."
-        : "이상적인 범위(50~55°)보다 약 ${cvaDiff.abs().toStringAsFixed(1)}° 낮게 측정되었습니다.";
-    if (myCVA >= 50.0 && myCVA <= 55.0) {
-      cvaDesc = "이상적인 범위(50~55°) 내에 안정적으로 속해 있습니다.";
-    }
+    String cvaDesc = myCVA >= 48.7
+        ? "이상적인 범위(48.7° 이상) 내에 안정적으로 속해 있습니다."
+        : "이상적인 범위(48.7° 이상)를 약 ${(myCVA - 48.7).abs().toStringAsFixed(1)}° 벗어났습니다.";
 
     String craDesc = myCRA <= 145.0
         ? "이상적인 범위(145° 이하) 내에 속해 목의 가동성이 안정적입니다."
