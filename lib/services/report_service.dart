@@ -39,7 +39,7 @@ class ReportData {
   final int? score;
   final List<dynamic>? cvaHistory;
   final List<dynamic>? craHistory;
-  final List<String>? predictedDiseases;
+  final List<Map<String, dynamic>> predictedDiseases;
   final Map<String, dynamic>? predictionData;
 
   ReportData({
@@ -51,15 +51,15 @@ class ReportData {
     required this.postureStatus,
     required this.cvaAngle,
     required this.craAngle,
-    this.score,
-    this.cvaHistory,
-    this.craHistory,
-    this.predictedDiseases,
-    this.predictionData,
+    required this.score,
+    required this.cvaHistory,
+    required this.craHistory,
+    required this.predictedDiseases,
+    required this.predictionData,
   });
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
-    final result = (json['result'] ?? json['data']) as Map<String, dynamic>;
+    final result = json['result'] as Map<String, dynamic>;
     try {
       return ReportData(
         message: json['message'] ?? '',
@@ -80,9 +80,16 @@ class ReportData {
         cvaHistory: result['cva_history'] ?? [],
         craHistory: result['cra_history'] ?? [],
 
-        predictedDiseases: List<String>.from(
-          result['predicted_diseases'] ?? [],
-        ),
+        predictedDiseases:
+            (result['predicted_diseases'] as List?)?.map((e) {
+              final map = e as Map<String, dynamic>;
+
+              return {
+                "name": map['name'] ?? '',
+                "score": (map['score'] as num?)?.toDouble() ?? 0.0,
+              };
+            }).toList() ??
+            [],
 
         predictionData:
             result['prediction_data'] as Map<String, dynamic>? ?? {},

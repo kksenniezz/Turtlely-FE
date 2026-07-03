@@ -14,134 +14,103 @@ class MonthlyReportView extends StatefulWidget {
 class _MonthlyReportViewState extends State<MonthlyReportView> {
   final DateTime _today = DateTime.now();
 
-  late String selectedYear;
-  late String selectedMonth;
-  static bool isAlarmRegistered = false;
-
   final ReportService _reportService = ReportService();
+  List<MonthlyListItem> _monthlyList = [];
+  MonthlyListItem? _selectedItem;
+
+  late int _selectedYear;
+  late int _selectedMonth;
   ReportData? _currentReport;
 
   bool _isLoading = false;
   String? _networkErrorMessage;
 
-  int? _startYear;
-  int? _startMonth;
+  static bool isAlarmRegistered = false;
 
   @override
   void initState() {
     super.initState();
-    selectedYear = "${_today.year}년";
-    selectedMonth = "${_today.month}월";
-    _fetchReportData(isInitialFetch: true);
+    _initLoad();
   }
 
-  Future<void> _fetchReportData({bool isInitialFetch = false}) async {
-    setState(() {
-      _isLoading = true;
-      _networkErrorMessage = null;
-    });
-
-    final int targetYear = int.parse(selectedYear.replaceAll('년', ''));
-    final int targetMonth = int.parse(selectedMonth.replaceAll('월', ''));
-
-    if (targetYear > _today.year ||
-        (targetYear == _today.year && targetMonth > _today.month)) {
-      setState(() {
-        _currentReport = null;
-        _isLoading = false;
-      });
-      return;
-    }
+  Future<void> _initLoad() async {
+    setState(() => _isLoading = true);
 
     try {
-      const int monthlyId = 33; // 더미데이터
-      final data = await _reportService.fetchMonthlyReport(
-        monthlyId: monthlyId,
-      );
+      // 1. 월 목록 가져오기
+      final list = await _reportService.fetchMonthlyList();
 
-      print(
-        "🔍 [월간리포트 수신 데이터] 닉네임: ${data?.nickname}, 상태: ${data?.dataStatus}, CVA: ${data?.cvaAngle}",
-      );
+      if (list.isEmpty) {
+        setState(() {
+          _monthlyList = [];
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // 2. 최신 월 자동 선택 (measuredAt 기준)
+      list.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
 
       setState(() {
-        _currentReport = data;
+        _monthlyList = list;
+        _selectedItem = list.first;
 
-        if (isInitialFetch && data != null && data.year > 0) {
-          _startYear = data.year;
-          _startMonth = data.month;
-        } else if (isInitialFetch) {
-          _startYear = _today.year;
-          _startMonth = 1;
-        }
+        _selectedYear = list.first.year;
+        _selectedMonth = list.first.month;
       });
-    } catch (errorMessage) {
-      if (errorMessage.toString() == "NOT_FOUND_TRIGGER") {
-        setState(() {
-          _currentReport = null;
-        });
-      } else {
-        setState(() {
-          _networkErrorMessage = errorMessage.toString();
-        });
-        _showServerAlternativeDialog(errorMessage.toString());
-      }
+
+      // 3. 첫 report 호출
+      await _fetchReport(list.first.monthlyId);
+    } catch (e) {
+      setState(() {
+        _networkErrorMessage = e.toString();
+      });
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  void _showServerAlternativeDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          "시스템 알림",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        content: Text(message, style: const TextStyle(fontSize: 14)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "확인",
-              style: TextStyle(color: TColor.buttonGreen),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<String> _generateYearList() {
-    final int startYear = _startYear ?? _today.year;
-
-    return List.generate(
-      (_today.year - startYear) + 1,
-      (index) => "${_today.year - index}년",
-    );
-  }
-
-  List<String> _generateMonthList() {
-    int selectedYInt = int.parse(selectedYear.replaceAll('년', ''));
-    final int startYear = _startYear ?? _today.year;
-    final int startMonth = _startMonth ?? 1;
-
-    if (selectedYInt == startYear) {
-      return List.generate(
-        12 - startMonth + 1,
-        (index) => "${startMonth + index}월",
+  Future<void> _fetchReport(int monthlyId) async {
+    setState(() => _isLoading = true);
+    try {
+      final data = await _reportService.fetchMonthlyReport(
+        monthlyId: monthlyId,
       );
+
+      setState(() {
+        _currentReport = data;
+      });
+    } catch (e) {
+      setState(() {
+        _networkErrorMessage = e.toString();
+      });
+    } finally {
+      setState(() => _isLoading = false);
     }
-    return List.generate(12, (i) => "${i + 1}월");
+  }
+
+  void _onSelectMonthly(MonthlyListItem item) {
+    setState(() {
+      _selectedItem = item;
+      _selectedYear = item.year;
+      _selectedMonth = item.month;
+    });
+    _fetchReport(item.monthlyId);
   }
 
   int _checkStatus() {
-    int selY = int.parse(selectedYear.replaceAll('년', ''));
-    int selM = int.parse(selectedMonth.replaceAll('월', ''));
-    if (selY > _today.year || (selY == _today.year && selM > _today.month)) {
+    final item = _selectedItem;
+    if (item == null) return 0;
+
+    if (item.year > _today.year ||
+        (item.year == _today.year && item.month > _today.month)) {
       return 0;
     }
-    if (selY == _today.year && selM == _today.month) return 1;
+
+    if (item.year == _today.year && item.month == _today.month) {
+      return 1;
+    }
+
     return 2;
   }
 
@@ -165,46 +134,113 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Row(
-              children: [
-                _buildDropdown(selectedYear, _generateYearList(), (val) {
-                  if (val != null) {
-                    setState(() {
-                      selectedYear = val;
-                      List<String> validMonths = _generateMonthList();
-                      if (!validMonths.contains(selectedMonth)) {
-                        selectedMonth = validMonths.first;
-                      }
-                    });
-                    _fetchReportData();
-                  }
-                }),
-                const SizedBox(width: 12),
-                _buildDropdown(selectedMonth, _generateMonthList(), (val) {
-                  if (val != null) {
-                    setState(() => selectedMonth = val);
-                    _fetchReportData();
-                  }
-                }),
-              ],
-            ),
+            child: _buildDropdown(),
           ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : MonthlyAlarmView(
-                    // 여기서 호출
                     report: _currentReport,
                     status: status,
-                    selectedMonth: selectedMonth,
+                    selectedMonth: _selectedItem != null
+                        ? "${_selectedItem!.month}월"
+                        : "",
                     isAlarmRegistered: isAlarmRegistered,
                     networkErrorMessage: _networkErrorMessage,
-                    onReportDataChanged: _fetchReportData,
+                    onReportDataChanged: () =>
+                        _fetchReport(_selectedItem?.monthlyId ?? 0),
                     buildReportResultView: _buildReportResultView,
                   ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDropdown() {
+    if (_monthlyList.isEmpty || _selectedItem == null) {
+      return const Text("데이터 없음"); // 추후 알림뷰로
+    }
+
+    final years = _monthlyList.map((e) => e.year).toSet().toList()
+      ..sort((a, b) => b.compareTo(a));
+    final months = _monthlyList.where((e) => e.year == _selectedYear).toList()
+      ..sort((a, b) => b.month.compareTo(a.month));
+
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: TColor.lightGreen,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _selectedYear,
+              dropdownColor: TColor.lightGreen,
+              icon: const Icon(Icons.arrow_drop_down, color: TColor.darkGreen),
+              items: years.map((year) {
+                return DropdownMenuItem<int>(
+                  value: year,
+                  child: Text(
+                    "$year년",
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: TColor.darkGreen,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (year) {
+                if (year == null) return;
+
+                final firstMonth =
+                    _monthlyList.where((e) => e.year == year).toList()
+                      ..sort((a, b) => b.month.compareTo(a.month));
+
+                _onSelectMonthly(firstMonth.first);
+              },
+            ),
+          ),
+        ),
+
+        const SizedBox(width: 12),
+
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: TColor.lightGreen,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<MonthlyListItem>(
+              value: _selectedItem,
+              dropdownColor: TColor.lightGreen,
+              icon: const Icon(Icons.arrow_drop_down, color: TColor.darkGreen),
+              items: months.map((item) {
+                return DropdownMenuItem<MonthlyListItem>(
+                  value: item,
+                  child: Text(
+                    "${item.month}월",
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: TColor.darkGreen,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }).toList(),
+              onChanged: (item) {
+                if (item != null) {
+                  _onSelectMonthly(item);
+                }
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -219,7 +255,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       child: Column(
         children: [
           Text(
-            "$nickname님의 $selectedMonth 추정 거북목 유형은...",
+            "$nickname님의 $_selectedMonth월 추정 거북목 유형은...",
             style: TText.body.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
@@ -249,8 +285,15 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   Widget _buildAnalysisImages(String postureType) {
     final report = _currentReport;
-    double myCVA = report?.cvaAngle ?? 69.0;
-    double myCRA = report?.craAngle ?? 128.5;
+    if (report == null) {
+      return const Padding(
+        padding: EdgeInsets.all(20),
+        child: Text("분석 데이터가 없습니다."),
+      );
+    }
+
+    final double myCVA = report.cvaAngle;
+    final double myCRA = report.craAngle;
 
     double cvaDiff = myCVA - 55.0;
     String cvaDesc = cvaDiff > 0
@@ -511,11 +554,12 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ),
               const SizedBox(height: 24),
               ...List.generate(diseases.length, (index) {
+                final disease = diseases[index];
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: _buildSimpleDiseaseItem(
-                    diseases[index],
-                    (3 - index) / 3,
+                    disease["name"] as String,
+                    (disease["score"] as num).toDouble(),
                   ),
                 );
               }),
@@ -533,6 +577,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   }
 
   Widget _buildSimpleDiseaseItem(String name, double percent) {
+    final progress = percent.clamp(0.0, 1.0);
     return Row(
       children: [
         SizedBox(
@@ -552,7 +597,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             ),
             child: FractionallySizedBox(
               alignment: Alignment.centerLeft,
-              widthFactor: percent,
+              widthFactor: progress,
               child: Container(
                 decoration: BoxDecoration(
                   color: TColor.buttonGreen,
@@ -563,43 +608,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildDropdown(
-    String currentValue,
-    List<String> items,
-    ValueChanged<String?> onChanged,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: TColor.lightGreen,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: items.contains(currentValue) ? currentValue : items.first,
-          dropdownColor: TColor.lightGreen,
-          items: items
-              .map(
-                (String item) => DropdownMenuItem<String>(
-                  value: item,
-                  child: Text(
-                    item,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: TColor.darkGreen,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: onChanged,
-          icon: const Icon(Icons.arrow_drop_down, color: TColor.darkGreen),
-        ),
-      ),
     );
   }
 }
