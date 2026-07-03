@@ -50,7 +50,7 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
 
     // 2. 상태별 화면 분기
     if (widget.status == 1 &&
-        (widget.report == null || widget.report!.totalMeasurements == 0)) {
+        (widget.report == null /*|| widget.report!.totalMeasurements == 0*/ )) {
       return _buildReadyView(
         title: "이번 달은 월간 거북목 측정을\n아직 하지 않았어요!",
         isMeasureActionMode: true,
