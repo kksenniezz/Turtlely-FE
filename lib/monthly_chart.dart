@@ -5,11 +5,13 @@ import 'style.dart';
 class MonthlyChartWidget extends StatelessWidget {
   final List<double> cvaData;
   final List<double> craData;
+  final List<String> months;
 
   const MonthlyChartWidget({
     super.key,
     required this.cvaData,
     required this.craData,
+    required this.months,
   });
 
   @override
@@ -18,9 +20,6 @@ class MonthlyChartWidget extends StatelessWidget {
   }
 
   Widget _buildChartFrame(String title) {
-    // final List<double> cvaData = [52.0, 58.0, -1.0, 54.0, 51.0, 49.0];
-    // final List<double> craData = [148.0, 142.0, 138.0, 136.0, -1.0, 135.0];
-
     final validIndices = List.generate(
       cvaData.length,
       (i) => (cvaData[i] != -1 && craData[i] != -1) ? i : -1,
@@ -137,7 +136,7 @@ class MonthlyChartWidget extends StatelessWidget {
                   minY: target - 10,
                   maxY: target + 10,
                   minX: 0,
-                  maxX: cvaData.length - 1,
+                  maxX: (spots.length - 1).toDouble(),
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: true,
@@ -158,10 +157,16 @@ class MonthlyChartWidget extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         interval: 1,
-                        getTitlesWidget: (val, meta) => Text(
-                          "${validIndices[val.toInt()] + 1}월",
-                          style: const TextStyle(fontSize: 9),
-                        ),
+                        getTitlesWidget: (val, meta) {
+                          final index = val.toInt();
+                          if (index < 0 || index >= months.length) {
+                            return const SizedBox();
+                          }
+                          return Text(
+                            months[index],
+                            style: const TextStyle(fontSize: 9),
+                          );
+                        },
                       ),
                     ),
                     rightTitles: AxisTitles(
@@ -173,10 +178,8 @@ class MonthlyChartWidget extends StatelessWidget {
                           padding: const EdgeInsets.only(left: 8.0),
                           child: Text(
                             "${val.toInt()}",
-                            style: TextStyle(
-                              color: (val == target)
-                                  ? TColor.pink
-                                  : Colors.grey,
+                            style: const TextStyle(
+                              color: Colors.grey,
                               fontSize: 9,
                             ),
                           ),
@@ -204,8 +207,8 @@ class MonthlyChartWidget extends StatelessWidget {
                     ),
                     LineChartBarData(
                       spots: [
-                        FlSpot(0, target),
-                        FlSpot(lastIdx.toDouble(), target),
+                        FlSpot(0, 48.7),
+                        FlSpot(lastIdx.toDouble(), 48.7),
                       ],
                       color: TColor.pink,
                       barWidth: 2,

@@ -479,6 +479,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             ?.map((e) => (e['angle'] as num).toDouble())
             .toList() ??
         [];
+    final months =
+        report?.cvaHistory?.map((e) => e["month"] as String).toList() ?? [];
 
     // 2. 예측 데이터 가공
     final List<double> predScores =
@@ -523,7 +525,11 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         const SizedBox(height: 16),
         _buildAnalysisImages(postureType),
         const SizedBox(height: 32),
-        MonthlyChartWidget(cvaData: cvaHistory, craData: craHistory),
+        MonthlyChartWidget(
+          cvaData: cvaHistory,
+          craData: craHistory,
+          months: months,
+        ),
         const SizedBox(height: 32),
         const Row(
           children: [
