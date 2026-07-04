@@ -133,8 +133,8 @@ class MonthlyChartWidget extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20.0),
               child: LineChart(
                 LineChartData(
-                  minY: target - 10,
-                  maxY: target + 10,
+                  minY: target - 20,
+                  maxY: target + 20,
                   minX: 0,
                   maxX: (spots.length - 1).toDouble(),
                   gridData: FlGridData(
@@ -159,7 +159,9 @@ class MonthlyChartWidget extends StatelessWidget {
                         interval: 1,
                         getTitlesWidget: (val, meta) {
                           final index = val.toInt();
-                          if (index < 0 || index >= months.length) {
+                          if (index < 0 ||
+                              index >= months.length ||
+                              index >= data.length) {
                             return const SizedBox();
                           }
                           return Text(
@@ -318,7 +320,7 @@ class PredictionChartWidget extends StatelessWidget {
 
                           return Text(
                             predictionMonths[i],
-                            style: const TextStyle(fontSize: 9),
+                            style: const TextStyle(fontSize: 12),
                           );
                         },
                       ),

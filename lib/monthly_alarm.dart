@@ -39,6 +39,18 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
   }
 
   @override
+  void didUpdateWidget(covariant MonthlyAlarmView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isMeasureAlarmSet != oldWidget.isMeasureAlarmSet ||
+        widget.isResultAlarmSet != oldWidget.isResultAlarmSet) {
+      setState(() {
+        _isMeasureAlarmSet = widget.isMeasureAlarmSet;
+        _isResultAlarmSet = widget.isResultAlarmSet;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (widget.networkErrorMessage != null) {
       return Center(

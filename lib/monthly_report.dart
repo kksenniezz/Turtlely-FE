@@ -64,7 +64,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         _selectedMonth = list.first.month;
       });
 
-      // 3. 리포트 호출 (monthlyId가 -1이면 리포트가 없으므로 fetch를 건너뜀)
+      // 3. 리포트 호출 (가상데이터면 fetch를 건너뜀)
       if (!_selectedItem!.isVirtual) {
         await _fetchReport(_selectedItem!.monthlyId);
       } else {
@@ -78,7 +78,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   }
 
   Future<void> _fetchReport(int monthlyId) async {
-    if (monthlyId == -1) {
+    if (monthlyId == -999) {
       setState(() => _currentReport = null);
       return;
     }
