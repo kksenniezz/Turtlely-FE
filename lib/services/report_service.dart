@@ -2,173 +2,238 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-// 📦 백엔드 DB 구조 및 연동 명세 데이터 모델
+class MonthlyListItem {
+  final int monthlyId;
+  final int year;
+  final int month;
+  final DateTime measuredAt;
+  final bool isVirtual;
+
+  MonthlyListItem({
+    required this.monthlyId,
+    required this.year,
+    required this.month,
+    required this.measuredAt,
+    this.isVirtual = false,
+  });
+
+  factory MonthlyListItem.fromJson(Map<String, dynamic> json) {
+    return MonthlyListItem(
+      monthlyId: json['monthly_id'] ?? 0,
+      year: json['report_year'] ?? DateTime.now().year,
+      month: json['report_month'] ?? DateTime.now().month,
+      measuredAt: json['measured_at'] != null
+          ? DateTime.tryParse(json['measured_at']) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
+}
+
+// 백엔드 DB 구조 및 연동 명세 데이터 모델
 class ReportData {
-  final int status;
   final String message;
+  final String dataStatus;
   final int year;
   final int month;
   final String nickname;
   final String postureStatus;
-  final String postureMessage;
   final double cvaAngle;
   final double craAngle;
-  final int totalMeasurements;
+  final int? score;
+  final List<dynamic>? cvaHistory;
+  final List<dynamic>? craHistory;
+  final List<Map<String, dynamic>> predictedDiseases;
+  final Map<String, dynamic>? predictionData;
+  final bool measurementAlarm;
+  final bool reportAlarm;
+  final DateTime? measuredAt;
 
   ReportData({
-    required this.status,
     required this.message,
+    required this.dataStatus,
     required this.year,
     required this.month,
     required this.nickname,
     required this.postureStatus,
-    required this.postureMessage,
     required this.cvaAngle,
     required this.craAngle,
-    required this.totalMeasurements,
+    required this.score,
+    required this.cvaHistory,
+    required this.craHistory,
+    required this.predictedDiseases,
+    required this.predictionData,
+    required this.measurementAlarm,
+    required this.reportAlarm,
+    required this.measuredAt,
   });
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
+    final result = json['result'] as Map<String, dynamic>;
     try {
-      if (json.containsKey('data') && json['data'] is Map<String, dynamic>) {
-        return ReportData.fromJson(json['data'] as Map<String, dynamic>);
-      }
-
-      // 데이터 타입 미스매치 방지를 위한 안전한 형변환 (String으로 온 숫자도 int로 처리)
-      int parseToInt(dynamic value) {
-        if (value == null) return 0;
-        if (value is int) return value;
-        if (value is String) return int.tryParse(value) ?? 0;
-        return 0;
-      }
-
       return ReportData(
-        status: parseToInt(json['status']),
         message: json['message'] ?? '',
-        // 만약 백엔드가 0이나 null을 주면 프론트 앱이 뻗지 않도록 현재 날짜 기본값 방어
-        year: parseToInt(json['year']) == 0
-            ? DateTime.now().year
-            : parseToInt(json['year']),
-        month: parseToInt(json['month']) == 0
-            ? DateTime.now().month
-            : parseToInt(json['month']),
-        nickname: json['nickname'] ?? '회원님', // 기본값을 '회원님'으로 매핑
-        postureStatus: json['posture_status'] ?? '역C자목',
-        postureMessage: json['posture_message'] ?? '',
-        cvaAngle: (json['cva_angle'] as num?)?.toDouble() ?? 69.0,
-        craAngle: (json['cra_angle'] as num?)?.toDouble() ?? 128.5,
-        totalMeasurements: parseToInt(json['total_measurements']),
+        dataStatus: result['data_status'] ?? 'NOT_YET',
+        year: result['report_year'] ?? DateTime.now().year,
+        month: result['report_month'] ?? DateTime.now().month,
+        nickname: result['nickname'] ?? '회원',
+
+        postureStatus: result['posture_type'] ?? '데이터 없음',
+
+        cvaAngle: (result['cva_angle'] as num?)?.toDouble() ?? 0,
+        craAngle: (result['cra_angle'] as num?)?.toDouble() ?? 0,
+
+        score: result['score'] == null
+            ? null
+            : int.parse(result['score'].toString()),
+
+        cvaHistory: result['cva_history'] ?? [],
+        craHistory: result['cra_history'] ?? [],
+
+        predictedDiseases:
+            (result['predicted_diseases'] as List?)?.map((e) {
+              final map = e as Map<String, dynamic>;
+
+              return {
+                "name": map['name'] ?? '',
+                "score": (map['score'] as num?)?.toDouble() ?? 0.0,
+              };
+            }).toList() ??
+            [],
+        predictionData: Map<String, dynamic>.from(
+          result['prediction_data'] ?? {},
+        ),
+
+        measurementAlarm: result['measurement_alarm'] ?? false,
+        reportAlarm: result['report_alarm'] ?? false,
+        measuredAt: result['measured_at'] == null
+            ? null
+            : DateTime.tryParse(result['measured_at']) ?? DateTime.now(),
       );
     } catch (e) {
-      print("[ReportData.fromJson 파싱 도중 에러 발생]: $e");
-      return ReportData(
-        status: 200,
-        message: "Parsing Fallback",
-        year: DateTime.now().year,
-        month: DateTime.now().month,
-        nickname: '회원님',
-        // nickname: json['nickname'] ?? '회원님',
-        postureStatus: '역C자목',
-        postureMessage: '',
-        cvaAngle: 64.09,
-        craAngle: 123.03,
-        totalMeasurements: 1,
-      );
+      print("[ReportData.fromJson 파싱 오류] $e");
+      rethrow;
     }
   }
 }
 
 class ReportService {
-  static const String _baseUrl = 'http://54.144.66.35.nip.io:8000';
+  static const String _baseUrl = 'http://54.144.66.35.nip.io:8080';
   final _storage = const FlutterSecureStorage();
 
-  Future<ReportData?> fetchMonthlyReport({
-    required int year,
-    required int month,
-  }) async {
-    int activeMemberId = 1;
+  // 1. 월간 리포트 조회
+  Future<ReportData?> fetchMonthlyReport({required int monthlyId}) async {
+    try {
+      final accessToken = await _storage.read(key: 'accessToken');
+      final url = Uri.parse('$_baseUrl/api/monthly/$monthlyId');
+      print("🚀 [ReportService 요청 주소]: $url");
 
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      Map<String, dynamic> decodedData = {};
+
+      if (response.body.isNotEmpty) {
+        decodedData = json.decode(utf8.decode(response.bodyBytes));
+      }
+
+      if (response.statusCode == 200) {
+        return ReportData.fromJson(decodedData);
+      }
+
+      if (response.statusCode == 202) {
+        print("AI 분석이 아직 완료되지 않았습니다.");
+        return null;
+      }
+
+      if (response.statusCode == 404) {
+        print("리포트를 찾을 수 없습니다.");
+        return null;
+      }
+
+      if (response.statusCode == 500) {
+        print("AI 서버 연산 중 오류가 발생했습니다.");
+        return null;
+      }
+
+      if (response.statusCode == 400) {
+        print("잘못된 리포트 ID입니다.");
+        return null;
+      }
+
+      if (response.statusCode == 401) {
+        print("인증에 실패했습니다.");
+        return null;
+      }
+      return null;
+    } catch (e) {
+      print("[ReportService 통신 에러 진짜 원인]: $e");
+      throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
+    }
+  }
+
+  // 2. 월 목록 조회 (드롭다운 시)
+  Future<List<MonthlyListItem>> fetchMonthlyList() async {
+    try {
+      final accessToken = await _storage.read(key: 'accessToken');
+      final url = Uri.parse('$_baseUrl/api/monthly/list');
+
+      print("🚀 [Monthly List 요청]: $url");
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        print("월 목록 실패 body: ${response.body}");
+        return [];
+      }
+
+      final List<dynamic> decoded = json.decode(
+        utf8.decode(response.bodyBytes),
+      );
+
+      return decoded.map((e) => MonthlyListItem.fromJson(e)).toList();
+    } catch (e) {
+      print("[fetchMonthlyList 에러]: $e");
+      return [];
+    }
+  }
+
+  // 3. 월간 알림 설정
+  Future<bool> registerMonthlyAlarm({required String alarmType}) async {
     try {
       final accessToken = await _storage.read(key: 'accessToken');
 
-      if (accessToken != null &&
-          accessToken.isNotEmpty &&
-          accessToken != "null") {
-        final normalizedPayload = utf8.decode(
-          base64Url.decode(base64Url.normalize(accessToken.split('.')[1])),
-        );
-        final Map<String, dynamic> payloadMap = jsonDecode(normalizedPayload);
+      final url = Uri.parse('$_baseUrl/api/monthly/alarm');
 
-        // 🔑 [조회용 토큰 배가르기] member_id 추출 연동
-        if (payloadMap['member_id'] != null) {
-          activeMemberId = int.parse(payloadMap['member_id'].toString().trim());
-        }
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({"alarmType": alarmType}),
+      );
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(utf8.decode(response.bodyBytes));
+        return decoded["isSuccess"] == true;
       }
 
-      final url = Uri.parse(
-        '$_baseUrl/report/monthly?member_id=$activeMemberId&year=$year&month=$month',
-      );
-
-      print("🚀 [ReportService 요청 주소]: $url");
-      final response = await http.get(url);
-      print("📥 [ReportService 응답 바디 raw]: ${utf8.decode(response.bodyBytes)}");
-
-      // if (response.statusCode == 404 || response.body.contains("Not Found")) {
-      //   throw "NOT_FOUND_TRIGGER";
-      // }
-
-      // if (response.statusCode == 200) {
-      //   final decodedData = json.decode(utf8.decode(response.bodyBytes));
-      //   return ReportData.fromJson(decodedData);
-      // }
-
-      // if (response.statusCode == 500) {
-      //   final decodedData = json.decode(utf8.decode(response.bodyBytes));
-      //   final String errorCode = decodedData['errorCode'] ?? '';
-
-      //   if (errorCode == "DATABASE_ERROR") {
-      //     throw "데이터베이스 연결에 실패했습니다. 관리자에게 문의하세요.";
-      //   } else if (errorCode == "SERVER_INTERNAL_ERROR") {
-      //     throw "서버 내부 로직 오류가 발생했습니다. 시스템팀이 확인 중입니다.";
-      //   } else {
-      //     throw "알 수 없는 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
-      //   }
-      // }
-      // return null;
-
-      // 발표용 하드코딩 -> 추후 삭제 //
-      return ReportData(
-        status: 200,
-        message: "Success for Demo",
-        year: year,
-        month: month,
-        nickname: "kksenniezz",
-        postureStatus: "역C자목",
-        postureMessage: "경추 정렬이 무너져 있습니다. 스트레칭이 필요합니다.",
-        cvaAngle: 64.09,
-        craAngle: 123.03,
-        totalMeasurements: 1,
-      );
+      print("알림 설정 실패 : ${response.body}");
+      return false;
     } catch (e) {
-      // 매핑 후 이 부분 다시 open, 밑에 더미데이터는 삭제
-      // print("🚨 [ReportService 통신 에러 진짜 원인]: $e");
-      // if (e is String) rethrow;
-      // throw '네트워크 연결이 원활하지 않습니다. 인터넷 연결을 확인해 주세요.';
-
-      print("임시 하드코딩 가동: $e");
-
-      return ReportData(
-        status: 200,
-        message: "Success for Demo",
-        year: year,
-        month: month,
-        nickname: "kksenniezz",
-        postureStatus: "역C자목",
-        postureMessage: "경추 정렬이 무너져 있습니다. 스트레칭이 필요합니다.",
-        cvaAngle: 64.09,
-        craAngle: 123.03,
-        totalMeasurements: 1,
-      );
+      print("[registerMonthlyAlarm 오류] $e");
+      return false;
     }
   }
 }

@@ -5,11 +5,13 @@ import 'style.dart';
 class MonthlyChartWidget extends StatelessWidget {
   final List<double> cvaData;
   final List<double> craData;
+  final List<String> months;
 
   const MonthlyChartWidget({
     super.key,
     required this.cvaData,
     required this.craData,
+    required this.months,
   });
 
   @override
@@ -18,15 +20,10 @@ class MonthlyChartWidget extends StatelessWidget {
   }
 
   Widget _buildChartFrame(String title) {
-    // final List<double> cvaData = [52.0, 58.0, -1.0, 54.0, 51.0, 49.0];
-    // final List<double> craData = [148.0, 142.0, 138.0, 136.0, -1.0, 135.0];
-
-    final List<int> validIndices = [];
-    for (int i = 0; i < cvaData.length; i++) {
-      if (cvaData[i] != -1.0 && craData[i] != -1.0) {
-        validIndices.add(i);
-      }
-    }
+    final validIndices = List.generate(
+      cvaData.length,
+      (i) => (cvaData[i] != -1 && craData[i] != -1) ? i : -1,
+    )..removeWhere((e) => e == -1);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -95,6 +92,9 @@ class MonthlyChartWidget extends StatelessWidget {
       return FlSpot(e.key.toDouble(), data[originalIdx]);
     }).toList();
 
+    if (spots.isEmpty) {
+      return const SizedBox();
+    }
     final int lastIdx = spots.length - 1;
 
     return Container(
@@ -133,10 +133,10 @@ class MonthlyChartWidget extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20.0),
               child: LineChart(
                 LineChartData(
-                  minY: target - 10,
-                  maxY: target + 10,
+                  minY: target - 20,
+                  maxY: target + 20,
                   minX: 0,
-                  maxX: lastIdx.toDouble(),
+                  maxX: (spots.length - 1).toDouble(),
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: true,
@@ -157,10 +157,18 @@ class MonthlyChartWidget extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         interval: 1,
-                        getTitlesWidget: (val, meta) => Text(
-                          "${validIndices[val.toInt()] + 1}월",
-                          style: const TextStyle(fontSize: 9),
-                        ),
+                        getTitlesWidget: (val, meta) {
+                          final index = val.toInt();
+                          if (index < 0 ||
+                              index >= months.length ||
+                              index >= data.length) {
+                            return const SizedBox();
+                          }
+                          return Text(
+                            months[index],
+                            style: const TextStyle(fontSize: 9),
+                          );
+                        },
                       ),
                     ),
                     rightTitles: AxisTitles(
@@ -172,10 +180,8 @@ class MonthlyChartWidget extends StatelessWidget {
                           padding: const EdgeInsets.only(left: 8.0),
                           child: Text(
                             "${val.toInt()}",
-                            style: TextStyle(
-                              color: (val == target)
-                                  ? TColor.pink
-                                  : Colors.grey,
+                            style: const TextStyle(
+                              color: Colors.grey,
                               fontSize: 9,
                             ),
                           ),
@@ -203,8 +209,8 @@ class MonthlyChartWidget extends StatelessWidget {
                     ),
                     LineChartBarData(
                       spots: [
-                        FlSpot(0, target),
-                        FlSpot(lastIdx.toDouble(), target),
+                        FlSpot(0, 48.7),
+                        FlSpot(lastIdx.toDouble(), 48.7),
                       ],
                       color: TColor.pink,
                       barWidth: 2,
@@ -249,7 +255,7 @@ class MonthlyChartWidget extends StatelessWidget {
   }
 }
 
-// 거북목 개선 예측 차트
+// 거북목 개선 예측 차트 -> 스트레칭 스켈레톤 이후 추가
 class PredictionChartWidget extends StatelessWidget {
   final List<double> predictionData;
   final List<String> predictionMonths;
@@ -307,10 +313,16 @@ class PredictionChartWidget extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         interval: 1,
-                        getTitlesWidget: (val, meta) => Text(
-                          predictionMonths[val.toInt()],
-                          style: const TextStyle(fontSize: 9),
-                        ),
+                        getTitlesWidget: (val, meta) {
+                          final i = val.toInt();
+                          if (i >= predictionMonths.length)
+                            return const SizedBox();
+
+                          return Text(
+                            predictionMonths[i],
+                            style: const TextStyle(fontSize: 12),
+                          );
+                        },
                       ),
                     ),
                     rightTitles: AxisTitles(
@@ -365,7 +377,7 @@ class PredictionChartWidget extends StatelessWidget {
                       getTooltipItems: (touchedSpots) {
                         return touchedSpots.map((spot) {
                           return LineTooltipItem(
-                            "${spot.y.toInt()}점",
+                            "${(spot.y).toInt()}점",
                             const TextStyle(
                               color: TColor.buttonGreen,
                               fontWeight: FontWeight.bold,

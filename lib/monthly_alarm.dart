@@ -5,9 +5,9 @@ import 'services/report_service.dart';
 
 class MonthlyAlarmView extends StatefulWidget {
   final ReportData? report;
-  final int status;
   final String selectedMonth;
-  final bool isAlarmRegistered;
+  final bool isMeasureAlarmSet;
+  final bool isResultAlarmSet;
   final String? networkErrorMessage;
   final Function() onReportDataChanged;
   final Widget Function() buildReportResultView;
@@ -15,9 +15,9 @@ class MonthlyAlarmView extends StatefulWidget {
   const MonthlyAlarmView({
     super.key,
     required this.report,
-    required this.status,
     required this.selectedMonth,
-    required this.isAlarmRegistered,
+    required this.isMeasureAlarmSet,
+    required this.isResultAlarmSet,
     required this.networkErrorMessage,
     required this.onReportDataChanged,
     required this.buildReportResultView,
@@ -28,12 +28,26 @@ class MonthlyAlarmView extends StatefulWidget {
 }
 
 class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
-  bool _isAlarmRegistered = false;
+  bool _isMeasureAlarmSet = false;
+  bool _isResultAlarmSet = false;
 
   @override
   void initState() {
     super.initState();
-    _isAlarmRegistered = widget.isAlarmRegistered;
+    _isMeasureAlarmSet = widget.isMeasureAlarmSet;
+    _isResultAlarmSet = widget.isResultAlarmSet;
+  }
+
+  @override
+  void didUpdateWidget(covariant MonthlyAlarmView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isMeasureAlarmSet != oldWidget.isMeasureAlarmSet ||
+        widget.isResultAlarmSet != oldWidget.isResultAlarmSet) {
+      setState(() {
+        _isMeasureAlarmSet = widget.isMeasureAlarmSet;
+        _isResultAlarmSet = widget.isResultAlarmSet;
+      });
+    }
   }
 
   @override
@@ -48,47 +62,54 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
       );
     }
 
-    // 2. 상태별 화면 분기
-    if (widget.status == 1 &&
-        (widget.report == null || widget.report!.totalMeasurements == 0)) {
+    // 1. 한 번도 측정 안 했거나 / 측정 안 했는데(NOT_YET), 30일 경과 시: 측정 유도
+    DateTime now = DateTime.now();
+    bool isCurrentMonth =
+        (widget.report?.year == now.year && widget.report?.month == now.month);
+    bool is30DaysPassed =
+        isCurrentMonth &&
+        widget.report?.measuredAt != null &&
+        now.difference(widget.report!.measuredAt!).inDays >= 30;
+
+    if (widget.report?.dataStatus == "NOT_YET" || is30DaysPassed) {
       return _buildReadyView(
         title: "이번 달은 월간 거북목 측정을\n아직 하지 않았어요!",
         isMeasureActionMode: true,
       );
     }
 
-    if (widget.status == 2 && widget.report == null) {
+    // 2. 측정은 안 했지만 (NOT_YET), 30일이 지나지 않은 경우: 추후 알림 설정
+    if (widget.report?.dataStatus == "NOT_YET" && !is30DaysPassed) {
+      DateTime nextAvailableDate = widget.report!.measuredAt!.add(
+        const Duration(days: 30),
+      );
+      String nDay = "${nextAvailableDate.day}일";
+
       return _buildReadyView(
-        title: "${widget.selectedMonth} 월간 거북목 측정 기록이 없습니다",
-        hideActionButtons: true,
+        title: "이번 달은 $nDay부터 월간 거북목 측정을 할 수 있어요",
+        guideText: "$nDay에 알림을 보내드릴까요?",
+        alarmType: "MEASURE",
       );
     }
 
-    if (widget.isAlarmRegistered && widget.status != 2) {
-      return Center(
-        child: Text(
-          widget.status == 0 ? "측정 기간이 되면 알려드릴게요!" : "리포트를 열심히 분석 중이에요!",
-          style: TText.body.copyWith(color: TColor.gray),
-          textAlign: TextAlign.center,
-        ),
-      );
+    // 3. 측정 완료 (AVAILABLE): 결과 뷰
+    if (widget.report?.dataStatus == "AVAILABLE") {
+      return widget.buildReportResultView();
     }
 
-    switch (widget.status) {
-      case 0:
-        return _buildReadyView(title: "이번 달은 측정일이 되면\n월간 거북목 측정을 할 수 있어요");
-      case 1:
-      case 2:
-        return widget.buildReportResultView();
-      default:
-        return const SizedBox();
-    }
+    // 5. 리포트 준비 중: 알림 설정
+    return _buildReadyView(
+      title: "${widget.selectedMonth}월 월간 리포트\n준비 중 . . .",
+      guideText: "결과가 나오면 알려드릴까요?",
+      alarmType: "RESULT",
+    );
   }
 
   Widget _buildReadyView({
     required String title,
+    String? guideText,
     bool isMeasureActionMode = false,
-    bool hideActionButtons = false,
+    String? alarmType,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -101,55 +122,85 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
             style: TText.title.copyWith(fontSize: 22, height: 1.5),
           ),
           const Spacer(flex: 3),
-          if (!hideActionButtons) ...[
-            if (!isMeasureActionMode) ...[
-              const Text(
-                "결과가 나오면 알려드릴까요?",
-                style: TextStyle(
-                  color: TColor.black,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            ElevatedButton(
-              onPressed: _isAlarmRegistered && !isMeasureActionMode
-                  ? null
-                  : () async {
-                      if (isMeasureActionMode) {
-                        final bool? isMeasured = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const VisionPage(),
-                          ),
-                        );
-                        if (isMeasured == true) widget.onReportDataChanged();
-                      } else {
-                        setState(() => _isAlarmRegistered = true);
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isAlarmRegistered && !isMeasureActionMode
-                    ? const Color(0xFF143601)
-                    : TColor.buttonGreen,
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                elevation: 0,
-              ),
-              child: Text(
-                isMeasureActionMode
-                    ? "월간 거북목 측정하러 가기"
-                    : (_isAlarmRegistered ? "알림 설정 완료" : "알림 설정"),
-                style: TText.button,
+          if (guideText != null) ...[
+            Text(
+              guideText,
+              style: TextStyle(
+                color: TColor.black,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
               ),
             ),
+            const SizedBox(height: 16),
           ],
+          if (isMeasureActionMode)
+            // 1. 측정 유도 버튼
+            _buildActionButton(
+              text: "월간 거북목 측정하러 가기",
+              onPressed: () async {
+                final bool? isMeasured = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const VisionPage()),
+                );
+                if (isMeasured == true) widget.onReportDataChanged();
+              },
+            )
+          else if (alarmType != null)
+            // 2. 알림 설정 버튼 (MEASURE 또는 RESULT)
+            _buildAlarmButton(alarmType: alarmType),
+
           const SizedBox(height: 40),
         ],
       ),
+    );
+  }
+
+  // 공통 버튼 스타일 빌더
+  Widget _buildActionButton({
+    required String text,
+    required VoidCallback onPressed,
+  }) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: TColor.buttonGreen,
+        minimumSize: const Size(double.infinity, 56),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        elevation: 0,
+      ),
+      child: Text(text, style: TText.button),
+    );
+  }
+
+  // 알림 전용 버튼
+  Widget _buildAlarmButton({required String alarmType}) {
+    bool isSet = (alarmType == "MEASURE")
+        ? _isMeasureAlarmSet
+        : _isResultAlarmSet;
+
+    return ElevatedButton(
+      onPressed: isSet
+          ? null
+          : () async {
+              final success = await ReportService().registerMonthlyAlarm(
+                alarmType: alarmType,
+              );
+              if (success) {
+                setState(() {
+                  if (alarmType == "MEASURE")
+                    _isMeasureAlarmSet = true;
+                  else
+                    _isResultAlarmSet = true;
+                });
+              }
+            },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSet ? TColor.darkGreen : TColor.buttonGreen,
+        minimumSize: const Size(double.infinity, 56),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        elevation: 0,
+      ),
+      child: Text(isSet ? "알림 설정 완료" : "알림 설정", style: TText.button),
     );
   }
 }
