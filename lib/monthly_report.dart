@@ -65,7 +65,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       });
 
       // 3. 리포트 호출 (가상데이터면 fetch를 건너뜀)
-      if (!_selectedItem!.isVirtual) {
+      if (!_selectedItem!.isVirtual && _selectedItem!.monthlyId > 0) {
         await _fetchReport(_selectedItem!.monthlyId);
       } else {
         setState(() => _currentReport = null);

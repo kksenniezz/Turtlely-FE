@@ -19,11 +19,11 @@ class MonthlyListItem {
 
   factory MonthlyListItem.fromJson(Map<String, dynamic> json) {
     return MonthlyListItem(
-      monthlyId: json['monthly_id'] ?? 0,
-      year: json['report_year'] ?? DateTime.now().year,
-      month: json['report_month'] ?? DateTime.now().month,
-      measuredAt: json['measured_at'] != null
-          ? DateTime.tryParse(json['measured_at']) ?? DateTime.now()
+      monthlyId: json['monthlyId'] ?? 0,
+      year: json['reportYear'] ?? DateTime.now().year,
+      month: json['reportMonth'] ?? DateTime.now().month,
+      measuredAt: json['measuredAt'] != null
+          ? DateTime.tryParse(json['measuredAt']) ?? DateTime.now()
           : DateTime.now(),
     );
   }
