@@ -5,7 +5,6 @@ import 'services/report_service.dart';
 
 class MonthlyAlarmView extends StatefulWidget {
   final ReportData? report;
-  final int status;
   final String selectedMonth;
   final bool isMeasureAlarmSet;
   final bool isResultAlarmSet;
@@ -16,7 +15,6 @@ class MonthlyAlarmView extends StatefulWidget {
   const MonthlyAlarmView({
     super.key,
     required this.report,
-    required this.status,
     required this.selectedMonth,
     required this.isMeasureAlarmSet,
     required this.isResultAlarmSet,

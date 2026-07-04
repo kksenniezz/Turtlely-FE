@@ -12,8 +12,6 @@ class MonthlyReportView extends StatefulWidget {
 }
 
 class _MonthlyReportViewState extends State<MonthlyReportView> {
-  final DateTime _today = DateTime.now();
-
   final ReportService _reportService = ReportService();
   List<MonthlyListItem> _monthlyList = [];
   MonthlyListItem? _selectedItem;
@@ -24,8 +22,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   bool _isLoading = false;
   String? _networkErrorMessage;
-
-  static bool isAlarmRegistered = false;
 
   @override
   void initState() {
@@ -39,16 +35,25 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     try {
       // 1. 월 목록 가져오기
       final list = await _reportService.fetchMonthlyList();
+      DateTime now = DateTime.now();
 
-      if (list.isEmpty) {
-        setState(() {
-          _monthlyList = [];
-          _isLoading = false;
-        });
-        return;
+      // 2. 현재 월이 리스트에 없는 경우 가상으로 추가
+      bool hasCurrentMonth = list.any(
+        (e) => e.year == now.year && e.month == now.month,
+      );
+
+      if (!hasCurrentMonth) {
+        list.add(
+          MonthlyListItem(
+            monthlyId: -999,
+            year: now.year,
+            month: now.month,
+            measuredAt: now,
+            isVirtual: true,
+          ),
+        );
       }
 
-      // 2. 최신 월 자동 선택 (measuredAt 기준)
       list.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
 
       setState(() {
@@ -59,18 +64,24 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         _selectedMonth = list.first.month;
       });
 
-      // 3. 첫 report 호출
-      await _fetchReport(list.first.monthlyId);
+      // 3. 리포트 호출 (monthlyId가 -1이면 리포트가 없으므로 fetch를 건너뜀)
+      if (!_selectedItem!.isVirtual) {
+        await _fetchReport(_selectedItem!.monthlyId);
+      } else {
+        setState(() => _currentReport = null);
+      }
     } catch (e) {
-      setState(() {
-        _networkErrorMessage = e.toString();
-      });
+      setState(() => _networkErrorMessage = e.toString());
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _fetchReport(int monthlyId) async {
+    if (monthlyId == -1) {
+      setState(() => _currentReport = null);
+      return;
+    }
     setState(() => _isLoading = true);
     try {
       final data = await _reportService.fetchMonthlyReport(
@@ -94,29 +105,15 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       _selectedItem = item;
       _selectedYear = item.year;
       _selectedMonth = item.month;
+      _currentReport = null;
     });
-    _fetchReport(item.monthlyId);
-  }
-
-  int _checkStatus() {
-    final item = _selectedItem;
-    if (item == null) return 0;
-
-    if (item.year > _today.year ||
-        (item.year == _today.year && item.month > _today.month)) {
-      return 0;
+    if (!item.isVirtual) {
+      _fetchReport(item.monthlyId);
     }
-
-    if (item.year == _today.year && item.month == _today.month) {
-      return 1;
-    }
-
-    return 2;
   }
 
   @override
   Widget build(BuildContext context) {
-    int status = _checkStatus();
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -141,11 +138,14 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                 ? const Center(child: CircularProgressIndicator())
                 : MonthlyAlarmView(
                     report: _currentReport,
-                    status: status,
                     selectedMonth: _selectedItem != null
                         ? "${_selectedItem!.month}월"
                         : "",
-                    isAlarmRegistered: isAlarmRegistered,
+
+                    isMeasureAlarmSet:
+                        _currentReport?.measurementAlarm ?? false,
+                    isResultAlarmSet: _currentReport?.reportAlarm ?? false,
+
                     networkErrorMessage: _networkErrorMessage,
                     onReportDataChanged: () =>
                         _fetchReport(_selectedItem?.monthlyId ?? 0),

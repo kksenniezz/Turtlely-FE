@@ -7,21 +7,24 @@ class MonthlyListItem {
   final int year;
   final int month;
   final DateTime measuredAt;
+  final bool isVirtual;
 
   MonthlyListItem({
     required this.monthlyId,
     required this.year,
     required this.month,
     required this.measuredAt,
+    this.isVirtual = false,
   });
 
   factory MonthlyListItem.fromJson(Map<String, dynamic> json) {
     return MonthlyListItem(
       monthlyId: json['monthly_id'] ?? 0,
-      year: json['report_year'] ?? 0,
-      month: json['report_month'] ?? 0,
-      measuredAt:
-          DateTime.tryParse(json['measured_at'] ?? '') ?? DateTime(2000),
+      year: json['report_year'] ?? DateTime.now().year,
+      month: json['report_month'] ?? DateTime.now().month,
+      measuredAt: json['measured_at'] != null
+          ? DateTime.tryParse(json['measured_at']) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 }
@@ -104,7 +107,7 @@ class ReportData {
         reportAlarm: result['report_alarm'] ?? false,
         measuredAt: result['measured_at'] == null
             ? null
-            : DateTime.tryParse(result['measured_at']),
+            : DateTime.tryParse(result['measured_at']) ?? DateTime.now(),
       );
     } catch (e) {
       print("[ReportData.fromJson 파싱 오류] $e");
