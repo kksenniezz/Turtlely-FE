@@ -99,7 +99,7 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
 
     // 5. 리포트 준비 중: 알림 설정
     return _buildReadyView(
-      title: "${widget.selectedMonth}월 월간 리포트\n준비 중 . . .",
+      title: "${widget.selectedMonth} 월간 리포트\n준비 중 . . .",
       guideText: "결과가 나오면 알려드릴까요?",
       alarmType: "RESULT",
     );

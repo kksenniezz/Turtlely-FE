@@ -192,16 +192,22 @@ class ReportService {
         },
       );
 
-      if (response.statusCode != 200) {
-        print("월 목록 실패 body: ${response.body}");
-        return [];
+      if (response.statusCode != 200) return [];
+
+      final decoded = json.decode(utf8.decode(response.bodyBytes));
+      print("🚀 [서버 응답 구조 확인]: $decoded");
+
+      if (decoded is List) {
+        return decoded.map((e) => MonthlyListItem.fromJson(e)).toList();
+      }
+      // 2. 만약 응답이 Map인데 내부에 result 리스트가 있다면 (수정된 방식)
+      else if (decoded is Map && decoded.containsKey('result')) {
+        return (decoded['result'] as List)
+            .map((e) => MonthlyListItem.fromJson(e))
+            .toList();
       }
 
-      final List<dynamic> decoded = json.decode(
-        utf8.decode(response.bodyBytes),
-      );
-
-      return decoded.map((e) => MonthlyListItem.fromJson(e)).toList();
+      return [];
     } catch (e) {
       print("[fetchMonthlyList 에러]: $e");
       return [];
