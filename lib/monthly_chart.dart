@@ -257,17 +257,20 @@ class MonthlyChartWidget extends StatelessWidget {
 
 // 거북목 개선 예측 차트 -> 스트레칭 스켈레톤 이후 추가
 class PredictionChartWidget extends StatelessWidget {
-  final List<double> predictionData;
+  final List<double> predictionScores;
   final List<String> predictionMonths;
 
   const PredictionChartWidget({
     super.key,
-    required this.predictionData,
+    required this.predictionScores,
     required this.predictionMonths,
   });
 
   @override
   Widget build(BuildContext context) {
+    print("🔍 예측 차트 데이터 확인");
+    print("개월 데이터: $predictionMonths");
+    print("점수 데이터: $predictionScores");
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -292,7 +295,7 @@ class PredictionChartWidget extends StatelessWidget {
                   minY: 0,
                   maxY: 100,
                   minX: 0,
-                  maxX: (predictionData.length - 1).toDouble(),
+                  maxX: (predictionScores.length - 1).toDouble(),
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: true,
@@ -315,8 +318,9 @@ class PredictionChartWidget extends StatelessWidget {
                         interval: 1,
                         getTitlesWidget: (val, meta) {
                           final i = val.toInt();
-                          if (i >= predictionMonths.length)
+                          if (i >= predictionMonths.length) {
                             return const SizedBox();
+                          }
 
                           return Text(
                             predictionMonths[i],
@@ -355,7 +359,7 @@ class PredictionChartWidget extends StatelessWidget {
                   ),
                   lineBarsData: [
                     LineChartBarData(
-                      spots: predictionData.asMap().entries.map((e) {
+                      spots: predictionScores.asMap().entries.map((e) {
                         return FlSpot(e.key.toDouble(), e.value);
                       }).toList(),
                       isCurved: false,

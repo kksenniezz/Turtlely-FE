@@ -255,7 +255,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       child: Column(
         children: [
           Text(
-            "$nickname님의 $_selectedMonth월 추정 거북목 유형은...",
+            "$nickname님의 $_selectedMonth월 거북목 단계는...",
             style: TText.body.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
@@ -325,7 +325,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         ),
         const SizedBox(height: 8),
         Text(
-          "내 CVA는 ${myCVA}° 이며, $cvaDesc",
+          "내 CVA는 ${myCVA.toStringAsFixed(1)}° 이며, $cvaDesc",
           style: const TextStyle(fontSize: 12, color: Colors.grey, height: 1.4),
         ),
         const SizedBox(height: 28),
@@ -348,7 +348,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         ),
         const SizedBox(height: 8),
         Text(
-          "내 CRA는 ${myCRA}° 이며, $craDesc",
+          "내 CRA는 ${myCRA.toStringAsFixed(1)}° 이며, $craDesc",
           style: const TextStyle(fontSize: 12, color: Colors.grey, height: 1.4),
         ),
       ],
@@ -570,7 +570,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         ),
         const SizedBox(height: 32),
         PredictionChartWidget(
-          predictionData: predScores,
+          predictionScores: predScores,
           predictionMonths: predMonths,
         ),
         const SizedBox(height: 50),
