@@ -236,16 +236,4 @@ class ReportService {
       return false;
     }
   }
-
-  //  // 4. 최신 월 자동 선택
-  //   Future<MonthlyListItem?> fetchLatestMonthly() async {
-  //   final list = await fetchMonthlyList();
-
-  //   if (list.isEmpty) return null;
-
-  //   // measured_at 기준 최신 1개
-  //   list.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
-
-  //   return list.first;
-  // }
 }
