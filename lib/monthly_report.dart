@@ -533,13 +533,13 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         ),
         const SizedBox(height: 32),
         Stack(
-          alignment: Alignment.topRight, // 우측 상단 정렬
+          alignment: Alignment.topRight,
+          clipBehavior: Clip.none,
           children: [
             Column(
               children: [
                 Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween, // 대칭 배치 핵심!
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
                       "종합 소견",
@@ -549,15 +549,17 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _isTooltipVisible = !_isTooltipVisible;
-                        });
-                      },
-                      child: const Icon(
-                        Icons.info_outline,
-                        size: 16,
-                        color: TColor.gray,
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(
+                        () => _isTooltipVisible = !_isTooltipVisible,
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8.0), // 터치 영역
+                        child: Icon(
+                          Icons.info_outline,
+                          size: 24,
+                          color: TColor.gray,
+                        ),
                       ),
                     ),
                   ],
@@ -565,11 +567,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ],
             ),
             if (_isTooltipVisible)
-              Positioned(
-                top: 25, // Row와의 간격 조절
-                right: 0,
-                child: _buildInfoTooltip(),
-              ),
+              Positioned(top: 35, right: 0, child: _buildInfoTooltip()),
           ],
         ),
         const SizedBox(height: 16),
@@ -616,35 +614,30 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   }
 
   Widget _buildInfoTooltip() {
-    return Column(
-      children: [
-        Container(
-          width: 104,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: ShapeDecoration(
-            color: TColor.buttonGreen,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+    return GestureDetector(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: ShapeDecoration(
+          color: TColor.buttonGreen,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shadows: [
+            const BoxShadow(
+              color: Color(0x0C0C0C0D),
+              blurRadius: 4,
+              offset: Offset(0, 2),
             ),
-            shadows: [
-              const BoxShadow(
-                color: Color(0x0C0C0C0D),
-                blurRadius: 4,
-                offset: Offset(0, 1),
-              ),
-            ],
-          ),
-          child: const Text(
-            'AI를 이용하여\n결과를 산출했어요',
-            style: TextStyle(color: Colors.white, fontSize: 11),
-            textAlign: TextAlign.center,
-          ),
+          ],
         ),
-        CustomPaint(
-          size: const Size(10, 6),
-          painter: TrianglePainter(color: TColor.buttonGreen),
+        child: const Text(
+          'AI를 이용하여\n결과를 산출했어요',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+          textAlign: TextAlign.center,
         ),
-      ],
+      ),
     );
   }
 
@@ -682,28 +675,4 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       ],
     );
   }
-}
-
-class TrianglePainter extends CustomPainter {
-  final Color color;
-
-  TrianglePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final path = Path();
-    path.moveTo(size.width / 2, size.height);
-    path.lineTo(0, 0);
-    path.lineTo(size.width, 0);
-    path.close();
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
