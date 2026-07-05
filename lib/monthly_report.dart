@@ -466,9 +466,10 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
     // 1. 차트 데이터 가공 (서버 응답을 차트가 원하는 List<double>로 변환)
     final List<double> cvaHistory =
-        report?.cvaHistory
-            ?.map((e) => (e['angle'] as num).toDouble())
-            .toList() ??
+        report?.cvaHistory?.map((e) {
+          double angle = (e['angle'] as num).toDouble();
+          return (angle * 10).round() / 10.0;
+        }).toList() ??
         [];
     final List<double> craHistory =
         report?.craHistory

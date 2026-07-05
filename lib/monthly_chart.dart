@@ -95,7 +95,6 @@ class MonthlyChartWidget extends StatelessWidget {
     if (spots.isEmpty) {
       return const SizedBox();
     }
-    final int lastIdx = spots.length - 1;
 
     return Container(
       width: double.infinity,
@@ -152,6 +151,15 @@ class MonthlyChartWidget extends StatelessWidget {
                       strokeWidth: 1,
                     ),
                   ),
+                  extraLinesData: ExtraLinesData(
+                    horizontalLines: [
+                      HorizontalLine(
+                        y: target,
+                        color: TColor.pink,
+                        strokeWidth: 2,
+                      ),
+                    ],
+                  ),
                   titlesData: FlTitlesData(
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
@@ -179,16 +187,31 @@ class MonthlyChartWidget extends StatelessWidget {
                         showTitles: true,
                         reservedSize: 40,
                         interval: 5,
-                        getTitlesWidget: (val, meta) => Padding(
-                          padding: const EdgeInsets.only(left: 8.0),
-                          child: Text(
-                            "${val.toInt()}",
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 9,
+                        getTitlesWidget: (val, meta) {
+                          final double diff = (val - target).abs();
+                          if (diff < 1.0) {
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: Text(
+                                target.toStringAsFixed(1),
+                                style: const TextStyle(
+                                  color: TColor.pink,
+                                  fontSize: 9,
+                                ),
+                              ),
+                            );
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 8.0),
+                            child: Text(
+                              "${val.toInt()}",
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 9,
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     ),
                     leftTitles: AxisTitles(
@@ -210,19 +233,10 @@ class MonthlyChartWidget extends StatelessWidget {
                       barWidth: 3,
                       dotData: FlDotData(show: true),
                     ),
-                    LineChartBarData(
-                      spots: [
-                        FlSpot(0, 48.7),
-                        FlSpot(lastIdx.toDouble(), 48.7),
-                      ],
-                      color: TColor.pink,
-                      barWidth: 2,
-                      dotData: FlDotData(show: false),
-                    ),
                   ],
                   lineTouchData: LineTouchData(
                     enabled: true,
-                    touchSpotThreshold: 40,
+                    touchSpotThreshold: 50,
                     handleBuiltInTouches: true,
 
                     touchTooltipData: LineTouchTooltipData(
