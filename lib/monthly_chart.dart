@@ -87,12 +87,26 @@ class MonthlyChartWidget extends StatelessWidget {
     Color color,
     List<int> validIndices,
   ) {
-    final List<FlSpot> spots = validIndices.asMap().entries.map((e) {
-      int originalIdx = e.value;
-      return FlSpot(e.key.toDouble(), data[originalIdx]);
-    }).toList();
+    final double minBound = target - 25;
+    final double maxBound = target + 25;
 
-    if (spots.isEmpty) {
+    final List<Map<String, dynamic>> processedSpots = validIndices
+        .asMap()
+        .entries
+        .map((e) {
+          int originalIdx = e.value;
+          double rawValue = data[originalIdx];
+
+          return {
+            'x': e.key.toDouble(),
+            'y': rawValue.clamp(minBound, maxBound), // 차트 영역 내 범위 고정
+            'realY': rawValue, // 툴팁: 실제 값
+            'isOutOfRange': rawValue < minBound || rawValue > maxBound, // 점 투명도
+          };
+        })
+        .toList();
+
+    if (processedSpots.isEmpty) {
       return const SizedBox();
     }
 
@@ -132,10 +146,10 @@ class MonthlyChartWidget extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20.0),
               child: LineChart(
                 LineChartData(
-                  minY: target - 20,
-                  maxY: target + 20,
+                  minY: minBound,
+                  maxY: maxBound,
                   minX: 0,
-                  maxX: (spots.length - 1).toDouble(),
+                  maxX: (processedSpots.length - 1).toDouble(),
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: true,
@@ -190,10 +204,13 @@ class MonthlyChartWidget extends StatelessWidget {
                         getTitlesWidget: (val, meta) {
                           final double diff = (val - target).abs();
                           if (diff < 1.0) {
+                            final String text = (target % 1 == 0)
+                                ? target.toInt().toString()
+                                : target.toStringAsFixed(1);
                             return Padding(
                               padding: const EdgeInsets.only(left: 8.0),
                               child: Text(
-                                target.toStringAsFixed(1),
+                                text,
                                 style: const TextStyle(
                                   color: TColor.pink,
                                   fontSize: 9,
@@ -227,11 +244,26 @@ class MonthlyChartWidget extends StatelessWidget {
                   ),
                   lineBarsData: [
                     LineChartBarData(
-                      spots: spots,
+                      spots: processedSpots
+                          .map((e) => FlSpot(e['x'], e['y']))
+                          .toList(), // clamp된 y값 사용
                       isCurved: false,
                       color: color,
                       barWidth: 3,
-                      dotData: FlDotData(show: true),
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, barData, index) {
+                          // 3. 범위를 벗어난 점은 투명도 적용
+                          final bool isOut =
+                              processedSpots[index]['isOutOfRange'];
+                          return FlDotCirclePainter(
+                            radius: 6,
+                            color: isOut ? color.withOpacity(0.3) : color,
+                            strokeWidth: 2,
+                            strokeColor: Colors.white,
+                          );
+                        },
+                      ),
                     ),
                   ],
                   lineTouchData: LineTouchData(
@@ -243,18 +275,16 @@ class MonthlyChartWidget extends StatelessWidget {
                       getTooltipColor: (_) => Colors.white,
                       tooltipBorder: const BorderSide(
                         color: TColor.buttonGreen,
-                        width: 1.5,
                       ),
                       getTooltipItems: (touchedSpots) {
                         return touchedSpots.map((spot) {
-                          final isNormalAngle = spot.barIndex == 1;
-
+                          // 원본 realY를 사용하여 툴팁 표시
+                          final realValue =
+                              processedSpots[spot.spotIndex]['realY'];
                           return LineTooltipItem(
-                            "${spot.y}°",
-                            TextStyle(
-                              color: isNormalAngle
-                                  ? TColor.pink
-                                  : TColor.buttonGreen,
+                            "${realValue.toStringAsFixed(1)}°",
+                            const TextStyle(
+                              color: Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
                           );

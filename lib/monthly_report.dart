@@ -472,9 +472,10 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         }).toList() ??
         [];
     final List<double> craHistory =
-        report?.craHistory
-            ?.map((e) => (e['angle'] as num).toDouble())
-            .toList() ??
+        report?.craHistory?.map((e) {
+          double angle = (e['angle'] as num).toDouble();
+          return (angle * 10).round() / 10.0;
+        }).toList() ??
         [];
     final months =
         report?.cvaHistory?.map((e) => e["month"] as String).toList() ?? [];
