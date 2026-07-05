@@ -567,7 +567,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ],
             ),
             if (_isTooltipVisible)
-              Positioned(top: 35, right: 0, child: _buildInfoTooltip()),
+              Positioned(top: 500, right: 24, child: _buildInfoTooltip()),
           ],
         ),
         const SizedBox(height: 16),
@@ -618,12 +618,12 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: ShapeDecoration(
-          color: TColor.buttonGreen,
+          color: TColor.lightGreen,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           shadows: [
             const BoxShadow(
-              color: Color(0x0C0C0C0D),
-              blurRadius: 4,
+              color: TColor.darkGreen,
+              blurRadius: 6,
               offset: Offset(0, 2),
             ),
           ],
@@ -631,7 +631,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         child: const Text(
           'AI를 이용하여\n결과를 산출했어요',
           style: TextStyle(
-            color: Colors.white,
+            color: Colors.black,
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
