@@ -40,7 +40,7 @@ class MonthlyChartWidget extends StatelessWidget {
         _buildSingleChartBox(
           "CVA",
           cvaData,
-          50.0,
+          48.7,
           TColor.buttonGreen,
           validIndices,
         ),
@@ -90,21 +90,17 @@ class MonthlyChartWidget extends StatelessWidget {
     final double minBound = target - 25;
     final double maxBound = target + 25;
 
-    final List<Map<String, dynamic>> processedSpots = validIndices
-        .asMap()
-        .entries
-        .map((e) {
-          int originalIdx = e.value;
-          double rawValue = data[originalIdx];
-
-          return {
-            'x': e.key.toDouble(),
-            'y': rawValue.clamp(minBound, maxBound), // 차트 영역 내 범위 고정
-            'realY': rawValue, // 툴팁: 실제 값
-            'isOutOfRange': rawValue < minBound || rawValue > maxBound, // 점 투명도
-          };
-        })
-        .toList();
+    final List<Map<String, dynamic>> processedSpots = validIndices.map((
+      originalIdx,
+    ) {
+      double rawValue = data[originalIdx];
+      return {
+        'x': originalIdx.toDouble(),
+        'y': rawValue.clamp(minBound, maxBound),
+        'realY': rawValue,
+        'isOutOfRange': rawValue < minBound || rawValue > maxBound,
+      };
+    }).toList();
 
     if (processedSpots.isEmpty) {
       return const SizedBox();
@@ -149,7 +145,7 @@ class MonthlyChartWidget extends StatelessWidget {
                   minY: minBound,
                   maxY: maxBound,
                   minX: 0,
-                  maxX: (processedSpots.length - 1).toDouble(),
+                  maxX: (data.length - 1).toDouble(),
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: true,
@@ -284,7 +280,7 @@ class MonthlyChartWidget extends StatelessWidget {
                           return LineTooltipItem(
                             "${realValue.toStringAsFixed(1)}°",
                             const TextStyle(
-                              color: Colors.white,
+                              color: TColor.buttonGreen,
                               fontWeight: FontWeight.bold,
                             ),
                           );
