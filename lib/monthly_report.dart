@@ -567,7 +567,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ],
             ),
             if (_isTooltipVisible)
-              Positioned(top: 500, right: 24, child: _buildInfoTooltip()),
+              Positioned(top: 500, right: 0, child: _buildInfoTooltip()),
           ],
         ),
         const SizedBox(height: 16),
