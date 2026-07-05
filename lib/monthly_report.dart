@@ -434,26 +434,26 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text("경추 건강 점수", style: TextStyle(fontWeight: FontWeight.w600)),
-              Text(
-                "AI 분석 시스템",
-                style: TextStyle(fontSize: 10, color: TColor.gray),
-              ),
             ],
           ),
-          SizedBox(height: 8),
-          Text(
-            "$score점",
-            style: TextStyle(
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-              color: TColor.darkGreen,
+          SizedBox(height: 16),
+          Center(
+            child: Text(
+              "$score점",
+              style: TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.bold,
+                color: TColor.darkGreen,
+              ),
             ),
           ),
+          SizedBox(height: 24),
         ],
       ),
     );
@@ -461,14 +461,15 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   Widget _buildReportResultView() {
     final report = _currentReport;
-    final String userNickname = report?.nickname ?? "사용자";
-    final String postureType = report?.postureStatus ?? "역C자목";
+    final String userNickname = report?.nickname ?? "회원";
+    final String postureType = report?.postureStatus ?? "데이터 없음";
 
     // 1. 차트 데이터 가공 (서버 응답을 차트가 원하는 List<double>로 변환)
     final List<double> cvaHistory =
-        report?.cvaHistory
-            ?.map((e) => (e['angle'] as num).toDouble())
-            .toList() ??
+        report?.cvaHistory?.map((e) {
+          double angle = (e['angle'] as num).toDouble();
+          return (angle * 10).round() / 10.0;
+        }).toList() ??
         [];
     final List<double> craHistory =
         report?.craHistory
@@ -479,14 +480,16 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         report?.cvaHistory?.map((e) => e["month"] as String).toList() ?? [];
 
     // 2. 예측 데이터 가공
-    final List<double> predScores =
-        (report?.predictionData?['prediction_scores'] as List?)
-            ?.map((e) => (e as num).toDouble())
-            .toList() ??
-        [];
-    final List<String> predMonths =
-        report?.predictionData?['prediction_months']?.cast<String>() ?? [];
     final diseases = report?.predictedDiseases ?? [];
+
+    // 개선 예측
+    // final List<double> predScores =
+    //     (report?.predictionData?['prediction_scores'] as List?)
+    //         ?.map((e) => (e as num).toDouble())
+    //         .toList() ??
+    //     [];
+    // final List<String> predMonths =
+    //     report?.predictionData?['prediction_months']?.cast<String>() ?? [];
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -499,7 +502,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               color: Colors.black,
             ),
             children: [
-              TextSpan(text: "$userNickname님의 "), // 추후 '님' 추가
+              TextSpan(text: "$userNickname님의 "),
               TextSpan(
                 text: "월간 거북목 측정",
                 style: const TextStyle(
@@ -568,11 +571,13 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             ],
           ),
         ),
-        const SizedBox(height: 32),
-        PredictionChartWidget(
-          predictionScores: predScores,
-          predictionMonths: predMonths,
-        ),
+        // 개선 예측 차트
+        // const SizedBox(height: 32),
+        //
+        // // PredictionChartWidget(
+        // //   predictionScores: predScores,
+        // //   predictionMonths: predMonths,
+        // // ),
         const SizedBox(height: 50),
       ],
     );
