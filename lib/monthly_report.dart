@@ -626,13 +626,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            shadows: [
-              const BoxShadow(
-                color: Color(0x0C0C0C0D),
-                blurRadius: 1,
-                offset: Offset(0, 0),
-              ),
-            ],
           ),
           child: const Text(
             'AI를 이용하여\n결과를 산출했어요',
