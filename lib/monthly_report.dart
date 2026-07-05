@@ -402,11 +402,11 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   String _getCvaImagePath(String type) {
     switch (type) {
-      case "거북목":
+      case "위험":
         return "assets/turtle_cva.png";
       case "일자목":
         return "assets/military_cva.png";
-      case "역C자목":
+      case "주의":
         return "assets/reverse_cva.png";
       default:
         return "assets/normal_cva.png";
@@ -415,11 +415,11 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   String _getCraImagePath(String type) {
     switch (type) {
-      case "거북목":
+      case "위험":
         return "assets/turtle_cra.png";
       case "일자목":
         return "assets/military_cra.png";
-      case "역C자목":
+      case "주의":
         return "assets/reverse_cra.png";
       default:
         return "assets/normal_cra.png";
@@ -567,7 +567,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
               ],
             ),
             if (_isTooltipVisible)
-              Positioned(top: 500, right: 0, child: _buildInfoTooltip()),
+              Positioned(top: 35, right: 0, child: _buildInfoTooltip()),
           ],
         ),
         const SizedBox(height: 16),
@@ -614,28 +614,36 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   }
 
   Widget _buildInfoTooltip() {
-    return GestureDetector(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: ShapeDecoration(
-          color: TColor.lightGreen,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          shadows: [
-            const BoxShadow(
-              color: TColor.darkGreen,
-              blurRadius: 6,
-              offset: Offset(0, 2),
+    return Material(
+      // 👈 이것만 추가하면 됩니다!
+      color: Colors.transparent, // Material이 배경색을 입히지 않게 함
+      elevation: 20,
+      child: GestureDetector(
+        onTap: () => setState(() => _isTooltipVisible = false),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: ShapeDecoration(
+            color: TColor.lightGreen,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
             ),
-          ],
-        ),
-        child: const Text(
-          'AI를 이용하여\n결과를 산출했어요',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
+            shadows: [
+              const BoxShadow(
+                color: TColor.darkGreen,
+                blurRadius: 6,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
-          textAlign: TextAlign.center,
+          child: const Text(
+            'AI를 이용하여\n결과를 산출했어요',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
         ),
       ),
     );
