@@ -40,7 +40,7 @@ class MonthlyChartWidget extends StatelessWidget {
         _buildSingleChartBox(
           "CVA",
           cvaData,
-          50.0,
+          48.7,
           TColor.buttonGreen,
           validIndices,
         ),
