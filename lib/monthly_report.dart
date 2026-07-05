@@ -629,8 +629,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             shadows: [
               const BoxShadow(
                 color: Color(0x0C0C0C0D),
-                blurRadius: 4,
-                offset: Offset(0, 2),
+                blurRadius: 2,
+                offset: Offset(0, 1),
               ),
             ],
           ),
