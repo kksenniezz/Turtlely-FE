@@ -40,6 +40,7 @@ class MonthlyChartWidget extends StatelessWidget {
         _buildSingleChartBox(
           "CVA",
           cvaData,
+          50.0,
           48.7,
           TColor.buttonGreen,
           validIndices,
@@ -48,6 +49,7 @@ class MonthlyChartWidget extends StatelessWidget {
         _buildSingleChartBox(
           "CRA",
           craData,
+          145.0,
           145.0,
           TColor.buttonGreen,
           validIndices,
@@ -83,12 +85,13 @@ class MonthlyChartWidget extends StatelessWidget {
   Widget _buildSingleChartBox(
     String label,
     List<double> data,
-    double target,
+    double chartCenter,
+    double standardAngle,
     Color color,
     List<int> validIndices,
   ) {
-    final double minBound = target - 25;
-    final double maxBound = target + 25;
+    final double minBound = chartCenter - 25;
+    final double maxBound = chartCenter + 25;
 
     final List<Map<String, dynamic>> processedSpots = validIndices.map((
       originalIdx,
@@ -164,7 +167,7 @@ class MonthlyChartWidget extends StatelessWidget {
                   extraLinesData: ExtraLinesData(
                     horizontalLines: [
                       HorizontalLine(
-                        y: target,
+                        y: standardAngle,
                         color: TColor.pink,
                         strokeWidth: 2,
                       ),
@@ -198,35 +201,49 @@ class MonthlyChartWidget extends StatelessWidget {
                         reservedSize: 40,
                         interval: 5,
                         getTitlesWidget: (val, meta) {
-                          final double diff = (val - target).abs();
-                          if (diff < 1.0) {
-                            final String text = (target % 1 == 0)
-                                ? target.toInt().toString()
-                                : target.toStringAsFixed(1);
+                          final double diff = (val - standardAngle).abs();
+
+                          if (diff >= 1.5) {
                             return Padding(
                               padding: const EdgeInsets.only(left: 8.0),
                               child: Text(
-                                text,
+                                "${val.toInt()}",
                                 style: const TextStyle(
-                                  color: TColor.pink,
+                                  color: Colors.grey,
                                   fontSize: 9,
                                 ),
                               ),
                             );
                           }
+
                           return Padding(
                             padding: const EdgeInsets.only(left: 8.0),
-                            child: Text(
-                              "${val.toInt()}",
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 9,
-                              ),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Text(
+                                  "${val.toInt()}",
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 9,
+                                  ),
+                                ),
+                                Container(
+                                  child: Text(
+                                    standardAngle.toStringAsFixed(1),
+                                    style: const TextStyle(
+                                      color: TColor.pink,
+                                      fontSize: 9,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         },
                       ),
                     ),
+
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(showTitles: false),
                     ),
