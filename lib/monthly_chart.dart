@@ -36,6 +36,14 @@ class MonthlyChartWidget extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        const Text(
+          "그래프 위 측정 지점을 눌러 나의 각도를 확인해 보세요",
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey, // 회색 글씨
+          ),
+        ),
         const SizedBox(height: 16),
         _buildSingleChartBox(
           "CVA",
@@ -216,6 +224,10 @@ class MonthlyChartWidget extends StatelessWidget {
                             );
                           }
 
+                          final String labelText = (standardAngle % 1 == 0)
+                              ? standardAngle.toInt().toString()
+                              : standardAngle.toStringAsFixed(1);
+
                           return Padding(
                             padding: const EdgeInsets.only(left: 8.0),
                             child: Stack(
@@ -230,7 +242,7 @@ class MonthlyChartWidget extends StatelessWidget {
                                 Container(
                                   color: Colors.white,
                                   child: Text(
-                                    standardAngle.toStringAsFixed(1),
+                                    labelText,
                                     style: const TextStyle(
                                       color: TColor.pink,
                                       fontSize: 9,
