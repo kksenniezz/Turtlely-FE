@@ -219,7 +219,6 @@ class MonthlyChartWidget extends StatelessWidget {
                           return Padding(
                             padding: const EdgeInsets.only(left: 8.0),
                             child: Stack(
-                              alignment: Alignment.center,
                               children: [
                                 Text(
                                   "${val.toInt()}",
@@ -229,6 +228,7 @@ class MonthlyChartWidget extends StatelessWidget {
                                   ),
                                 ),
                                 Container(
+                                  color: Colors.white,
                                   child: Text(
                                     standardAngle.toStringAsFixed(1),
                                     style: const TextStyle(
