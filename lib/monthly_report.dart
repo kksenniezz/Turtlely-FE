@@ -21,6 +21,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   ReportData? _currentReport;
 
   bool _isLoading = false;
+  bool _isTooltipVisible = false;
   String? _networkErrorMessage;
 
   @override
@@ -296,12 +297,12 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     final double myCRA = report.craAngle;
 
     String cvaDesc = myCVA >= 48.7
-        ? "이상적인 범위(48.7° 이상) 내에 안정적으로 속해 있습니다."
-        : "이상적인 범위(48.7° 이상)를 약 ${(myCVA - 48.7).abs().toStringAsFixed(1)}° 벗어났습니다.";
+        ? "이상적인 범위(48.7° 이상) 내에 안정적으로 속해 있습니다"
+        : "이상적인 범위(48.7° 이상)를 약 ${(myCVA - 48.7).abs().toStringAsFixed(1)}° 벗어났습니다";
 
     String craDesc = myCRA <= 145.0
-        ? "이상적인 범위(145° 이하) 내에 속해 목의 가동성이 안정적입니다."
-        : "이상적인 범위(145° 이하)를 약 ${(myCRA - 145.0).toStringAsFixed(1)}° 벗어났습니다.";
+        ? "이상적인 범위(145° 이하) 내에 속해 목의 가동성이 안정적입니다"
+        : "이상적인 범위(145° 이하)를 약 ${(myCRA - 145.0).toStringAsFixed(1)}° 벗어났습니다";
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,14 +532,44 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           months: months,
         ),
         const SizedBox(height: 32),
-        const Row(
+        Stack(
+          alignment: Alignment.topRight, // 우측 상단 정렬
           children: [
-            Text(
-              "종합 소견",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            Column(
+              children: [
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween, // 대칭 배치 핵심!
+                  children: [
+                    const Text(
+                      "종합 소견",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isTooltipVisible = !_isTooltipVisible;
+                        });
+                      },
+                      child: const Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: TColor.gray,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            SizedBox(width: 4),
-            Icon(Icons.info_outline, size: 16, color: TColor.gray),
+            if (_isTooltipVisible)
+              Positioned(
+                top: 25, // Row와의 간격 조절
+                right: 0,
+                child: _buildInfoTooltip(),
+              ),
           ],
         ),
         const SizedBox(height: 16),
@@ -584,6 +615,39 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     );
   }
 
+  Widget _buildInfoTooltip() {
+    return Column(
+      children: [
+        Container(
+          width: 104,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: ShapeDecoration(
+            color: TColor.buttonGreen,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            shadows: [
+              const BoxShadow(
+                color: Color(0x0C0C0C0D),
+                blurRadius: 4,
+                offset: Offset(0, 1),
+              ),
+            ],
+          ),
+          child: const Text(
+            'AI를 이용하여\n결과를 산출했어요',
+            style: TextStyle(color: Colors.white, fontSize: 11),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        CustomPaint(
+          size: const Size(10, 6),
+          painter: TrianglePainter(color: TColor.buttonGreen),
+        ),
+      ],
+    );
+  }
+
   Widget _buildSimpleDiseaseItem(String name, double percent) {
     final progress = percent.clamp(0.0, 1.0);
     return Row(
@@ -618,4 +682,28 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       ],
     );
   }
+}
+
+class TrianglePainter extends CustomPainter {
+  final Color color;
+
+  TrianglePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    path.moveTo(size.width / 2, size.height);
+    path.lineTo(0, 0);
+    path.lineTo(size.width, 0);
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
