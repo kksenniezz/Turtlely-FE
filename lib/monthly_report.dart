@@ -564,15 +564,15 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                _buildScoreBoxFrame(),
+                const SizedBox(height: 16),
               ],
             ),
             if (_isTooltipVisible)
               Positioned(top: 35, right: 0, child: _buildInfoTooltip()),
           ],
         ),
-        const SizedBox(height: 16),
-        _buildScoreBoxFrame(),
-        const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -615,8 +615,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   Widget _buildInfoTooltip() {
     return Material(
-      // 👈 이것만 추가하면 됩니다!
-      color: Colors.transparent, // Material이 배경색을 입히지 않게 함
+      color: Colors.transparent,
       elevation: 20,
       child: GestureDetector(
         onTap: () => setState(() => _isTooltipVisible = false),
@@ -629,8 +628,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             ),
             shadows: [
               const BoxShadow(
-                color: TColor.darkGreen,
-                blurRadius: 6,
+                color: Color(0x0C0C0C0D),
+                blurRadius: 4,
                 offset: Offset(0, 2),
               ),
             ],
