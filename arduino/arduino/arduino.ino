@@ -25,7 +25,7 @@ uint32_t last_send_time_ms = 0;
 #define SERVICE_UUID        "19B10000-E8F2-537E-4F6C-D104768A1214"
 #define CHARACTERISTIC_UUID "19B10001-E8F2-537E-4F6C-D104768A1214"
 
-BLEService        turtlelyService   = BLEService(SERVICE_UUID);
+BLEService         turtlelyService   = BLEService(SERVICE_UUID);
 BLECharacteristic cvaCharacteristic = BLECharacteristic(CHARACTERISTIC_UUID);
 
 void receive_ble_callback(uint16_t conn_handle, BLECharacteristic* chr, uint8_t* data, uint16_t len);
@@ -102,6 +102,7 @@ void loop() {
   float accY = myIMU.readFloatAccelY();
   float accZ = myIMU.readFloatAccelZ();
 
+  // 1. 일일 측정용 캘리브레이션 모드 가동 중일 때
   if (calib_running) {
     calib_x_sum += accX;
     calib_y_sum += accY;
@@ -140,14 +141,10 @@ void loop() {
     return;
   }
 
-  if (!pose_calibrated) {
-    if (Bluefruit.connected()) {
-      cvaCharacteristic.notify("NO_POSE_CALIB");
-    }
-    delay(500);
-    return;
-  }
+  // 🚨 [장벽 제거] 캘리브레이션 대기 무한 루프 차단!
+  // 월간 측정 시에는 카메라 캘리브레이션 유무 상관없이 무조건 가속도 3축 실시간 전송
 
+  // 2. 평소 상태 또는 월간 측정 모드: 1초마다 실시간 진짜 센서 데이터 전송
   if (millis() - last_send_time_ms >= 1000) {
     last_send_time_ms = millis();
 
@@ -200,7 +197,10 @@ void receive_ble_callback(uint16_t conn_handle, BLECharacteristic* chr, uint8_t*
   }
 }
 
-void connect_callback(uint16_t conn_handle) { Serial.println("스마트폰 연결 성공"); }
+void connect_callback(uint16_t conn_handle) { 
+  Serial.println("스마트폰 연결 성공"); 
+}
+
 void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   Serial.println("연결 해제");
   pose_calibrated = false;

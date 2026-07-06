@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'style.dart';
 import 'vision.dart';
@@ -45,13 +45,11 @@ class _HomeViewContentState extends State<HomeViewContent> {
   List<double> calibAccYList = [];
   List<double> calibAccZList = [];
 
-  int    _lastStatusCode   = 0;
-  String _lastResponseBody = "대기 중";
-  bool   _hasToken         = false;
-  bool   _showDebug        = true;
+  bool _showDebug = false;
 
   final BleService _ble = BleService();
   final ApiService _api = ApiService();
+  final _storage = const FlutterSecureStorage();
 
   Timer? monitorTimer;
   Timer? dailyApiTimer;
@@ -69,6 +67,11 @@ class _HomeViewContentState extends State<HomeViewContent> {
       setState(() {});
     };
     _ble.init();
+
+    // 토큰 확인용
+    _storage.read(key: 'accessToken').then((token) {
+      debugPrint("🔑 accessToken: $token");
+    });
   }
 
   Future<void> startCalibration() async {
@@ -125,7 +128,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
       final estimatedCva     = result["estimatedCva"] as double;
       final isBad            = result["isWarning"] as bool;
 
-      // 경고 로그 + 진동
       if (newPostureResult == "warning") {
         debugPrint("🚨 경고! CVA: $estimatedCva | 진동 울림");
         await _ble.sendCommand("VIBRATE");
@@ -182,20 +184,13 @@ class _HomeViewContentState extends State<HomeViewContent> {
         final avgY = double.tryParse(parts[1]) ?? 0.0;
         final avgZ = double.tryParse(parts[2]) ?? 0.0;
         debugPrint("📊 캘리브레이션 완료 | avgX: $avgX, avgY: $avgY, avgZ: $avgZ");
-
         _api.sendCalibration(avgX, avgY, avgZ).then((result) {
-          setState(() {
-            _lastStatusCode   = result["statusCode"];
-            _lastResponseBody = result["body"];
-            _hasToken         = (result["token"] as String).isNotEmpty;
-            _showDebug        = true;
-          });
+          debugPrint("📡 캘리브레이션 서버 응답: ${result['statusCode']} | ${result['body']}");
         });
       }
       startMonitoring();
       return;
     }
-
     if (cleanData == "NO_POSE_CALIB") {
       _showSnackBar("자세 교정 시작 버튼을 눌러주세요");
       return;
@@ -290,197 +285,158 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Text(
+                getTodayDate(),
+                style: TText.title.copyWith(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              GestureDetector(
+                onTap: () async {
+                  await _ble.stopNotify();
+                  await _ble.disconnect();
+                  if (!mounted) return;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const VisionPage()),
+                  ).then((_) {
+                    _ble.init();
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                  ),
+                  child: Text(
+                    "월간 거북목 측정하러 가기 >",
+                    style: TText.caption.copyWith(color: TColor.darkGreen, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    getTodayDate(),
-                    style: TText.title.copyWith(fontSize: 22, fontWeight: FontWeight.bold),
+                    "${(monitoringSeconds ~/ 60).toString().padLeft(2, '0')}:${(monitoringSeconds % 60).toString().padLeft(2, '0')}",
+                    style: TText.title.copyWith(fontSize: 32, fontWeight: FontWeight.bold),
                   ),
-                  GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const VisionPage()),
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                      ),
-                      child: Text(
-                        "월간 거북목 측정하러 가기 >",
-                        style: TText.caption.copyWith(color: TColor.darkGreen, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
                     children: [
-                      Text(
-                        "${(monitoringSeconds ~/ 60).toString().padLeft(2, '0')}:${(monitoringSeconds % 60).toString().padLeft(2, '0')}",
-                        style: TText.title.copyWith(fontSize: 32, fontWeight: FontWeight.bold),
+                      const Icon(Icons.battery_3_bar, color: TColor.gray, size: 20),
+                      const SizedBox(width: 4),
+                      const Text("85%", style: TText.caption),
+                      const SizedBox(width: 8),
+                      Icon(
+                        _ble.isDeviceReady ? Icons.bluetooth_connected : Icons.bluetooth_searching,
+                        color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray,
+                        size: 14,
                       ),
-                      Row(
-                        children: [
-                          const Icon(Icons.battery_3_bar, color: TColor.gray, size: 20),
-                          const SizedBox(width: 4),
-                          const Text("85%", style: TText.caption),
-                          const SizedBox(width: 8),
-                          Icon(
-                            _ble.isDeviceReady ? Icons.bluetooth_connected : Icons.bluetooth_searching,
-                            color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            _ble.isDeviceReady ? "기기 연결됨" : "기기 탐색 중",
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray,
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 2),
+                      Text(
+                        _ble.isDeviceReady ? "기기 연결됨" : "기기 탐색 중",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray,
+                        ),
                       ),
                     ],
                   ),
-                  Row(
-                    children: ['낮음', '보통', '높음'].map((level) {
-                      final isSelected = selectedDifficulty == level;
-                      return GestureDetector(
-                        onTap: () => setState(() => selectedDifficulty = level),
-                        child: Container(
-                          margin: const EdgeInsets.only(left: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isSelected ? TColor.buttonGreen : TColor.lightGreen,
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          child: Text(
-                            level,
-                            style: TextStyle(
-                              color: isSelected ? TColor.white : TColor.gray,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
                 ],
               ),
-              const SizedBox(height: 40),
-              Expanded(
-                child: Center(
-                  child: isCalibrating
-                      ? Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            SizedBox(
-                              width: 200,
-                              height: 200,
-                              child: CircularProgressIndicator(
-                                value: 1 - (calibrationTimer / 3),
-                                color: TColor.buttonGreen,
-                                strokeWidth: 8,
-                              ),
-                            ),
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text("$calibrationTimer", style: TText.logo.copyWith(fontSize: 48)),
-                                const SizedBox(height: 8),
-                                Text("평소 자세 유지해주세요", style: TText.caption),
-                              ],
-                            ),
-                          ],
-                        )
-                      : Image.asset(
-                          postureResult == "warning"
-                              ? 'assets/fire_turtle.png'
-                              : postureResult == "caution"
-                                  ? 'assets/surprised_turtle.png'
-                                  : 'assets/normal_turtle.png',
-                          width: 280,
-                          errorBuilder: (_, __, ___) => Image.asset(
-                            'assets/normal_turtle.png',
-                            width: 280,
-                            errorBuilder: (_, __, ___) => const SizedBox(),
-                          ),
+              Row(
+                children: ['낮음', '보통', '높음'].map((level) {
+                  final isSelected = selectedDifficulty == level;
+                  return GestureDetector(
+                    onTap: () => setState(() => selectedDifficulty = level),
+                    child: Container(
+                      margin: const EdgeInsets.only(left: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected ? TColor.buttonGreen : TColor.lightGreen,
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Text(
+                        level,
+                        style: TextStyle(
+                          color: isSelected ? TColor.white : TColor.gray,
+                          fontSize: 13,
                         ),
-                ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
-              Text("거북목 교정 중에는 터틀훅을 착용해주세요", style: TText.caption),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                style: T_MainButtonStyle,
-                onPressed: isMonitoring ? stopMonitoring : startCalibration,
-                child: Text(
-                  isMonitoring ? "자세 교정 종료하기" : "자세 교정 시작하기",
-                  style: TText.button,
-                ),
-              ),
-              const SizedBox(height: 40),
             ],
           ),
-        ),
-
-        if (_showDebug)
-          Positioned(
-            top: 100,
-            left: 10,
-            right: 10,
-            child: GestureDetector(
-              onTap: () => setState(() => _showDebug = false),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.redAccent, width: 2),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      "🛠️ 개발자 도구 (터치시 닫힘)",
-                      style: TextStyle(
-                        color: Colors.greenAccent,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.none,
+          const SizedBox(height: 40),
+          Expanded(
+            child: Center(
+              child: isCalibrating
+                  ? Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 200,
+                          height: 200,
+                          child: CircularProgressIndicator(
+                            value: 1 - (calibrationTimer / 3),
+                            color: TColor.buttonGreen,
+                            strokeWidth: 8,
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text("$calibrationTimer", style: TText.logo.copyWith(fontSize: 48)),
+                            const SizedBox(height: 8),
+                            Text("평소 자세 유지해주세요", style: TText.caption),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Image.asset(
+                      postureResult == "warning"
+                          ? 'assets/fire_turtle.png'
+                          : postureResult == "caution"
+                              ? 'assets/surprised_turtle.png'
+                              : 'assets/normal_turtle.png',
+                      width: 280,
+                      errorBuilder: (_, __, ___) => Image.asset(
+                        'assets/normal_turtle.png',
+                        width: 280,
+                        errorBuilder: (_, __, ___) => const SizedBox(),
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      "응답코드: $_lastStatusCode\n바디: $_lastResponseBody\n토큰있음: $_hasToken",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        decoration: TextDecoration.none,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ),
-      ],
+          Text("거북목 교정 중에는 터틀훅을 착용해주세요", style: TText.caption),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: T_MainButtonStyle,
+            onPressed: isMonitoring ? stopMonitoring : startCalibration,
+            child: Text(
+              isMonitoring ? "자세 교정 종료하기" : "자세 교정 시작하기",
+              style: TText.button,
+            ),
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
     );
   }
 }

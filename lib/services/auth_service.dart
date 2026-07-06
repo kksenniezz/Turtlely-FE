@@ -31,6 +31,35 @@ class AuthService {
     }
   }
 
+  // 로그인 이후 JWT Authorization (API 테스트)
+  Future<Map<String, dynamic>> authorizedPostRequest(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    final url = Uri.parse('$baseUrl$path');
+    final accessToken = await storage.read(key: 'accessToken');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode(body),
+      );
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      return {
+        "success": (response.statusCode == 200 && data['isSuccess'] == true),
+        "message": data['message'] ?? "에러가 발생했습니다.",
+        "result": data['result'],
+      };
+    } catch (e) {
+      return {"success": false, "message": "네트워크 연결을 확인해주세요."};
+    }
+  }
+
   // =========================================================
   // 2. 회원가입
   // =========================================================

@@ -9,18 +9,18 @@ class BleService {
 
   BluetoothDevice?         targetDevice;
   BluetoothCharacteristic? targetCharacteristic;
-  bool isConnecting  = false;
-  bool isDeviceReady = false;
+  bool isConnecting     = false;
+  bool isDeviceReady    = false;
+  bool _isDisconnecting = false;
 
   StreamSubscription<List<ScanResult>>?         scanSubscription;
   StreamSubscription<BluetoothConnectionState>? connectionSubscription;
+  StreamSubscription<List<int>>?                _valueSubscription;
 
-  // 연결 상태 변경 콜백
   Function(bool)? onDeviceReadyChanged;
-  // 데이터 수신 콜백
-  Function(String)? onDataReceived;
 
   Future<void> init() async {
+    _isDisconnecting = false; // 재연결 허용!
     try {
       final state = await FlutterBluePlus.adapterState.first;
       if (state != BluetoothAdapterState.on) return;
@@ -61,35 +61,35 @@ class BleService {
   }
 
   Future<void> connectToDevice(BluetoothDevice device) async {
-  if (isConnecting || targetDevice != null) return;
-  isConnecting = true;
-  try {
-    await FlutterBluePlus.stopScan();
-    targetDevice = device;
-    await device.connect(timeout: const Duration(seconds: 10), license: License.free);
-    debugPrint("✅ BLE 연결 성공");
+    if (isConnecting || targetDevice != null) return;
+    isConnecting = true;
+    try {
+      await FlutterBluePlus.stopScan();
+      targetDevice = device;
+      await device.connect(timeout: const Duration(seconds: 10), license: License.free);
+      debugPrint("✅ BLE 연결 성공");
 
-    connectionSubscription?.cancel();
-    connectionSubscription = device.connectionState.listen((state) async {
-      if (state == BluetoothConnectionState.disconnected) {
-        isDeviceReady        = false;
-        targetCharacteristic = null;
-        targetDevice         = null;
-        onDeviceReadyChanged?.call(false);
-        await reconnect(); // 연결 끊기면 재연결
-      }
-    });
+      connectionSubscription?.cancel();
+      connectionSubscription = device.connectionState.listen((state) async {
+        if (state == BluetoothConnectionState.disconnected) {
+          isDeviceReady        = false;
+          targetCharacteristic = null;
+          targetDevice         = null;
+          onDeviceReadyChanged?.call(false);
+          await reconnect();
+        }
+      });
 
-    await discoverServices(device);
-  } catch (e) {
-    debugPrint("❌ 연결 실패: $e");
-    targetDevice = null;
-    isConnecting = false;
-    await reconnect(); // 실패해도 재연결 추가!
-  } finally {
-    isConnecting = false;
+      await discoverServices(device);
+    } catch (e) {
+      debugPrint("❌ 연결 실패: $e");
+      targetDevice = null;
+      isConnecting = false;
+      await reconnect();
+    } finally {
+      isConnecting = false;
+    }
   }
-}
 
   Future<void> discoverServices(BluetoothDevice device) async {
     try {
@@ -113,28 +113,28 @@ class BleService {
   }
 
   Future<void> reconnect() async {
+    if (_isDisconnecting) return; // 의도적 해제면 재연결 안 함!
+    debugPrint("🔄 BLE 재연결 시도");
     await Future.delayed(const Duration(seconds: 2));
     startDeviceScan();
   }
 
   Future<void> sendCommand(String command) async {
-  try {
-    if (targetCharacteristic == null) {
-      debugPrint("❌ 전송 실패: characteristic null - $command");
-      return;
+    try {
+      if (targetCharacteristic == null) {
+        debugPrint("❌ 전송 실패: characteristic null - $command");
+        return;
+      }
+      await targetCharacteristic!.write(command.codeUnits);
+      debugPrint("📤 전송: $command");
+    } catch (e) {
+      debugPrint("❌ 전송 실패: $e");
     }
-    await targetCharacteristic!.write(command.codeUnits);
-    debugPrint("📤 전송: $command");
-  } catch (e) {
-    debugPrint("❌ 전송 실패: $e");
   }
-}
-
-  StreamSubscription<List<int>>? _valueSubscription;
 
   Future<void> startNotify(Function(String) onData) async {
     try {
-      await _valueSubscription?.cancel(); // 기존 구독 취소!
+      await _valueSubscription?.cancel();
       if (!(await targetCharacteristic!.isNotifying)) {
         await targetCharacteristic!.setNotifyValue(true);
       }
@@ -148,24 +148,32 @@ class BleService {
   }
 
   Future<void> stopNotify() async {
-  try {
-    await _valueSubscription?.cancel(); // 추가!
-    _valueSubscription = null;
-    if (await targetCharacteristic!.isNotifying) {
-      await targetCharacteristic!.setNotifyValue(false);
+    try {
+      await _valueSubscription?.cancel();
+      _valueSubscription = null;
+      if (targetCharacteristic != null && await targetCharacteristic!.isNotifying) {
+        await targetCharacteristic!.setNotifyValue(false);
+      }
+    } catch (e) {
+      debugPrint("❌ Notify 해제 실패: $e");
     }
-  } catch (e) {
-    debugPrint("❌ Notify 해제 실패: $e");
   }
-}
 
   Future<void> disconnect() async {
     try {
+      _isDisconnecting = true; // 재연결 막기!
+      scanSubscription?.cancel();
+      connectionSubscription?.cancel();
+      await FlutterBluePlus.stopScan();
       await targetDevice?.disconnect();
-      debugPrint("🔌 BLE 연결 해제");
+      targetDevice         = null;
+      targetCharacteristic = null;
+      isDeviceReady        = false;
+      debugPrint("🔌 BLE 연결 해제 완료");
     } catch (e) {
       debugPrint("❌ BLE disconnect 실패: $e");
     }
+    // finally에서 false로 안 돌림! init() 호출할 때 초기화됨
   }
 
   void dispose() {

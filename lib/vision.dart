@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'style.dart';
 import 'main.dart';
 import 'services/mediapipe_service.dart';
+import 'services/monthly_ble_service.dart';
 
 class VisionPage extends StatefulWidget {
   const VisionPage({Key? key}) : super(key: key);
@@ -15,13 +16,14 @@ class VisionPage extends StatefulWidget {
 }
 
 class _VisionPageState extends State<VisionPage> {
-  int step =
-      0; // 0: 인사, 1: 자세 안내, 2: 측정 안내, 3: 측정 중, 4: 측정 완료, 5: 리포트 안내, 6: 종료 안내, 7: 예외 발생
+  int step =0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
+  int? monthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
 
   final MediaPipeService _mediaPipeService = MediaPipeService();
-
+  final MonthlyBleService _monthlyBle = MonthlyBleService();
+  bool _bleReady = false;
   // 좌표 담을 변수들
   Offset eyePoint = Offset.zero; // 눈
   Offset earPoint = Offset.zero; // 외이도 (Tragus)
@@ -36,6 +38,10 @@ class _VisionPageState extends State<VisionPage> {
 
   // 서비스의 카메라를 깨우고 좌표 스트림을 구독합니다.
   Future<void> _bootUp() async {
+    _monthlyBle.onAccelUpdated = (x, y, z) {
+      _mediaPipeService.updateHwAccel(x, y, z);
+      debugPrint("📡 accel 전달: $x, $y, $z");
+    };
     // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기
     _mediaPipeService.poseStream.listen((poses) {
       if (!mounted) return;
@@ -48,6 +54,11 @@ class _VisionPageState extends State<VisionPage> {
       });
     });
 
+    _monthlyBle.onDeviceReadyChanged = (ready) {
+      if (!mounted) return;
+      setState(() => _bleReady = ready);
+    };
+
     await _mediaPipeService.initializeCamera();
     if (!mounted) return;
     setState(() {});
@@ -57,65 +68,96 @@ class _VisionPageState extends State<VisionPage> {
   void dispose() {
     _dotTimer?.cancel();
     _mediaPipeService.dispose();
+    _monthlyBle.dispose();
     super.dispose();
   }
 
   void nextStep() {
     setState(() {
-      if (step == 2) {
+      if (step == 3) {
         _startMeasurement();
-      } else if (step < 6) {
+      } else if (step < 7) {
         step++;
       }
     });
+
+    // setState 후에 체크해야 step이 1이 된 상태로 확인 가능
+    if (step == 1) {
+      debugPrint("🔍 월간 BLE 스캔 시작!");
+      _monthlyBle.init();
+    }
   }
 
   void _startMeasurement() {
     setState(() {
-      step = 3;
+      step = 4;
     }); // 측정 시작 단계로 이동
 
-    _mediaPipeService.start3SecondCapture();
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
+    _mediaPipeService.start3SecondCapture();
 
     int count = 0;
-    _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      setState(() {
-        count++;
-        loadingDots = "." * (count % 4);
-      });
 
-      if (count == 3) {
-        timer.cancel();
-        bool success = await _mediaPipeService.sendBatchVisionData();
-        setState(() {
-          if (success) {
-            step = 4; // 측정 완료 단계
-          } else {
-            step = 7; // 예외 발생 단계
-          }
-        });
-      }
+    _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+    // 매초 BLE 값 업데이트
+    _mediaPipeService.updateHwAccel(
+      _monthlyBle.accX,
+      _monthlyBle.accY,
+      _monthlyBle.accZ,
+    );
+    debugPrint("📡 BLE 가속도: ${_monthlyBle.accX}, ${_monthlyBle.accY}, ${_monthlyBle.accZ}");
+
+    setState(() {
+      count++;
+      loadingDots = "." * (count % 4);
     });
+
+    if (!_mediaPipeService.isInitialized || _mediaPipeService.cameraController == null) {
+      print("카메라 준비 중입니다.");
+      return;
+    }
+
+    if (count == 3) {
+      timer.cancel();
+      debugPrint("📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}");
+      final response = await _mediaPipeService.sendBatchVisionData();
+      if (!mounted) return;
+      if (response["success"] == true) {
+        final result = response["result"];
+        setState(() {
+          if (result != null) {
+            monthlyId = result["monthly_id"];
+          }
+          step = 5;
+        });
+      } else {
+        print("측정 실패: ${response["code"]} / ${response["message"]}");
+        setState(() => step = 8);
+      }
+    }
+  });
   }
 
   String _getStepText() {
     switch (step) {
       case 0:
         return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!";
-      case 1:
-        return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
+      case 1: return _bleReady 
+        ? "터틀훅이 연결되었어요!\n다음을 눌러주세요" 
+        : "거북목 측정을 위해\n터틀훅을 연결해 주세요";
       case 2:
-        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요 \n버튼을 누르면 바로 시작됩니다!";
+        return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 3:
-        return "거북목 측정중 $loadingDots";
+        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요 \n버튼을 누르면 바로 시작됩니다!";
       case 4:
-        return "월간 거북목 측정이 \n완료되었습니다!";
+        return "거북목 측정중 $loadingDots";
       case 5:
-        return "월간 거북목 측정 결과는 \n월간 리포트에서 확인해 주세요";
+        return "월간 거북목 측정이 \n완료되었습니다!";
       case 6:
-        return "종료 버튼을 누르면 \n월간 거북목 측정이 종료됩니다 \n다음 달에 다시 만나요!";
+        return "월간 거북목 측정 결과는 \n월간 리포트에서 확인해 주세요";
       case 7:
+        return "종료 버튼을 누르면 \n월간 거북목 측정이 종료됩니다 \n다음 달에 다시 만나요!";
+      case 8:
         return "거북목 측정이 어렵습니다 \n다시 시도해 주세요";
       default:
         return "";
@@ -123,8 +165,9 @@ class _VisionPageState extends State<VisionPage> {
   }
 
   bool _shouldShowButton() {
-    // 3단계(측정중), 6단계(종료 안내), 7단계(재시도)는 역삼각형 버튼 숨김
-    if ([3, 6, 7].contains(step)) return false;
+    if (step == 4) return false;
+    if (step == 1 && !_bleReady) return false; // BLE 연결 전엔 버튼 숨김
+    if ([7, 8].contains(step)) return false;
     return true;
   }
 
@@ -149,19 +192,20 @@ class _VisionPageState extends State<VisionPage> {
           ),
         ),
         actions: [
-          if (step == 6 || step == 7) ...[
+          if (step == 7 || step == 8) ...[
             GestureDetector(
-              onTap: () {
-                if (step == 6) {
+              onTap: () async {
+                if (step == 7) {
                   Navigator.pop(context);
                 } else {
-                  setState(() => step = 1);
+                  await _mediaPipeService.initializeCamera(); // 카메라 다시 초기화
+                  setState(() => step = 2);
                 }
               },
               child: Container(
                 alignment: Alignment.center,
                 child: Text(
-                  step == 6 ? "종료" : "재시도",
+                  step == 7 ? "종료" : "재시도",
                   style: TextStyle(
                     color: TColor.darkGreen,
                     fontSize: 18,
@@ -176,124 +220,102 @@ class _VisionPageState extends State<VisionPage> {
       ),
       body: Stack(
         children: [
-          // 🎯 1. [카메라 & 스켈레톤] 다시 예전처럼 화면 전체(fill)로 시원하게 꽉 채우기!
           Positioned.fill(
-            child:
-                _mediaPipeService.isInitialized &&
-                    _mediaPipeService.cameraController != null
-                ? LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Stack(
+            child: Container(
+              color: TColor.lightGreen,
+              child:
+                  _mediaPipeService.isInitialized &&
+                      _mediaPipeService.cameraController != null
+                  ? AspectRatio(
+                      // 카메라 프리뷰의 실제 비율을 강제로 고정
+                      aspectRatio:
+                          _mediaPipeService.cameraController!.value.aspectRatio,
+                      child: Stack(
                         children: [
-                          Positioned.fill(
-                            child: CameraPreview(
-                              _mediaPipeService.cameraController!,
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: CustomPaint(
-                              size: Size(
-                                constraints.maxWidth,
-                                constraints.maxHeight,
+                          CameraPreview(_mediaPipeService.cameraController!),
+                          if (step >= 2 && step <= 4)
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: PosePainter(
+                                  eye: eyePoint,
+                                  ear: earPoint,
+                                  c7: c7Point,
+                                  step: step,
+                                  tiltAngleRad: deviceTilt,
+                                  imageSize: Size(
+                                    _mediaPipeService
+                                        .cameraController!
+                                        .value
+                                        .previewSize!
+                                        .height,
+                                    _mediaPipeService
+                                        .cameraController!
+                                        .value
+                                        .previewSize!
+                                        .width,
+                                  ),
+                                ),
                               ),
-                              painter: PosePainter(
-                                eye: eyePoint,
-                                ear: earPoint,
-                                c7: c7Point,
-                                step: step,
-                                tiltAngleRad: deviceTilt,
-                              ),
                             ),
-                          ),
                         ],
-                      );
-                    },
-                  )
-                : const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
+                      ),
+                    )
+                  : const Center(child: CircularProgressIndicator()),
+            ),
           ),
 
           // 2. 거북이와 말풍선 배치
           Positioned(
-            bottom: 50,
-            left: 20,
+            bottom: 20,
+            left: 10,
             right: 20,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Image.asset(
-                  'side_turtle.png',
-                  width: 120,
-                  height: 120,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 120,
-                      height: 120,
-                      color: Colors.grey[800],
-                      child: const Icon(
-                        Icons.image_not_supported,
-                        color: Colors.grey,
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildSpeechBubble(
-                    _getStepText(),
-                    _shouldShowButton(),
-                    nextStep,
+            child: GestureDetector(
+              onTap: _shouldShowButton() ? nextStep : null,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/side_turtle.png',
+                    width: 120,
+                    height: 120,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 120,
+                        height: 120,
+                        color: Colors.grey[800],
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          color: Colors.grey,
+                        ),
+                      );
+                    },
                   ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 말풍선 위젯
-  Widget _buildSpeechBubble(
-    String text,
-    bool showNextButton,
-    VoidCallback? onTap,
-  ) {
-    return Container(
-      width: 220,
-      constraints: BoxConstraints(minHeight: 110),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: TColor.lightGreen,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-          bottomLeft: Radius.circular(0),
-        ),
-      ),
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Text(
-              text,
-              style: TextStyle(color: TColor.darkGreen, fontSize: 16),
-            ),
-          ),
-          if (showNextButton)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: GestureDetector(
-                onTap: onTap,
-                child: CustomPaint(
-                  size: const Size(20, 15),
-                  painter: TrianglePainter(color: TColor.darkGreen),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 30),
+                      child: Text(
+                        _getStepText(),
+                        style: TextStyle(
+                          color: TColor.darkGreen,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_shouldShowButton())
+                    Padding(
+                      padding: const EdgeInsets.only(left: 10, top: 60),
+                      child: CustomPaint(
+                        size: const Size(20, 15),
+                        painter: TrianglePainter(color: TColor.darkGreen),
+                      ),
+                    ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
@@ -310,6 +332,7 @@ class PosePainter extends CustomPainter {
   final Offset c7;
   final int step;
   final double tiltAngleRad;
+  final Size imageSize;
 
   PosePainter({
     required this.eye,
@@ -317,13 +340,17 @@ class PosePainter extends CustomPainter {
     required this.c7,
     required this.step,
     this.tiltAngleRad = 0.0,
+    required this.imageSize,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double scaleX = size.width / 360.0;
-    final double scaleY = size.height / 480.0;
-    double offsetY = 0.0;
+    final bool isMeasuring = (step >= 2 && step <= 4);
+    final double xShift = 0.0; // -20.0; // 왼쪽으로 옮기려면 음수
+    final double yShift = 0.0; //30.0; // 아래로 내리려면 양수
+    final double scaleX = size.width / imageSize.width;
+    final double scaleY = size.height / imageSize.height;
+    // double offsetY = 0.0;
 
     Offset correctedEye = Offset.zero;
     Offset correctedEar = Offset.zero;
@@ -333,20 +360,20 @@ class PosePainter extends CustomPainter {
 
     if (eye != Offset.zero) {
       correctedEye = Offset(
-        size.width - (eye.dx * scaleX),
-        (eye.dy * scaleY) + offsetY,
+        (size.width - (eye.dx * scaleX)) + xShift,
+        (eye.dy * scaleY) + yShift,
       );
     }
     if (ear != Offset.zero) {
       correctedEar = Offset(
-        size.width - (ear.dx * scaleX * earShiftX),
-        (ear.dy * scaleY) + offsetY,
+        (size.width - (ear.dx * scaleX * earShiftX)) + xShift,
+        (ear.dy * scaleY) + yShift,
       );
     }
     if (c7 != Offset.zero) {
       correctedC7 = Offset(
-        size.width - (c7.dx * scaleX),
-        (c7.dy * scaleY) + (offsetY * 0.5),
+        (size.width - (c7.dx * scaleX)) + xShift,
+        (c7.dy * scaleY) + yShift,
       );
     }
 
@@ -359,9 +386,9 @@ class PosePainter extends CustomPainter {
 
     // 내 포즈 스켈레톤 선
     final skeletonPaint = Paint()
-      ..color = TColor.blue
+      ..color = isMeasuring ? TColor.blue : TColor.blue.withOpacity(0.3)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 5.0
+      ..strokeWidth = isMeasuring ? 5.0 : 2.0
       ..strokeCap = StrokeCap.round;
 
     final arcPaint = Paint()
@@ -375,6 +402,9 @@ class PosePainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     // 파트 A: 사람 외형 프로필 가이드라인 (배경 고정)
+    final double yOffset = -50;
+    canvas.translate(0, yOffset);
+
     var profilePath = Path();
 
     // 스마트폰 화면 비율에 절대 찌그러지지 않도록 중심점과 반지름(반응형 방어 크기) 정의
@@ -449,110 +479,113 @@ class PosePainter extends CustomPainter {
       canvas.drawLine(correctedEye, correctedEar, skeletonPaint);
       canvas.drawLine(correctedEar, correctedC7, skeletonPaint);
 
-      double baseLength = 180.0;
-      Offset calibratedHorizontalLeft = Offset(
-        correctedC7.dx - (baseLength * math.cos(tiltAngleRad)),
-        correctedC7.dy - (baseLength * math.sin(tiltAngleRad)),
-      );
+      if (isMeasuring) {
+        double baseLength = 180.0;
+        Offset calibratedHorizontalLeft = Offset(
+          correctedC7.dx - (baseLength * math.cos(tiltAngleRad)),
+          correctedC7.dy - (baseLength * math.sin(tiltAngleRad)),
+        );
 
-      // C7 중심의 CVA 수직 기준선 드로잉-
-      canvas.drawLine(
-        correctedC7,
-        calibratedHorizontalLeft,
-        skeletonPaint
-          ..color = TColor.blue
-          ..strokeWidth = 3.0,
-      );
+        // C7 중심의 CVA 수직 기준선 드로잉-
+        canvas.drawLine(
+          correctedC7,
+          calibratedHorizontalLeft,
+          skeletonPaint
+            ..color = TColor.blue
+            ..strokeWidth = 3.0,
+        );
 
-      // CRA 부채꼴 호
-      double angleToEye = math.atan2(
-        correctedEye.dy - correctedEar.dy,
-        correctedEye.dx - correctedEar.dx,
-      );
-      double angleToC7 = math.atan2(
-        correctedC7.dy - correctedEar.dy,
-        correctedC7.dx - correctedEar.dx,
-      );
-      double c7ToEarAngle = math.atan2(
-        correctedEar.dy - correctedC7.dy,
-        correctedEar.dx - correctedC7.dx,
-      );
-      if (c7ToEarAngle < 0) c7ToEarAngle += 2 * math.pi;
+        // CRA 부채꼴 호
+        double angleToEye = math.atan2(
+          correctedEye.dy - correctedEar.dy,
+          correctedEye.dx - correctedEar.dx,
+        );
+        double angleToC7 = math.atan2(
+          correctedC7.dy - correctedEar.dy,
+          correctedC7.dx - correctedEar.dx,
+        );
+        double c7ToEarAngle = math.atan2(
+          correctedEar.dy - correctedC7.dy,
+          correctedEar.dx - correctedC7.dx,
+        );
+        if (c7ToEarAngle < 0) c7ToEarAngle += 2 * math.pi;
 
-      // 호가 안쪽(몸 안쪽) 구역으로 싹 감기도록 스윕 각도 조율
-      double craSweepAngle = angleToEye - angleToC7;
-      if (craSweepAngle < 0) craSweepAngle += 2 * math.pi;
-      if (craSweepAngle > math.pi) craSweepAngle = 2 * math.pi - craSweepAngle;
+        // 호가 안쪽(몸 안쪽) 구역으로 싹 감기도록 스윕 각도 조율
+        double craSweepAngle = angleToEye - angleToC7;
+        if (craSweepAngle < 0) craSweepAngle += 2 * math.pi;
+        if (craSweepAngle > math.pi)
+          craSweepAngle = 2 * math.pi - craSweepAngle;
 
-      double cvaStartAngle = math.pi;
-      double cvaSweepAngle = math.pi - c7ToEarAngle + tiltAngleRad;
+        double cvaStartAngle = math.pi;
+        double cvaSweepAngle = math.pi - c7ToEarAngle + tiltAngleRad;
 
-      // CRA 부채꼴 호 드로잉
-      final double craArcRadius = 20.0;
-      canvas.drawArc(
-        Rect.fromCircle(center: correctedEar, radius: craArcRadius),
-        angleToC7,
-        craSweepAngle,
-        false,
-        arcPaint..color = TColor.blue.withOpacity(0.8),
-      );
+        // CRA 부채꼴 호 드로잉
+        final double craArcRadius = 20.0;
+        canvas.drawArc(
+          Rect.fromCircle(center: correctedEar, radius: craArcRadius),
+          angleToC7,
+          craSweepAngle,
+          false,
+          arcPaint..color = TColor.blue.withOpacity(0.8),
+        );
 
-      if (cvaSweepAngle < 0) {
-        cvaStartAngle = math.pi;
-        cvaSweepAngle = c7ToEarAngle - math.pi;
+        if (cvaSweepAngle < 0) {
+          cvaStartAngle = math.pi;
+          cvaSweepAngle = c7ToEarAngle - math.pi;
+        }
+
+        // CVA 부채꼴 호 드로잉
+        final double cvaArcRadius = 40.0;
+        canvas.drawArc(
+          Rect.fromCircle(center: correctedC7, radius: cvaArcRadius),
+          cvaStartAngle,
+          cvaSweepAngle,
+          false,
+          arcPaint..color = TColor.blue.withOpacity(0.8),
+        );
+
+        _drawTextLabel(
+          canvas,
+          "눈",
+          correctedEye.dx - 10,
+          correctedEye.dy - 28,
+          fontSize: 16,
+          textColor: TColor.blue,
+        );
+        _drawTextLabel(
+          canvas,
+          "귀",
+          correctedEar.dx + 20,
+          correctedEar.dy,
+          fontSize: 16,
+          textColor: TColor.blue,
+        );
+        _drawTextLabel(
+          canvas,
+          "경추",
+          correctedC7.dx + 20,
+          correctedC7.dy - 5,
+          fontSize: 16,
+          textColor: TColor.blue,
+        );
+
+        _drawTextLabel(
+          canvas,
+          "CRA",
+          correctedEar.dx - 45,
+          correctedEar.dy + 25,
+          fontSize: 15,
+          textColor: TColor.blue,
+        );
+        _drawTextLabel(
+          canvas,
+          "CVA",
+          correctedC7.dx - 75,
+          correctedC7.dy - 25,
+          fontSize: 15,
+          textColor: TColor.blue,
+        );
       }
-
-      // CVA 부채꼴 호 드로잉
-      final double cvaArcRadius = 40.0;
-      canvas.drawArc(
-        Rect.fromCircle(center: correctedC7, radius: cvaArcRadius),
-        cvaStartAngle,
-        cvaSweepAngle,
-        false,
-        arcPaint..color = TColor.blue.withOpacity(0.8),
-      );
-
-      _drawTextLabel(
-        canvas,
-        "눈",
-        correctedEye.dx - 10,
-        correctedEye.dy - 28,
-        fontSize: 16,
-        textColor: TColor.blue,
-      );
-      _drawTextLabel(
-        canvas,
-        "귀",
-        correctedEar.dx + 20,
-        correctedEar.dy,
-        fontSize: 16,
-        textColor: TColor.blue,
-      );
-      _drawTextLabel(
-        canvas,
-        "경추",
-        correctedC7.dx + 20,
-        correctedC7.dy - 5,
-        fontSize: 16,
-        textColor: TColor.blue,
-      );
-
-      _drawTextLabel(
-        canvas,
-        "CRA",
-        correctedEar.dx - 45,
-        correctedEar.dy + 25,
-        fontSize: 15,
-        textColor: TColor.blue,
-      );
-      _drawTextLabel(
-        canvas,
-        "CVA",
-        correctedC7.dx - 75,
-        correctedC7.dy - 25,
-        fontSize: 15,
-        textColor: TColor.blue,
-      );
 
       // 랜드마크 점 찍기
       final List<Offset> points = [correctedEye, correctedEar, correctedC7];
@@ -585,7 +618,9 @@ class PosePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant PosePainter oldDelegate) {
+    return oldDelegate.step != step || oldDelegate.eye != eye;
+  }
 }
 
 class TrianglePainter extends CustomPainter {

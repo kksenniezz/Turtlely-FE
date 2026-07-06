@@ -27,7 +27,7 @@ class DailyReportStorage {
       'normalDuration' : normalDuration,
       'savedAt'        : DateTime.now().toIso8601String(),
     });
-    await _deleteOldData(box);
+    //await _deleteOldData(box);
   }
 
   // 날짜별 데이터 불러오기

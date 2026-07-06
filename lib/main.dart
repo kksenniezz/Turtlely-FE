@@ -68,6 +68,7 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
               backgroundColor: TColor.white,
               elevation: 0,
               centerTitle: true,
+              automaticallyImplyLeading: false,
               title: Text("Turtlely", style: TText.logo),
               actions: [
                 IconButton(

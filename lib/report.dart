@@ -25,7 +25,6 @@ class _ReportViewState extends State<ReportView> {
   final List<DateTime> _recordedDays = [];
   List<dynamic> _calendarReports = [];
 
-  // 💡 상세 화면과 똑같은 구성을 위해 필요한 변수들
   int?    _selectedScore;
   double  _avgCva        = 0.0;
   int     _warningCount  = 0;
@@ -58,75 +57,98 @@ class _ReportViewState extends State<ReportView> {
     final api = ApiService();
     final reports = await api.getCalendarReports();
 
+    final serverDates = <DateTime>[];
+    for (final report in reports) {
+      if (report['hasReport'] == true) {
+        final dateStr = report['reportDate'] as String;
+        final parts = dateStr.split('-');
+        if (parts.length == 3) {
+          serverDates.add(DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2])));
+        }
+      }
+    }
+
+    final hiveDates = await DailyReportStorage.getSavedDates();
+
     setState(() {
-      _calendarReports = reports; // null 체크 제거!
+      _calendarReports = reports;
       _recordedDays.clear();
-      for (final report in reports) {
-        if (report['hasReport'] == true) {
-          final dateStr = report['reportDate'] as String;
-          final parts = dateStr.split('-');
-          if (parts.length == 3) {
-            _recordedDays.add(DateTime(
-              int.parse(parts[0]),
-              int.parse(parts[1]),
-              int.parse(parts[2]),
-            ));
+      _recordedDays.addAll(serverDates);
+
+      for (final dateStr in hiveDates) {
+        final parts = dateStr.split('-');
+        if (parts.length == 3) {
+          try {
+            final date = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+            if (!_recordedDays.any((d) => isSameDay(d, date))) {
+              _recordedDays.add(date);
+            }
+          } catch (e) {
+            debugPrint("날짜 파싱 오류: $dateStr");
           }
         }
       }
-      final initialId = _getDailyId(_selectedDay!);
-      if (initialId != null) _loadFullData(_selectedDay!, initialId);
     });
+
+    // 오늘 날짜에 데이터 있으면 자동 로드
+    if (_hasRecord(_selectedDay!)) {
+      final id = _getDailyId(_selectedDay!);
+      await _loadFullData(_selectedDay!, id);
+    }
   }
 
-  // 💡 달력 아래쪽 구성을 위해 서버 점수 + 로컬 그래프 데이터를 통째로 긁어오는 함수
-  Future<void> _loadFullData(DateTime date, int dailyId) async {
+  Future<void> _loadFullData(DateTime date, int? dailyId) async {
     setState(() { _isLoadingReport = true; });
-    
-    final api = ApiService();
-    final serverData = await api.getDailyReport(dailyId);
-    
-    final dateKey = "${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}";
-    final localData = await DailyReportStorage.loadHistory(dateKey);
 
-    if (mounted) {
+    final dateKey = "${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}";
+
+    // Hive 데이터 먼저
+    final localData = await DailyReportStorage.loadHistory(dateKey);
+    if (localData != null) {
       setState(() {
-        if (serverData != null) {
-          _selectedScore = serverData['postureScore'];
-          _avgCva        = (serverData['averageCva'] ?? 0.0).toDouble();
-          _warningCount  = serverData['warningCount'] ?? 0;
-          _cautionCount  = serverData['cautionCount'] ?? 0;
-        }
-        if (localData != null) {
-          _cvaHistory     = List<double>.from(localData['cvaHistory'] ?? []);
-          _timeHistory    = List<String>.from(localData['timeHistory'] ?? []);
-          _postureHistory = List<String>.from(localData['postureHistory'] ?? []);
-        }
-        _isLoadingReport = false;
+        _cvaHistory     = List<double>.from(localData['cvaHistory'] ?? []);
+        _timeHistory    = List<String>.from(localData['timeHistory'] ?? []);
+        _postureHistory = List<String>.from(localData['postureHistory'] ?? []);
+        _avgCva         = (localData['avgCva'] ?? 0.0).toDouble();
+        _warningCount   = localData['warningCount'] ?? 0;
+        _cautionCount   = localData['cautionCount'] ?? 0;
       });
     }
+
+    // 서버 데이터로 덮어쓰기
+    if (dailyId != null) {
+      final api = ApiService();
+      final serverData = await api.getDailyReport(dailyId);
+      if (serverData != null && mounted) {
+        setState(() {
+          _selectedScore = serverData['postureScore'];
+          _avgCva        = (serverData['averageCva'] ?? _avgCva).toDouble();
+          _warningCount  = serverData['warningCount'] ?? _warningCount;
+          _cautionCount  = serverData['cautionCount'] ?? _cautionCount;
+        });
+      }
+    }
+
+    if (mounted) setState(() { _isLoadingReport = false; });
   }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
     setState(() {
-      _selectedDay = selectedDay;
-      _focusedDay = focusedDay;
+      _selectedDay    = selectedDay;
+      _focusedDay     = focusedDay;
+      _selectedScore  = null;
+      _avgCva         = 0.0;
+      _cvaHistory     = [];
+      _postureHistory = [];
+      _timeHistory    = [];
+      _warningCount   = 0;
+      _cautionCount   = 0;
     });
 
-    final id = _getDailyId(selectedDay);
-    if (id != null) {
-      _goToTodayReport(selectedDay, dailyId: id); // 바로 이동!
+    if (_hasRecord(selectedDay)) {
+      final id = _getDailyId(selectedDay);
+      await _loadFullData(selectedDay, id);
     }
-  }
-
-  void _goToTodayReport(DateTime date, {int? dailyId}) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => TodayReportView(date: date, dailyId: dailyId)),
-    ).then((_) {
-      final id = _getDailyId(_selectedDay!);
-      if (id != null) _loadFullData(_selectedDay!, id);
-    });
   }
 
   int? _getDailyId(DateTime date) {
@@ -215,17 +237,10 @@ class _ReportViewState extends State<ReportView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text("${_selectedDay?.month}월 ${_selectedDay?.day}일 측정 결과", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              TextButton(
-                onPressed: () => _goToTodayReport(_selectedDay!, dailyId: _getDailyId(_selectedDay!)),
-                child: const Text("자세히 보기 >", style: TextStyle(color: TColor.buttonGreen, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
+          Text("${_selectedDay?.month}월 ${_selectedDay?.day}일 측정 결과", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
+
+          // 자세 점수
           Container(
             width: double.infinity, padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: const Color(0xFFF1F8E9), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFC8E6C9))),
@@ -237,20 +252,71 @@ class _ReportViewState extends State<ReportView> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+
+          // 경고/주의 횟수
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: const Color(0xFFFCEBEB), borderRadius: BorderRadius.circular(12)),
+                  child: Column(children: [
+                    const Text("경고 횟수", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 4),
+                    Text("${_warningCount}회", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFFE24B4A))),
+                  ]),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(12)),
+                  child: Column(children: [
+                    const Text("주의 횟수", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 4),
+                    Text("${_cautionCount}회", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFFFF9800))),
+                  ]),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 32),
+
+          // 평균 고개 각도
           const Text("평균 고개 각도 분석", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           Row(
             children: [
-              SizedBox(width: 120, height: 160, child: CustomPaint(painter: NeckAnglePainter(cvaAngle: _avgCva))),
+              SizedBox(
+                width: 120, height: 160,
+                child: Stack(
+                  children: [
+                    Image.asset(
+                      'assets/neck_side.jpg',
+                      fit: BoxFit.contain,
+                      width: 120,
+                      height: 160,
+                      errorBuilder: (_, __, ___) => CustomPaint(painter: NeckAnglePainter(cvaAngle: _avgCva), size: const Size(120, 160)),
+                    ),
+                    Positioned.fill(
+                      child: CustomPaint(painter: NeckAngleLinePainter(cvaAngle: _avgCva)),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(width: 10),
               Expanded(child: SizedBox(height: 160, child: NeckAngleChart(angles: _cvaHistory, times: _timeHistory))),
             ],
           ),
           const SizedBox(height: 32),
+
+          // 히트맵
           const Text("타임라인 히트맵", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           PostureHeatmap(postureHistory: _postureHistory, timeHistory: _timeHistory),
+          const SizedBox(height: 100),
         ],
       ),
     );
@@ -290,9 +356,39 @@ class _ReportViewState extends State<ReportView> {
   }
 }
 
-// ==========================================
-// 💡 [여기서부터 끝까지!] 아까 말한 4개 그림 설계도 클래스를 아예 합쳐버렸어!
-// ==========================================
+// 이미지 위에 선 그리는 Painter
+class NeckAngleLinePainter extends CustomPainter {
+  final double cvaAngle;
+  NeckAngleLinePainter({required this.cvaAngle});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double cx = size.width * 0.60;
+    final double c7Y = size.height * 0.65;
+
+    canvas.drawLine(Offset(cx, c7Y - 60), Offset(cx, c7Y + 20), Paint()..color = Colors.grey.withOpacity(0.5)..strokeWidth = 1.5);
+
+    final angleRad = (90 - cvaAngle) * math.pi / 180;
+    final endX = cx - math.cos(angleRad) * 80.0;
+    final endY = c7Y - math.sin(angleRad) * 80.0;
+
+    canvas.drawLine(Offset(cx, c7Y), Offset(endX, endY), Paint()..color = const Color(0xFF378ADD)..strokeWidth = 3..strokeCap = StrokeCap.round);
+
+    canvas.drawArc(Rect.fromCenter(center: Offset(cx, c7Y), width: 50, height: 50), -math.pi / 2, -(90 - cvaAngle) * math.pi / 180, false, Paint()..color = const Color(0xFF378ADD).withOpacity(0.6)..strokeWidth = 1.5..style = PaintingStyle.stroke);
+
+    canvas.drawCircle(Offset(cx, c7Y), 5, Paint()..color = const Color(0xFFE24B4A));
+
+    final textPainter = TextPainter(
+      text: TextSpan(text: "${cvaAngle.toStringAsFixed(1)}°", style: const TextStyle(color: Color(0xFF378ADD), fontSize: 14, fontWeight: FontWeight.bold)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    textPainter.paint(canvas, Offset(cx - 60, c7Y - 50));
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
 class NeckAnglePainter extends CustomPainter {
   final double cvaAngle;
   NeckAnglePainter({required this.cvaAngle});
@@ -355,17 +451,15 @@ class NeckAngleChart extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFF1D9E75), borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 4),
-            const Text("CVA 각도", style: TextStyle(fontSize: 11, color: Colors.grey)),
-            const SizedBox(width: 12),
-            Container(width: 10, height: 3, color: const Color(0xFFE24B4A)),
-            const SizedBox(width: 4),
-            const Text("경고선", style: TextStyle(fontSize: 11, color: Colors.grey)),
-          ],
-        ),
+        Row(children: [
+          Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFF1D9E75), borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 4),
+          const Text("CVA 각도", style: TextStyle(fontSize: 11, color: Colors.grey)),
+          const SizedBox(width: 12),
+          Container(width: 10, height: 3, color: const Color(0xFFE24B4A)),
+          const SizedBox(width: 4),
+          const Text("경고선", style: TextStyle(fontSize: 11, color: Colors.grey)),
+        ]),
         const SizedBox(height: 8),
         Expanded(child: CustomPaint(painter: _ChartPainter(angles: angles, times: times, warningLine: warningLine, minVal: minVal, maxVal: maxVal), size: Size.infinite)),
       ],
@@ -445,23 +539,63 @@ class PostureHeatmap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity, padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(20)),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text("시간대별 자세 상태", style: TextStyle(fontSize: 13, color: Colors.grey)),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 3, runSpacing: 3,
-            children: postureHistory.map((posture) {
-              Color color = posture == "warning" ? const Color(0xFFE24B4A) : (posture == "caution" ? const Color(0xFFFF9800) : const Color(0xFF1D9E75));
-              return Container(width: 10, height: 24, decoration: BoxDecoration(color: color.withOpacity(0.8), borderRadius: BorderRadius.circular(3)));
-            }).toList(),
+          // 가로 스크롤로 히트맵 짤림 방지
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: postureHistory.map((posture) {
+                Color color;
+                if (posture == "warning") {
+                  color = const Color(0xFFE24B4A);
+                } else if (posture == "caution") {
+                  color = const Color(0xFFFF9800);
+                } else {
+                  color = const Color(0xFF1D9E75);
+                }
+                return Container(
+                  width: 12,
+                  height: 30,
+                  margin: const EdgeInsets.only(right: 3),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
           const SizedBox(height: 8),
           if (timeHistory.isNotEmpty)
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(timeHistory.first, style: const TextStyle(fontSize: 10, color: Colors.grey)), Text(timeHistory.last, style: const TextStyle(fontSize: 10, color: Colors.grey))]),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text(timeHistory.first, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              Text(timeHistory.last, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+            ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFF1D9E75), borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 4),
+            const Text("정상", style: TextStyle(fontSize: 10, color: Colors.grey)),
+            const SizedBox(width: 12),
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFFFF9800), borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 4),
+            const Text("주의", style: TextStyle(fontSize: 10, color: Colors.grey)),
+            const SizedBox(width: 12),
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFFE24B4A), borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 4),
+            const Text("경고", style: TextStyle(fontSize: 10, color: Colors.grey)),
+          ]),
         ],
       ),
     );

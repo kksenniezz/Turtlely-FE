@@ -253,7 +253,6 @@ class _SignupState extends State<Signup> {
                         });
                       } else if (_step == 2) {
                         if (!isStep2Valid) return;
-                        // 💡 [수정됨] 최종 가입 함수 signupFinal
 
                         bool isSignupSuccess;
                         if (widget.socialId != null) {
@@ -273,7 +272,20 @@ class _SignupState extends State<Signup> {
                         }
 
                         if (isSignupSuccess) {
-                          setState(() => _step = 3);
+                          final token = await _authService.storage.read(
+                            key: 'accessToken',
+                          );
+                          if (token != null) {
+                            setState(() => _step = 3);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  "회원가입은 완료되었으나 로그인에 실패했습니다. 다시 시도해 주세요.",
+                                ),
+                              ),
+                            );
+                          }
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
