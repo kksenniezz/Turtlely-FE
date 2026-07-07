@@ -149,8 +149,8 @@ class ReportService {
           resultSection['nickname'] = "Turtlely";
           resultSection['posture_type'] = "주의";
           resultSection['score'] = 73;
-          resultSection['cva_angle'] = 45.5;
-          resultSection['cra_angle'] = 143.2;
+          resultSection['cva_angle'] = 46.8;
+          resultSection['cra_angle'] = 146.2;
 
           resultSection['cva_history'] = [
             {"month": "2월", "angle": 45.1},
@@ -166,7 +166,7 @@ class ReportService {
             {"month": "3월", "angle": 147.4},
             {"month": "4월", "angle": 147.2},
             {"month": "5월", "angle": 146.4},
-            {"month": "6월", "angle": 146.8},
+            {"month": "6월", "angle": 146.6},
             {"month": "7월", "angle": 146.2},
           ];
 
