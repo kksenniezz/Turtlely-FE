@@ -153,15 +153,21 @@ class ReportService {
           resultSection['cra_angle'] = 143.2;
 
           resultSection['cva_history'] = [
-            {"month": "5월", "angle": 42.1},
-            {"month": "6월", "angle": 43.7},
-            {"month": "7월", "angle": 45.5},
+            {"month": "2월", "angle": 45.1},
+            {"month": "3월", "angle": 45.2},
+            {"month": "4월", "angle": 45.2},
+            {"month": "5월", "angle": 45.5},
+            {"month": "6월", "angle": 46.1},
+            {"month": "7월", "angle": 46.8},
           ];
 
           resultSection['cra_history'] = [
-            {"month": "5월", "angle": 138.4},
-            {"month": "6월", "angle": 140.8},
-            {"month": "7월", "angle": 143.2},
+            {"month": "2월", "angle": 147.5},
+            {"month": "3월", "angle": 147.4},
+            {"month": "4월", "angle": 147.2},
+            {"month": "5월", "angle": 146.4},
+            {"month": "6월", "angle": 146.8},
+            {"month": "7월", "angle": 146.2},
           ];
 
           resultSection['predicted_diseases'] = [
