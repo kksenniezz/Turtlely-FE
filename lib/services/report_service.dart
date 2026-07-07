@@ -138,6 +138,10 @@ class ReportService {
       Map<String, dynamic> decodedData = {};
 
       if (response.body.isNotEmpty) {
+        decodedData = json.decode(utf8.decode(response.bodyBytes));
+      }
+
+      if (response.statusCode == 200) {
         // 여기부터 더미데이터
         if (decodedData.containsKey('result') && decodedData['result'] is Map) {
           Map<String, dynamic> resultSection = decodedData['result'];
@@ -172,12 +176,10 @@ class ReportService {
           };
 
           print("💡 [더미 데이터 임시 오버라이드 완료]: UI 확인용");
-        } // 보고서 작성 이후 제외
-        decodedData = json.decode(utf8.decode(response.bodyBytes));
-      }
-
-      if (response.statusCode == 200) {
+        }
         return ReportData.fromJson(decodedData);
+        // 보고서 작성 이후 제외, 아래 주석 풀기
+        // return ReportData.fromJson(decodedData);
       }
 
       if (response.statusCode == 202) {
