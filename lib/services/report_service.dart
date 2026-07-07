@@ -138,6 +138,41 @@ class ReportService {
       Map<String, dynamic> decodedData = {};
 
       if (response.body.isNotEmpty) {
+        // 여기부터 더미데이터
+        if (decodedData.containsKey('result') && decodedData['result'] is Map) {
+          Map<String, dynamic> resultSection = decodedData['result'];
+
+          resultSection['nickname'] = "Turtlely";
+          resultSection['posture_type'] = "주의";
+          resultSection['score'] = 73;
+          resultSection['cva_angle'] = 45.5;
+          resultSection['cra_angle'] = 143.2;
+
+          resultSection['cva_history'] = [
+            {"month": "5월", "angle": 42.1},
+            {"month": "6월", "angle": 43.7},
+            {"month": "7월", "angle": 45.5},
+          ];
+
+          resultSection['cra_history'] = [
+            {"month": "5월", "angle": 138.4},
+            {"month": "6월", "angle": 140.8},
+            {"month": "7월", "angle": 143.2},
+          ];
+
+          resultSection['predicted_diseases'] = [
+            {"name": "목디스크", "score": 0.85},
+            {"name": "후두신경통", "score": 0.65},
+            {"name": "척추측만증", "score": 0.35},
+          ];
+
+          resultSection['prediction_data'] = {
+            "prediction_months": ["7월", "8월", "9월", "11월", "12월", "1월"],
+            "prediction_scores": [73, 74, 75, 78, 82, 85],
+          };
+
+          print("💡 [더미 데이터 임시 오버라이드 완료]: UI 확인용");
+        } // 보고서 작성 이후 제외
         decodedData = json.decode(utf8.decode(response.bodyBytes));
       }
 
