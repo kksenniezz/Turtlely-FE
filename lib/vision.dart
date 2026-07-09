@@ -93,20 +93,15 @@ class _VisionPageState extends State<VisionPage> {
       step = 4;
     }); // 측정 시작 단계로 이동
 
+    _monthlyBle.sendCommand("MONTHLY_START");
+
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
     _mediaPipeService.start3SecondCapture();
 
     int count = 0;
 
     _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-    // 매초 BLE 값 업데이트
-    _mediaPipeService.updateHwAccel(
-      _monthlyBle.accX,
-      _monthlyBle.accY,
-      _monthlyBle.accZ,
-    );
-    debugPrint("📡 BLE 가속도: ${_monthlyBle.accX}, ${_monthlyBle.accY}, ${_monthlyBle.accZ}");
-
+    
     setState(() {
       count++;
       loadingDots = "." * (count % 4);
@@ -119,6 +114,7 @@ class _VisionPageState extends State<VisionPage> {
 
     if (count == 3) {
       timer.cancel();
+      await _monthlyBle.sendCommand("STOP");
       debugPrint("📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}");
       final response = await _mediaPipeService.sendBatchVisionData();
       if (!mounted) return;

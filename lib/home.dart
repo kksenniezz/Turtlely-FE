@@ -45,6 +45,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
   List<double> calibAccYList = [];
   List<double> calibAccZList = [];
 
+  String _worstPostureInMinute = 'normal'; // 추가!
+
   bool _showDebug = false;
 
   final BleService _ble = BleService();
@@ -68,7 +70,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
     };
     _ble.init();
 
-    // 토큰 확인용
     _storage.read(key: 'accessToken').then((token) {
       debugPrint("🔑 accessToken: $token");
     });
@@ -142,6 +143,13 @@ class _HomeViewContentState extends State<HomeViewContent> {
         debugPrint("✅ 자세 정상 | CVA: $estimatedCva");
       }
 
+      // 1분 중 가장 나쁜 상태 업데이트
+      if (newPostureResult == 'warning') {
+        _worstPostureInMinute = 'warning';
+      } else if (newPostureResult == 'caution' && _worstPostureInMinute != 'warning') {
+        _worstPostureInMinute = 'caution';
+      }
+
       final now = DateTime.now();
       final timeStr = "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}";
 
@@ -165,7 +173,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
         if (now.second == 0 || cvaHistory.isEmpty) {
           cvaHistory.add(estimatedCva);
           timeHistory.add(timeStr);
-          postureHistory.add(newPostureResult);
+          postureHistory.add(_worstPostureInMinute); // 최악값 저장!
+          _worstPostureInMinute = 'normal'; // 초기화
         }
       });
     });
@@ -191,6 +200,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       startMonitoring();
       return;
     }
+
     if (cleanData == "NO_POSE_CALIB") {
       _showSnackBar("자세 교정 시작 버튼을 눌러주세요");
       return;
@@ -241,16 +251,17 @@ class _HomeViewContentState extends State<HomeViewContent> {
     _showSnackBar("측정 결과가 저장되었어요");
 
     setState(() {
-      isMonitoring      = false;
-      isCalibrating     = false;
-      isBadPosture      = false;
-      monitoringSeconds = 0;
-      calibrationTimer  = 3;
-      lastAccX          = 0.0;
-      lastAccY          = 0.0;
-      lastAccZ          = 0.0;
-      lastEstimatedCva  = 0.0;
-      postureResult     = 'normal';
+      isMonitoring          = false;
+      isCalibrating         = false;
+      isBadPosture          = false;
+      monitoringSeconds     = 0;
+      calibrationTimer      = 3;
+      lastAccX              = 0.0;
+      lastAccY              = 0.0;
+      lastAccZ              = 0.0;
+      lastEstimatedCva      = 0.0;
+      postureResult         = 'normal';
+      _worstPostureInMinute = 'normal'; // 초기화!
       cvaHistory.clear();
       timeHistory.clear();
       postureHistory.clear();

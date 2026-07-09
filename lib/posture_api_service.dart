@@ -61,6 +61,7 @@ class ApiService {
     required double accZ,
     required String level,
   }) async {
+    debugPrint("🔄 sendDaily 호출됨 | accX: $accX, accY: $accY, accZ: $accZ");
     try {
       final token = await _getToken();
       final currentMonthlyId = await _getMonthlyId();
@@ -81,9 +82,10 @@ class ApiService {
           "level"           : level,
         }),
       );
+      debugPrint("📡 /api/daily 상태코드: ${response.statusCode}");
+      debugPrint("📡 /api/daily 응답바디: ${response.body}");
       if (response.statusCode == 200) {
         final body = response.body.trim();
-        debugPrint("📥 /api/daily 응답: $body");
         final json = jsonDecode(body);
         final postureResult = json["posture_result"] ?? "normal";
         final estimatedCva  = (json["estimated_cva"] ?? 0.0).toDouble();

@@ -1,4 +1,4 @@
-import 'dart:convert'; // 🚨 필수 임포트
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -32,6 +32,20 @@ class MonthlyBleService {
       await _startScan();
     } catch (e) {
       debugPrint("❌ 월간 BLE 초기화 실패: $e");
+    }
+  }
+
+  // 추가!
+  Future<void> sendCommand(String command) async {
+    try {
+      if (targetCharacteristic == null) {
+        debugPrint("❌ 월간 BLE 전송 실패: characteristic null - $command");
+        return;
+      }
+      await targetCharacteristic!.write(command.codeUnits);
+      debugPrint("📤 월간 BLE 전송: $command");
+    } catch (e) {
+      debugPrint("❌ 월간 BLE 전송 실패: $e");
     }
   }
 
@@ -74,14 +88,11 @@ class MonthlyBleService {
     try {
       await FlutterBluePlus.stopScan();
       targetDevice = device;
-      
-      // 🚨 라이선스 파라미터 추가
       await device.connect(
         timeout: const Duration(seconds: 10),
         autoConnect: false,
-        license: License.free, 
+        license: License.free,
       );
-      
       debugPrint("✅ 월간 BLE 연결 성공");
 
       _connectionSubscription?.cancel();
@@ -135,26 +146,20 @@ class MonthlyBleService {
   Future<void> _startNotify() async {
     try {
       if (targetCharacteristic == null) return;
-
       if (!(await targetCharacteristic!.isNotifying)) {
         await targetCharacteristic!.setNotifyValue(true);
       }
-      
       _valueSubscription?.cancel();
       _valueSubscription = targetCharacteristic!.lastValueStream.listen((value) {
         if (value.isEmpty) return;
-        
         final data = utf8.decode(value).trim();
         debugPrint("📥 월간 BLE 실시간 센서 데이터: $data");
-        
-        if (data == "NO_POSE_CALIB") return; 
-
+        if (data == "NO_POSE_CALIB") return;
         final parts = data.split(',');
         if (parts.length >= 3) {
           final x = double.tryParse(parts[0]);
           final y = double.tryParse(parts[1]);
           final z = double.tryParse(parts[2]);
-          
           if (x != null && y != null && z != null) {
             accX = x;
             accY = y;

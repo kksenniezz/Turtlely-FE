@@ -40,7 +40,7 @@ class DailyReportStorage {
 
   // 이틀 지난 데이터 자동 삭제
   static Future<void> _deleteOldData(Box box) async {
-    final twoDaysAgo = DateTime.now().subtract(const Duration(days: 2));
+    final twoDaysAgo = DateTime.now().subtract(const Duration(days: 730));
     final keysToDelete = <String>[];
     for (final key in box.keys) {
       final data = box.get(key) as Map?;

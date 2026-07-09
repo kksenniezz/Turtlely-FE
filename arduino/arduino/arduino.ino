@@ -11,6 +11,7 @@ Adafruit_DRV2605 drv;
 bool pose_calibrated = false;
 bool calib_running   = false;
 bool is_stopped      = false;
+bool is_monthly      = false; // 추가!
 
 float calib_x_sum = 0.0;
 float calib_y_sum = 0.0;
@@ -21,11 +22,12 @@ uint32_t calib_start_ms    = 0;
 uint32_t last_send_time_ms = 0;
 
 #define CALIB_DURATION_MS 3000
+#define MONTHLY_INTERVAL_MS 150 // 추가!
 
 #define SERVICE_UUID        "19B10000-E8F2-537E-4F6C-D104768A1214"
 #define CHARACTERISTIC_UUID "19B10001-E8F2-537E-4F6C-D104768A1214"
 
-BLEService         turtlelyService   = BLEService(SERVICE_UUID);
+BLEService        turtlelyService   = BLEService(SERVICE_UUID);
 BLECharacteristic cvaCharacteristic = BLECharacteristic(CHARACTERISTIC_UUID);
 
 void receive_ble_callback(uint16_t conn_handle, BLECharacteristic* chr, uint8_t* data, uint16_t len);
@@ -53,14 +55,12 @@ void setup() {
     Serial.println("IMU 연결 성공");
   }
 
-  // DRV2605 초기화
   if (!drv.begin()) {
     Serial.println("DRV2605 연결 실패!");
   } else {
     Serial.println("DRV2605 연결 성공!");
     drv.selectLibrary(1);
     drv.setMode(DRV2605_MODE_INTTRIG);
-    // 부팅 시 테스트 진동
     vibrate(1);
     delay(500);
     Serial.println("진동 테스트 완료!");
@@ -102,7 +102,6 @@ void loop() {
   float accY = myIMU.readFloatAccelY();
   float accZ = myIMU.readFloatAccelZ();
 
-  // 1. 일일 측정용 캘리브레이션 모드 가동 중일 때
   if (calib_running) {
     calib_x_sum += accX;
     calib_y_sum += accY;
@@ -141,18 +140,17 @@ void loop() {
     return;
   }
 
-  // 🚨 [장벽 제거] 캘리브레이션 대기 무한 루프 차단!
-  // 월간 측정 시에는 카메라 캘리브레이션 유무 상관없이 무조건 가속도 3축 실시간 전송
+  // 일일: 1초, 월간: 150ms 주기로 전송
+  uint32_t interval = is_monthly ? MONTHLY_INTERVAL_MS : 1000;
 
-  // 2. 평소 상태 또는 월간 측정 모드: 1초마다 실시간 진짜 센서 데이터 전송
-  if (millis() - last_send_time_ms >= 1000) {
+  if (millis() - last_send_time_ms >= interval) {
     last_send_time_ms = millis();
 
     String sendData = String(accX, 3) + "," +
                       String(accY, 3) + "," +
                       String(accZ, 3);
 
-    Serial.print("[1초 전송] ");
+    Serial.print(is_monthly ? "[150ms 전송] " : "[1초 전송] ");
     Serial.println(sendData);
 
     if (Bluefruit.connected()) {
@@ -180,25 +178,32 @@ void receive_ble_callback(uint16_t conn_handle, BLECharacteristic* chr, uint8_t*
     calib_start_ms  = millis();
     calib_running   = true;
     pose_calibrated = false;
+    is_monthly      = false;
     Serial.println("캘리브레이션 시작");
+  }
+
+  if (rxData == "MONTHLY_START") {
+    is_stopped = false;
+    is_monthly = true;
+    Serial.println("월간 측정 시작 - 150ms 주기");
   }
 
   if (rxData == "STOP") {
     pose_calibrated = false;
     calib_running   = false;
     is_stopped      = true;
+    is_monthly      = false; // 초기화!
     Serial.println("측정 종료");
   }
 
-  // 진동 신호 처리
   if (rxData == "VIBRATE") {
     Serial.println("진동!");
-    vibrate(47); // 강한 진동 효과
+    vibrate(47);
   }
 }
 
-void connect_callback(uint16_t conn_handle) { 
-  Serial.println("스마트폰 연결 성공"); 
+void connect_callback(uint16_t conn_handle) {
+  Serial.println("스마트폰 연결 성공");
 }
 
 void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
@@ -206,4 +211,5 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   pose_calibrated = false;
   calib_running   = false;
   is_stopped      = false;
+  is_monthly      = false; // 초기화!
 }
