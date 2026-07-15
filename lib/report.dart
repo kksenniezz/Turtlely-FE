@@ -285,7 +285,7 @@ class _ReportViewState extends State<ReportView> {
           const SizedBox(height: 32),
 
           // 평균 고개 각도
-          const Text("평균 고개 각도 분석", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text("CVA 각도 변화 그래프", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           Row(
             children: [
