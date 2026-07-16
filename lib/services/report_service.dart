@@ -142,50 +142,7 @@ class ReportService {
       }
 
       if (response.statusCode == 200) {
-        // 여기부터 더미데이터
-        if (decodedData.containsKey('result') && decodedData['result'] is Map) {
-          Map<String, dynamic> resultSection = decodedData['result'];
-
-          resultSection['nickname'] = "Turtlely";
-          resultSection['posture_type'] = "주의";
-          resultSection['score'] = 73;
-          resultSection['cva_angle'] = 46.8;
-          resultSection['cra_angle'] = 146.2;
-
-          resultSection['cva_history'] = [
-            {"month": "2월", "angle": 45.1},
-            {"month": "3월", "angle": 45.2},
-            {"month": "4월", "angle": 45.2},
-            {"month": "5월", "angle": 45.5},
-            {"month": "6월", "angle": 46.1},
-            {"month": "7월", "angle": 46.8},
-          ];
-
-          resultSection['cra_history'] = [
-            {"month": "2월", "angle": 147.5},
-            {"month": "3월", "angle": 147.4},
-            {"month": "4월", "angle": 147.2},
-            {"month": "5월", "angle": 146.4},
-            {"month": "6월", "angle": 146.6},
-            {"month": "7월", "angle": 146.2},
-          ];
-
-          resultSection['predicted_diseases'] = [
-            {"name": "목디스크", "score": 0.85},
-            {"name": "후두신경통", "score": 0.65},
-            {"name": "척추측만증", "score": 0.35},
-          ];
-
-          resultSection['prediction_data'] = {
-            "prediction_months": ["7월", "8월", "9월", "11월", "12월", "1월"],
-            "prediction_scores": [73, 74, 75, 78, 82, 85],
-          };
-
-          print("💡 [더미 데이터 임시 오버라이드 완료]: UI 확인용");
-        }
-        return ReportData.fromJson(decodedData);
-        // 보고서 작성 이후 제외, 아래 주석 풀기
-        // return ReportData.fromJson(decodedData);
+        ReportData.fromJson(decodedData);
       }
 
       if (response.statusCode == 202) {
