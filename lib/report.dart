@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'dart:math' as math;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'style.dart';
 import 'monthly_report.dart';
 import 'today_report.dart';
@@ -90,7 +93,6 @@ class _ReportViewState extends State<ReportView> {
       }
     });
 
-    // 오늘 날짜에 데이터 있으면 자동 로드
     if (_hasRecord(_selectedDay!)) {
       final id = _getDailyId(_selectedDay!);
       await _loadFullData(_selectedDay!, id);
@@ -102,7 +104,6 @@ class _ReportViewState extends State<ReportView> {
 
     final dateKey = "${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}";
 
-    // Hive 데이터 먼저
     final localData = await DailyReportStorage.loadHistory(dateKey);
     if (localData != null) {
       setState(() {
@@ -115,7 +116,6 @@ class _ReportViewState extends State<ReportView> {
       });
     }
 
-    // 서버 데이터로 덮어쓰기
     if (dailyId != null) {
       final api = ApiService();
       final serverData = await api.getDailyReport(dailyId);
@@ -157,6 +157,79 @@ class _ReportViewState extends State<ReportView> {
       if (report['reportDate'] == dateStr) return report['dailyId'] as int?;
     }
     return null;
+  }
+
+  // ✅ 3축값 포함한 CSV 공유
+  Future<void> _exportCsv() async {
+    if (_selectedDay == null) return;
+    final dateKey = "${_selectedDay!.year}-${_selectedDay!.month.toString().padLeft(2,'0')}-${_selectedDay!.day.toString().padLeft(2,'0')}";
+    final data = await DailyReportStorage.loadHistory(dateKey);
+    if (data == null) {
+      _showSnackBar("저장된 데이터가 없어요");
+      return;
+    }
+
+    final List<double> accXHistory    = List<double>.from(data['accXHistory'] ?? []);
+    final List<double> accYHistory    = List<double>.from(data['accYHistory'] ?? []);
+    final List<double> accZHistory    = List<double>.from(data['accZHistory'] ?? []);
+    final List<double> csvCvaHistory  = List<double>.from(data['cvaHistory'] ?? []);
+    final List<String> csvTimeHistory = List<String>.from(data['timeHistory'] ?? []);
+    final List<String> csvPostureHistory = List<String>.from(data['postureHistory'] ?? []);
+
+    StringBuffer csv = StringBuffer();
+
+    // ✅ 매초 3축값이 있으면 raw 데이터 먼저
+    if (accXHistory.isNotEmpty) {
+      csv.writeln('=== 매초 측정 Raw 데이터 ===');
+      csv.writeln('날짜,인덱스,accX,accY,accZ');
+      for (int i = 0; i < accXHistory.length; i++) {
+        csv.writeln(
+          '$dateKey,'
+          '${i + 1},'
+          '${accXHistory[i].toStringAsFixed(4)},'
+          '${accYHistory.length > i ? accYHistory[i].toStringAsFixed(4) : ""},'
+          '${accZHistory.length > i ? accZHistory[i].toStringAsFixed(4) : ""}'
+        );
+      }
+      csv.writeln('');
+    }
+
+    // ✅ 분 단위 요약 데이터
+    csv.writeln('=== 분 단위 요약 데이터 ===');
+    csv.writeln('날짜,시간,CVA각도,자세상태,평균CVA,경고횟수,주의횟수');
+    for (int i = 0; i < csvCvaHistory.length; i++) {
+      csv.writeln(
+        '$dateKey,'
+        '${i < csvTimeHistory.length ? csvTimeHistory[i] : ""},'
+        '${csvCvaHistory[i].toStringAsFixed(2)},'
+        '${i < csvPostureHistory.length ? csvPostureHistory[i] : ""},'
+        '${(data['avgCva'] ?? 0.0).toStringAsFixed(2)},'
+        '${data['warningCount'] ?? 0},'
+        '${data['cautionCount'] ?? 0}'
+      );
+    }
+
+    try {
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/turtlely_$dateKey.csv');
+      await file.writeAsString(csv.toString());
+      debugPrint("📊 CSV 저장됨: ${file.path}");
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Turtlely 자세 측정 데이터 ($dateKey)',
+      );
+    } catch (e) {
+      debugPrint("❌ CSV 공유 실패: $e");
+      _showSnackBar("공유 실패");
+    }
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
   }
 
   @override
@@ -232,12 +305,27 @@ class _ReportViewState extends State<ReportView> {
   Widget _buildActiveContent() {
     if (_isLoadingReport) return const Center(child: Padding(padding: EdgeInsets.only(top: 50), child: CircularProgressIndicator()));
 
+    final double screenHeight = MediaQuery.of(context).size.height;
+    final double chartHeight  = screenHeight * 0.22;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("${_selectedDay?.month}월 ${_selectedDay?.day}일 측정 결과", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          // 타이틀 + 공유 버튼
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("${_selectedDay?.month}월 ${_selectedDay?.day}일 측정 결과",
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              IconButton(
+                icon: const Icon(Icons.share, color: Colors.grey),
+                tooltip: 'CSV 공유',
+                onPressed: _exportCsv,
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
 
           // 자세 점수
@@ -284,21 +372,22 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 32),
 
-          // 평균 고개 각도
+          // CVA 그래프
           const Text("CVA 각도 변화 그래프", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           Row(
             children: [
               SizedBox(
-                width: 120, height: 160,
+                width: 120,
+                height: chartHeight,
                 child: Stack(
                   children: [
                     Image.asset(
                       'assets/neck_side.jpg',
                       fit: BoxFit.contain,
                       width: 120,
-                      height: 160,
-                      errorBuilder: (_, __, ___) => CustomPaint(painter: NeckAnglePainter(cvaAngle: _avgCva), size: const Size(120, 160)),
+                      height: chartHeight,
+                      errorBuilder: (_, __, ___) => CustomPaint(painter: NeckAnglePainter(cvaAngle: _avgCva), size: Size(120, chartHeight)),
                     ),
                     Positioned.fill(
                       child: CustomPaint(painter: NeckAngleLinePainter(cvaAngle: _avgCva)),
@@ -307,7 +396,7 @@ class _ReportViewState extends State<ReportView> {
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(child: SizedBox(height: 160, child: NeckAngleChart(angles: _cvaHistory, times: _timeHistory))),
+              Expanded(child: SizedBox(height: chartHeight, child: NeckAngleChart(angles: _cvaHistory, times: _timeHistory))),
             ],
           ),
           const SizedBox(height: 32),
@@ -356,7 +445,6 @@ class _ReportViewState extends State<ReportView> {
   }
 }
 
-// 이미지 위에 선 그리는 Painter
 class NeckAngleLinePainter extends CustomPainter {
   final double cvaAngle;
   NeckAngleLinePainter({required this.cvaAngle});
@@ -373,9 +461,7 @@ class NeckAngleLinePainter extends CustomPainter {
     final endY = c7Y - math.sin(angleRad) * 80.0;
 
     canvas.drawLine(Offset(cx, c7Y), Offset(endX, endY), Paint()..color = const Color(0xFF378ADD)..strokeWidth = 3..strokeCap = StrokeCap.round);
-
     canvas.drawArc(Rect.fromCenter(center: Offset(cx, c7Y), width: 50, height: 50), -math.pi / 2, -(90 - cvaAngle) * math.pi / 180, false, Paint()..color = const Color(0xFF378ADD).withOpacity(0.6)..strokeWidth = 1.5..style = PaintingStyle.stroke);
-
     canvas.drawCircle(Offset(cx, c7Y), 5, Paint()..color = const Color(0xFFE24B4A));
 
     final textPainter = TextPainter(
@@ -425,7 +511,6 @@ class NeckAnglePainter extends CustomPainter {
     final endX = cx - math.cos(angleRad) * 60.0;
     final endY = c7Y - math.sin(angleRad) * 60.0;
     canvas.drawLine(Offset(cx, c7Y), Offset(endX, endY), Paint()..color = const Color(0xFF378ADD)..strokeWidth = 2..strokeCap = StrokeCap.round);
-
     canvas.drawArc(Rect.fromCenter(center: Offset(cx, c7Y), width: 40, height: 40), -math.pi / 2, -angleRad, false, Paint()..color = const Color(0xFF378ADD).withOpacity(0.6)..strokeWidth = 1.5..style = PaintingStyle.stroke);
 
     final textPainter = TextPainter(text: TextSpan(text: "${cvaAngle.toStringAsFixed(1)}°", style: const TextStyle(color: Color(0xFF378ADD), fontSize: 13, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
@@ -480,7 +565,7 @@ class _ChartPainter extends CustomPainter {
     final double chartW = size.width - padL - padR;
     final double chartH = size.height - padT - padB;
 
-    double toX(int i) => padL + i * chartW / (angles.length - 1);
+    double toX(int i) => padL + i * chartW / math.max(angles.length - 1, 1);
     double toY(double v) => padT + (1 - (v - minVal) / (maxVal - minVal)) * chartH;
 
     final gridPaint = Paint()..color = Colors.grey.withOpacity(0.1)..strokeWidth = 0.5;
@@ -498,32 +583,38 @@ class _ChartPainter extends CustomPainter {
       x += 10;
     }
 
-    final fillPath = Path()..moveTo(toX(0), toY(angles[0]));
-    for (int i = 1; i < angles.length; i++) {
-      final cpx = (toX(i - 1) + toX(i)) / 2;
-      fillPath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
-    }
-    fillPath.lineTo(toX(angles.length - 1), toY(minVal));
-    fillPath.lineTo(toX(0), toY(minVal));
-    fillPath.close();
-    canvas.drawPath(fillPath, Paint()..color = const Color(0xFF1D9E75).withOpacity(0.08));
+    if (angles.length == 1) {
+      canvas.drawCircle(Offset(toX(0), toY(angles[0])), 4, Paint()..color = const Color(0xFF1D9E75));
+    } else {
+      final fillPath = Path()..moveTo(toX(0), toY(angles[0]));
+      for (int i = 1; i < angles.length; i++) {
+        final cpx = (toX(i - 1) + toX(i)) / 2;
+        fillPath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
+      }
+      fillPath.lineTo(toX(angles.length - 1), toY(minVal));
+      fillPath.lineTo(toX(0), toY(minVal));
+      fillPath.close();
+      canvas.drawPath(fillPath, Paint()..color = const Color(0xFF1D9E75).withOpacity(0.08));
 
-    final linePath = Path()..moveTo(toX(0), toY(angles[0]));
-    for (int i = 1; i < angles.length; i++) {
-      final cpx = (toX(i - 1) + toX(i)) / 2;
-      linePath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
+      final linePath = Path()..moveTo(toX(0), toY(angles[0]));
+      for (int i = 1; i < angles.length; i++) {
+        final cpx = (toX(i - 1) + toX(i)) / 2;
+        linePath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
+      }
+      canvas.drawPath(linePath, Paint()..color = const Color(0xFF1D9E75)..strokeWidth = 2..style = PaintingStyle.stroke);
     }
-    canvas.drawPath(linePath, Paint()..color = const Color(0xFF1D9E75)..strokeWidth = 2..style = PaintingStyle.stroke);
 
     for (int i = 0; i < angles.length; i++) {
       final isWarning = angles[i] < warningLine;
       canvas.drawCircle(Offset(toX(i), toY(angles[i])), 3.5, Paint()..color = isWarning ? const Color(0xFFE24B4A) : const Color(0xFF1D9E75));
     }
 
-    final step = (times.length / 5).ceil();
-    for (int i = 0; i < times.length; i += step) {
-      final tp = TextPainter(text: TextSpan(text: times[i], style: const TextStyle(color: Colors.grey, fontSize: 8)), textDirection: TextDirection.ltr)..layout();
-      tp.paint(canvas, Offset(toX(i) - tp.width / 2, size.height - padB + 4));
+    if (times.isNotEmpty) {
+      final step = math.max((times.length / 5).ceil(), 1);
+      for (int i = 0; i < times.length; i += step) {
+        final tp = TextPainter(text: TextSpan(text: times[i], style: const TextStyle(color: Colors.grey, fontSize: 8)), textDirection: TextDirection.ltr)..layout();
+        tp.paint(canvas, Offset(toX(i) - tp.width / 2, size.height - padB + 4));
+      }
     }
   }
 
@@ -551,31 +642,37 @@ class PostureHeatmap extends StatelessWidget {
         children: [
           const Text("시간대별 자세 상태", style: TextStyle(fontSize: 13, color: Colors.grey)),
           const SizedBox(height: 12),
-          // 가로 스크롤로 히트맵 짤림 방지
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: postureHistory.map((posture) {
-                Color color;
-                if (posture == "warning") {
-                  color = const Color(0xFFE24B4A);
-                } else if (posture == "caution") {
-                  color = const Color(0xFFFF9800);
-                } else {
-                  color = const Color(0xFF1D9E75);
-                }
-                return Container(
-                  width: 12,
-                  height: 30,
-                  margin: const EdgeInsets.only(right: 3),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(3),
+          postureHistory.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text("측정 데이터가 없어요", style: TextStyle(color: Colors.grey, fontSize: 12)),
                   ),
-                );
-              }).toList(),
-            ),
-          ),
+                )
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: postureHistory.map((posture) {
+                      Color color;
+                      if (posture == "warning") {
+                        color = const Color(0xFFE24B4A);
+                      } else if (posture == "caution") {
+                        color = const Color(0xFFFF9800);
+                      } else {
+                        color = const Color(0xFF1D9E75);
+                      }
+                      return Container(
+                        width: 12,
+                        height: 30,
+                        margin: const EdgeInsets.only(right: 3),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
           const SizedBox(height: 8),
           if (timeHistory.isNotEmpty)
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [

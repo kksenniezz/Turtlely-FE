@@ -34,6 +34,13 @@ class _HomeViewContentState extends State<HomeViewContent> {
   List<double> cvaHistory     = [];
   List<String> timeHistory    = [];
   List<String> postureHistory = [];
+
+  // ✅ 매초 3축값 저장 리스트 추가
+  List<double> accXHistory  = [];
+  List<double> accYHistory  = [];
+  List<double> accZHistory  = [];
+  List<String> rawTimeHistory = []; // 매초 시간 기록
+
   double cvaSum         = 0.0;
   int    cvaCount       = 0;
   int    warningCount   = 0;
@@ -45,7 +52,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
   List<double> calibAccYList = [];
   List<double> calibAccZList = [];
 
-  String _worstPostureInMinute = 'normal'; // 추가!
+  String _worstPostureInMinute = 'normal';
 
   bool _showDebug = false;
 
@@ -143,7 +150,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
         debugPrint("✅ 자세 정상 | CVA: $estimatedCva");
       }
 
-      // 1분 중 가장 나쁜 상태 업데이트
       if (newPostureResult == 'warning') {
         _worstPostureInMinute = 'warning';
       } else if (newPostureResult == 'caution' && _worstPostureInMinute != 'warning') {
@@ -152,6 +158,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
       final now = DateTime.now();
       final timeStr = "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}";
+      final rawTimeStr = "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}:${now.second.toString().padLeft(2,'0')}";
 
       setState(() {
         postureResult    = newPostureResult;
@@ -170,11 +177,18 @@ class _HomeViewContentState extends State<HomeViewContent> {
           normalDuration++;
         }
 
+        // ✅ 매초 3축값 + CVA + 시간 저장
+        accXHistory.add(lastAccX);
+        accYHistory.add(lastAccY);
+        accZHistory.add(lastAccZ);
+        rawTimeHistory.add(rawTimeStr);
+
+        // 분 단위 요약 저장
         if (now.second == 0 || cvaHistory.isEmpty) {
           cvaHistory.add(estimatedCva);
           timeHistory.add(timeStr);
-          postureHistory.add(_worstPostureInMinute); // 최악값 저장!
-          _worstPostureInMinute = 'normal'; // 초기화
+          postureHistory.add(_worstPostureInMinute);
+          _worstPostureInMinute = 'normal';
         }
       });
     });
@@ -226,6 +240,16 @@ class _HomeViewContentState extends State<HomeViewContent> {
   Future<void> stopMonitoring() async {
     monitorTimer?.cancel();
     dailyApiTimer?.cancel();
+
+    // ✅ 버튼 누르는 즉시 UI 초기화
+    setState(() {
+      isMonitoring          = false;
+      isCalibrating         = false;
+      isBadPosture          = false;
+      postureResult         = 'normal';
+      _worstPostureInMinute = 'normal';
+    });
+
     await _ble.sendCommand("STOP");
     await _ble.stopNotify();
 
@@ -244,6 +268,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
         cautionCount   : cautionCount,
         duration       : totalDuration,
         normalDuration : normalDuration,
+        accXHistory    : List.from(accXHistory),   // ✅ 추가
+        accYHistory    : List.from(accYHistory),   // ✅ 추가
+        accZHistory    : List.from(accZHistory),   // ✅ 추가
       );
       debugPrint("✅ Hive 저장 완료: $dateKey | 평균CVA: $avgCva | 경고: $warningCount | 주의: $cautionCount");
     }
@@ -251,20 +278,19 @@ class _HomeViewContentState extends State<HomeViewContent> {
     _showSnackBar("측정 결과가 저장되었어요");
 
     setState(() {
-      isMonitoring          = false;
-      isCalibrating         = false;
-      isBadPosture          = false;
-      monitoringSeconds     = 0;
-      calibrationTimer      = 3;
-      lastAccX              = 0.0;
-      lastAccY              = 0.0;
-      lastAccZ              = 0.0;
-      lastEstimatedCva      = 0.0;
-      postureResult         = 'normal';
-      _worstPostureInMinute = 'normal'; // 초기화!
+      monitoringSeconds = 0;
+      calibrationTimer  = 3;
+      lastAccX          = 0.0;
+      lastAccY          = 0.0;
+      lastAccZ          = 0.0;
+      lastEstimatedCva  = 0.0;
       cvaHistory.clear();
       timeHistory.clear();
       postureHistory.clear();
+      accXHistory.clear();    // ✅ 초기화
+      accYHistory.clear();    // ✅ 초기화
+      accZHistory.clear();    // ✅ 초기화
+      rawTimeHistory.clear(); // ✅ 초기화
       cvaSum         = 0.0;
       cvaCount       = 0;
       warningCount   = 0;

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'style.dart';
 import 'daily_report_storage.dart';
 import 'posture_api_service.dart';
@@ -78,9 +80,61 @@ class _TodayReportViewState extends State<TodayReportView> {
 
   int get postureScore => _serverScore;
 
+  Future<void> _exportCsv() async {
+    final dateKey = "${widget.date.year}-${widget.date.month.toString().padLeft(2,'0')}-${widget.date.day.toString().padLeft(2,'0')}";
+    final data = await DailyReportStorage.loadHistory(dateKey);
+    if (data == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("저장된 데이터가 없어요")),
+        );
+      }
+      return;
+    }
+
+    final List<double> csvCvaHistory     = List<double>.from(data['cvaHistory'] ?? []);
+    final List<String> csvTimeHistory    = List<String>.from(data['timeHistory'] ?? []);
+    final List<String> csvPostureHistory = List<String>.from(data['postureHistory'] ?? []);
+
+    StringBuffer csv = StringBuffer();
+    csv.writeln('날짜,시간,CVA각도,자세상태,평균CVA,경고횟수,주의횟수');
+
+    for (int i = 0; i < csvCvaHistory.length; i++) {
+      csv.writeln(
+        '$dateKey,'
+        '${i < csvTimeHistory.length ? csvTimeHistory[i] : ""},'
+        '${csvCvaHistory[i]},'
+        '${i < csvPostureHistory.length ? csvPostureHistory[i] : ""},'
+        '${data['avgCva'] ?? 0.0},'
+        '${data['warningCount'] ?? 0},'
+        '${data['cautionCount'] ?? 0}'
+      );
+    }
+
+    try {
+      final directory = await getExternalStorageDirectory();
+      final file = File('${directory!.path}/turtlely_$dateKey.csv');
+      await file.writeAsString(csv.toString());
+      debugPrint("📊 CSV 저장됨: ${file.path}");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("CSV 저장됨: ${file.path}")),
+        );
+      }
+    } catch (e) {
+      debugPrint("❌ CSV 저장 실패: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("CSV 저장 실패")),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool hasData = cvaHistory.isNotEmpty || avgCva > 0 || warningCount > 0 || cautionCount > 0;
+    final double screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -97,6 +151,13 @@ class _TodayReportViewState extends State<TodayReportView> {
           style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
         ),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download, color: Colors.grey),
+            tooltip: 'CSV 내보내기',
+            onPressed: _exportCsv,
+          ),
+        ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -193,23 +254,25 @@ class _TodayReportViewState extends State<TodayReportView> {
                       ),
                       const SizedBox(height: 16),
 
-                      // 4. 이미지 + 그래프
+                      // 4. 이미지 + 그래프 (화면 비율 적용)
+                      const Text("CVA 각도 변화 그래프", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           SizedBox(
                             width: 150,
-                            height: 200,
+                            height: screenHeight * 0.25,
                             child: Stack(
                               children: [
                                 Image.asset(
                                   'assets/neck_side.jpg',
                                   fit: BoxFit.contain,
                                   width: 150,
-                                  height: 200,
+                                  height: screenHeight * 0.25,
                                   errorBuilder: (_, __, ___) => Container(
                                     width: 150,
-                                    height: 200,
+                                    height: screenHeight * 0.25,
                                     color: const Color(0xFFF1F8E9),
                                     child: const Icon(Icons.person, size: 80, color: Colors.grey),
                                   ),
@@ -225,7 +288,7 @@ class _TodayReportViewState extends State<TodayReportView> {
                           const SizedBox(width: 16),
                           Expanded(
                             child: SizedBox(
-                              height: 200,
+                              height: screenHeight * 0.25,
                               child: NeckAngleChart(angles: cvaHistory, times: timeHistory),
                             ),
                           ),
@@ -345,7 +408,7 @@ class _ChartPainter extends CustomPainter {
     final double chartW = size.width - padL - padR;
     final double chartH = size.height - padT - padB;
 
-    double toX(int i) => padL + i * chartW / (angles.length - 1);
+    double toX(int i) => padL + i * chartW / math.max(angles.length - 1, 1);
     double toY(double v) => padT + (1 - (v - minVal) / (maxVal - minVal)) * chartH;
 
     final gridPaint = Paint()..color = Colors.grey.withOpacity(0.1)..strokeWidth = 0.5;
@@ -363,22 +426,26 @@ class _ChartPainter extends CustomPainter {
       x += 10;
     }
 
-    final fillPath = Path()..moveTo(toX(0), toY(angles[0]));
-    for (int i = 1; i < angles.length; i++) {
-      final cpx = (toX(i - 1) + toX(i)) / 2;
-      fillPath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
-    }
-    fillPath.lineTo(toX(angles.length - 1), toY(minVal));
-    fillPath.lineTo(toX(0), toY(minVal));
-    fillPath.close();
-    canvas.drawPath(fillPath, Paint()..color = const Color(0xFF1D9E75).withOpacity(0.08));
+    if (angles.length == 1) {
+      canvas.drawCircle(Offset(toX(0), toY(angles[0])), 4, Paint()..color = const Color(0xFF1D9E75));
+    } else {
+      final fillPath = Path()..moveTo(toX(0), toY(angles[0]));
+      for (int i = 1; i < angles.length; i++) {
+        final cpx = (toX(i - 1) + toX(i)) / 2;
+        fillPath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
+      }
+      fillPath.lineTo(toX(angles.length - 1), toY(minVal));
+      fillPath.lineTo(toX(0), toY(minVal));
+      fillPath.close();
+      canvas.drawPath(fillPath, Paint()..color = const Color(0xFF1D9E75).withOpacity(0.08));
 
-    final linePath = Path()..moveTo(toX(0), toY(angles[0]));
-    for (int i = 1; i < angles.length; i++) {
-      final cpx = (toX(i - 1) + toX(i)) / 2;
-      linePath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
+      final linePath = Path()..moveTo(toX(0), toY(angles[0]));
+      for (int i = 1; i < angles.length; i++) {
+        final cpx = (toX(i - 1) + toX(i)) / 2;
+        linePath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
+      }
+      canvas.drawPath(linePath, Paint()..color = const Color(0xFF1D9E75)..strokeWidth = 2..style = PaintingStyle.stroke);
     }
-    canvas.drawPath(linePath, Paint()..color = const Color(0xFF1D9E75)..strokeWidth = 2..style = PaintingStyle.stroke);
 
     for (int i = 0; i < angles.length; i++) {
       final isWarning = angles[i] < warningLine;
@@ -386,7 +453,7 @@ class _ChartPainter extends CustomPainter {
       canvas.drawCircle(Offset(toX(i), toY(angles[i])), 3.5, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
     }
 
-    final step = (times.length / 5).ceil();
+    final step = math.max((times.length / 5).ceil(), 1);
     for (int i = 0; i < times.length; i += step) {
       final tp = TextPainter(text: TextSpan(text: times[i], style: const TextStyle(color: Colors.grey, fontSize: 8)), textDirection: TextDirection.ltr)..layout();
       tp.paint(canvas, Offset(toX(i) - tp.width / 2, size.height - padB + 4));
@@ -418,31 +485,37 @@ class PostureHeatmap extends StatelessWidget {
         children: [
           const Text("시간대별 자세 상태", style: TextStyle(fontSize: 13, color: Colors.grey)),
           const SizedBox(height: 12),
-          // 히트맵 막대 - 가로 스크롤로 짤림 방지
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: postureHistory.map((posture) {
-                Color color;
-                if (posture == "warning") {
-                  color = const Color(0xFFE24B4A);
-                } else if (posture == "caution") {
-                  color = const Color(0xFFFF9800);
-                } else {
-                  color = const Color(0xFF1D9E75);
-                }
-                return Container(
-                  width: 12,
-                  height: 30,
-                  margin: const EdgeInsets.only(right: 3),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(3),
+          postureHistory.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text("측정 데이터가 없어요", style: TextStyle(color: Colors.grey, fontSize: 12)),
                   ),
-                );
-              }).toList(),
-            ),
-          ),
+                )
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: postureHistory.map((posture) {
+                      Color color;
+                      if (posture == "warning") {
+                        color = const Color(0xFFE24B4A);
+                      } else if (posture == "caution") {
+                        color = const Color(0xFFFF9800);
+                      } else {
+                        color = const Color(0xFF1D9E75);
+                      }
+                      return Container(
+                        width: 12,
+                        height: 30,
+                        margin: const EdgeInsets.only(right: 3),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
           const SizedBox(height: 8),
           if (timeHistory.isNotEmpty)
             Row(
