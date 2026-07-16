@@ -159,7 +159,7 @@ class _ReportViewState extends State<ReportView> {
     return null;
   }
 
-  // ✅ 3축값 포함한 CSV 공유
+  // ✅ 매초 raw 데이터 + 시간(HH:MM:SS) 포함 CSV 공유
   Future<void> _exportCsv() async {
     if (_selectedDay == null) return;
     final dateKey = "${_selectedDay!.year}-${_selectedDay!.month.toString().padLeft(2,'0')}-${_selectedDay!.day.toString().padLeft(2,'0')}";
@@ -169,43 +169,28 @@ class _ReportViewState extends State<ReportView> {
       return;
     }
 
-    final List<double> accXHistory    = List<double>.from(data['accXHistory'] ?? []);
-    final List<double> accYHistory    = List<double>.from(data['accYHistory'] ?? []);
-    final List<double> accZHistory    = List<double>.from(data['accZHistory'] ?? []);
-    final List<double> csvCvaHistory  = List<double>.from(data['cvaHistory'] ?? []);
-    final List<String> csvTimeHistory = List<String>.from(data['timeHistory'] ?? []);
-    final List<String> csvPostureHistory = List<String>.from(data['postureHistory'] ?? []);
+    final List<double> accXHistory       = List<double>.from(data['accXHistory']       ?? []);
+    final List<double> accYHistory       = List<double>.from(data['accYHistory']       ?? []);
+    final List<double> accZHistory       = List<double>.from(data['accZHistory']       ?? []);
+    final List<String> rawTimeHistory    = List<String>.from(data['rawTimeHistory']    ?? []);
+    final List<double> cvaRawHistory     = List<double>.from(data['cvaRawHistory']     ?? []);
+    final List<String> postureRawHistory = List<String>.from(data['postureRawHistory'] ?? []);
 
     StringBuffer csv = StringBuffer();
 
-    // ✅ 매초 3축값이 있으면 raw 데이터 먼저
-    if (accXHistory.isNotEmpty) {
-      csv.writeln('=== 매초 측정 Raw 데이터 ===');
-      csv.writeln('날짜,인덱스,accX,accY,accZ');
-      for (int i = 0; i < accXHistory.length; i++) {
-        csv.writeln(
-          '$dateKey,'
-          '${i + 1},'
-          '${accXHistory[i].toStringAsFixed(4)},'
-          '${accYHistory.length > i ? accYHistory[i].toStringAsFixed(4) : ""},'
-          '${accZHistory.length > i ? accZHistory[i].toStringAsFixed(4) : ""}'
-        );
-      }
-      csv.writeln('');
-    }
-
-    // ✅ 분 단위 요약 데이터
-    csv.writeln('=== 분 단위 요약 데이터 ===');
-    csv.writeln('날짜,시간,CVA각도,자세상태,평균CVA,경고횟수,주의횟수');
-    for (int i = 0; i < csvCvaHistory.length; i++) {
+    // ✅ 매초 raw 데이터 (시간 HH:MM:SS 포함)
+    csv.writeln('날짜,시간,accX,accY,accZ,CVA각도,자세상태');
+    for (int i = 0; i < accXHistory.length; i++) {
+      // ✅ 시간을 텍스트로 강제 지정 (엑셀에서 ## 방지)
+      final timeStr = i < rawTimeHistory.length ? rawTimeHistory[i] : '';
       csv.writeln(
         '$dateKey,'
-        '${i < csvTimeHistory.length ? csvTimeHistory[i] : ""},'
-        '${csvCvaHistory[i].toStringAsFixed(2)},'
-        '${i < csvPostureHistory.length ? csvPostureHistory[i] : ""},'
-        '${(data['avgCva'] ?? 0.0).toStringAsFixed(2)},'
-        '${data['warningCount'] ?? 0},'
-        '${data['cautionCount'] ?? 0}'
+        '\t$timeStr,'   // ✅ 앞에 탭 추가 → 엑셀이 텍스트로 인식
+        '${accXHistory[i].toStringAsFixed(4)},'
+        '${accYHistory.length > i ? accYHistory[i].toStringAsFixed(4) : ""},'
+        '${accZHistory.length > i ? accZHistory[i].toStringAsFixed(4) : ""},'
+        '${cvaRawHistory.length > i ? cvaRawHistory[i].toStringAsFixed(2) : ""},'
+        '${postureRawHistory.length > i ? postureRawHistory[i] : ""}'
       );
     }
 
@@ -313,7 +298,6 @@ class _ReportViewState extends State<ReportView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 타이틀 + 공유 버튼
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -328,7 +312,6 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 16),
 
-          // 자세 점수
           Container(
             width: double.infinity, padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: const Color(0xFFF1F8E9), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFC8E6C9))),
@@ -342,7 +325,6 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 16),
 
-          // 경고/주의 횟수
           Row(
             children: [
               Expanded(
@@ -372,7 +354,6 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 32),
 
-          // CVA 그래프
           const Text("CVA 각도 변화 그래프", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           Row(
@@ -401,7 +382,6 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 32),
 
-          // 히트맵
           const Text("타임라인 히트맵", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           PostureHeatmap(postureHistory: _postureHistory, timeHistory: _timeHistory),
