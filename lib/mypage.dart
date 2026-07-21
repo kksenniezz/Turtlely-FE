@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'style.dart';
 import 'splash.dart';
 import 'login_selection.dart';
+import 'services/mypage_service.dart';
 
 class MyPageView extends StatefulWidget {
   const MyPageView({super.key});
@@ -11,9 +12,33 @@ class MyPageView extends StatefulWidget {
 }
 
 class _MyPageViewState extends State<MyPageView> {
-  String nickname = "(닉네임)";
-  String userId = "(아이디)";
+  final MyPageService _myPageService = MyPageService();
+
+  String nickname = "불러오는 중...";
+  String userId = "불러오는 중...";
   double vibrationValue = 0.5;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  // 1. 프로필 정보(닉네임/아이디) 조회
+  Future<void> _loadUserProfile() async {
+    final profile = await _myPageService.fetchUserProfile();
+    if (mounted) {
+      setState(() {
+        if (profile != null) {
+          nickname = profile.nickname;
+          userId = profile.loginId;
+        } else {
+          nickname = "사용자";
+          userId = "정보를 불러올 수 없음";
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -149,10 +174,13 @@ class _MyPageViewState extends State<MyPageView> {
                       const Color(0xFFD9D9D9),
                       () => Navigator.pop(context),
                     ),
-                    _dialogButton("확인", const Color(0x7F235E26), () {
+                    _dialogButton("확인", const Color(0x7F235E26), () async {
                       Navigator.pop(context);
-                      // TODO: 로그아웃 API 및 토큰 삭제 로직
-                      _showLogoutCompleteDialog(context);
+                      await _myPageService.logout();
+
+                      if (context.mounted) {
+                        _showLogoutCompleteDialog(context);
+                      }
                     }),
                   ],
                 ),
@@ -283,11 +311,18 @@ class _MyPageViewState extends State<MyPageView> {
                       const Color(0xFFD9D9D9),
                       () => Navigator.pop(context),
                     ),
-                    _dialogButton("네, 탈퇴할게요", const Color(0x7F235E26), () {
-                      Navigator.pop(context);
-                      // TODO: 탈퇴 API 및 토큰 삭제 로직
-                      _showDeleteCompleteDialog(context);
-                    }),
+                    _dialogButton(
+                      "네, 탈퇴할게요",
+                      const Color(0x7F235E26),
+                      () async {
+                        Navigator.pop(context);
+                        await _myPageService.withdraw();
+
+                        if (context.mounted) {
+                          _showDeleteCompleteDialog(context);
+                        }
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
