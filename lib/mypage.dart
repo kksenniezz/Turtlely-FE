@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
 import 'style.dart';
+import 'splash.dart';
+import 'login_selection.dart';
 
-class MyPageView extends StatelessWidget {
+class MyPageView extends StatefulWidget {
   const MyPageView({super.key});
+
+  @override
+  State<MyPageView> createState() => _MyPageViewState();
+}
+
+class _MyPageViewState extends State<MyPageView> {
+  String nickname = "(닉네임)";
+  String userId = "(아이디)";
+  double vibrationValue = 0.5;
 
   @override
   Widget build(BuildContext context) {
@@ -10,6 +21,7 @@ class MyPageView extends StatelessWidget {
       color: Colors.white,
       child: SingleChildScrollView(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 20),
             // 1. 프로필 영역 (사진 + 닉네임)
@@ -24,15 +36,28 @@ class MyPageView extends StatelessWidget {
                 children: [
                   const CircleAvatar(
                     radius: 30,
-                    backgroundColor: Color(0xFFE0E0E0),
-                    child: Icon(Icons.person, color: Colors.white, size: 40),
+                    backgroundColor: TColor.lightGreen,
+                    child: Icon(
+                      Icons.person,
+                      color: TColor.buttonGreen,
+                      size: 40,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text("(닉네임)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                      Text("(아이디)", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                    children: [
+                      Text(
+                        nickname,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                      Text(
+                        userId,
+                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                      ),
                     ],
                   ),
                 ],
@@ -45,20 +70,27 @@ class MyPageView extends StatelessWidget {
               // Navigator.push(context, MaterialPageRoute(builder: (context) => const EditNicknamePage()));
             }),
             _buildMenuItem(context, "비밀번호 재설정", () {}),
-            _buildMenuItem(context, "앱 권한", () {}),
-            
+            //_buildMenuItem(context, "앱 권한", () {}),
+
             // 3. 진동 세기 조절 (슬라이더)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("진동", style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Text(
+                    "진동",
+                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+                  ),
                   Slider(
-                    value: 0.5,
+                    value: vibrationValue,
                     activeColor: TColor.buttonGreen,
                     inactiveColor: TColor.lightGreen,
-                    onChanged: (value) {},
+                    onChanged: (value) {
+                      setState(() {
+                        vibrationValue = value;
+                      });
+                    },
                   ),
                 ],
               ),
@@ -66,30 +98,350 @@ class MyPageView extends StatelessWidget {
 
             const SizedBox(height: 20),
             // 4. 로그아웃 / 탈퇴
-            _buildSimpleTextButton("로그아웃"),
-            _buildSimpleTextButton("탈퇴하기"),
+            _buildSimpleTextButton("로그아웃", () {
+              _showLogoutDialog(context);
+            }),
+            _buildSimpleTextButton("탈퇴하기", () {
+              _showDeleteDialog(context);
+            }),
+            const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
 
+  // 다이얼로그
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (context) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 336,
+            height: 224,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAFAFA),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 75, left: 20, right: 20),
+                  child: Text(
+                    '로그아웃 하시겠습니까?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _dialogButton(
+                      "취소",
+                      const Color(0xFFD9D9D9),
+                      () => Navigator.pop(context),
+                    ),
+                    _dialogButton("확인", const Color(0x7F235E26), () {
+                      Navigator.pop(context);
+                      // TODO: 로그아웃 API 및 토큰 삭제 로직
+                      _showLogoutCompleteDialog(context);
+                    }),
+                  ],
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showLogoutCompleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (context) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 336,
+            height: 224,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAFAFA),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 50, left: 20, right: 20),
+                  child: Text(
+                    '로그아웃 되었습니다',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (context) => const LoginSelection(),
+                      ),
+                      (route) => false,
+                    );
+                  },
+                  child: Container(
+                    width: 286,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0x7F235E26),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      "확인",
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (context) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 336,
+            height: 224,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAFAFA),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 50, left: 20, right: 20),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '정말 탈퇴하시겠습니까?\n',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                            height: 3.0,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '탈퇴 시 모든 데이터가 삭제됩니다',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.normal,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const Spacer(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _dialogButton(
+                      "계속 사용하기",
+                      const Color(0xFFD9D9D9),
+                      () => Navigator.pop(context),
+                    ),
+                    _dialogButton("네, 탈퇴할게요", const Color(0x7F235E26), () {
+                      Navigator.pop(context);
+                      // TODO: 탈퇴 API 및 토큰 삭제 로직
+                      _showDeleteCompleteDialog(context);
+                    }),
+                  ],
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteCompleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (context) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 336,
+            height: 224,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAFAFA),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 50, left: 20, right: 20),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '탈퇴가 완료되었습니다\n',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                            height: 1.4,
+                          ),
+                        ),
+                        TextSpan(
+                          text:
+                              '그동안 Turtlely를 이용해 주셔서 감사합니다\n더욱 노력하고 발전하는 Turtlely가 되겠습니다',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.normal,
+                            color: Colors.grey,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (context) => const Splash()),
+                      (route) => false,
+                    );
+                  },
+                  child: Container(
+                    width: 286,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0x7F235E26),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      "확인",
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dialogButton(String label, Color color, VoidCallback onPressed) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 135,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.black,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
   // 메뉴 아이템 위젯 빌더
-  Widget _buildMenuItem(BuildContext context, String title, VoidCallback onTap) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-      onTap: onTap,
+  Widget _buildMenuItem(
+    BuildContext context,
+    String title,
+    VoidCallback onTap,
+  ) {
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+        ),
+        trailing: const Icon(
+          Icons.arrow_forward_ios,
+          size: 16,
+          color: Colors.grey,
+        ),
+        onTap: onTap,
+      ),
     );
   }
 
   // 하단 텍스트 버튼
-  Widget _buildSimpleTextButton(String title) {
-    return Container(
-      alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      child: Text(title, style: const TextStyle(color: Colors.grey, fontSize: 14, decoration: TextDecoration.underline)),
+  Widget _buildSimpleTextButton(String title, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.grey,
+            fontSize: 14,
+            decoration: TextDecoration.underline,
+          ),
+        ),
+      ),
     );
   }
 }
