@@ -18,12 +18,16 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
   bool _isCurrentPwVerified = false; // 현재 비밀번호 검증 성공 여부
   bool _showCurrentPwError = false; // '현재 비밀번호를 다시 확인해 주세요' 에러 표시
-  bool _isNewPwFormatError = false; // '영문, 숫자, 특수문자 포함 8자 이상' 레드 문구 여부
+
+  // 새 비밀번호 관련 상태 메시지 및 색상 변수 추가
+  String _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상";
+  Color _pwColor = TColor.gray;
 
   bool _isObscureCurrent = true;
   bool _isObscureNew = true;
   bool _isObscureConfirm = true;
-  bool _isLoading = false;
+
+  bool _isLoading = false; // 상단 [저장] 버튼 전용 로딩
 
   @override
   void initState() {
@@ -61,23 +65,18 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
   // 1. 현재 비밀번호 [확인] 버튼 클릭 시 연동 검증
   Future<void> _verifyCurrentPassword() async {
-    final currentPw = _currentPwController.text.trim();
-    if (currentPw.isEmpty || _isLoading) return;
+    final currentPassword = _currentPwController.text.trim();
+    if (currentPassword.isEmpty) return;
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    // 서버에 현재 비밀번호 검증 요청 (현재 비밀번호 검증)
+    // 서버에 현재 비밀번호 검증 요청
     final isSuccess = await _myPageService.updatePassword(
-      currentPassword: currentPw,
-      newPassword: currentPw, // 현재 비밀번호 일치 확인 테스트용
+      currentPassword: currentPassword,
+      newPassword: currentPassword,
     );
 
     if (!mounted) return;
 
     setState(() {
-      _isLoading = false;
       if (isSuccess) {
         _isCurrentPwVerified = true;
         _showCurrentPwError = false;
@@ -88,34 +87,42 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     });
   }
 
-  // 2. 상단 [저장] 버튼 클릭 시 최종 연동
+  // 2. 상단 [저장] 버튼 클릭 시 최종 연동 및 유효성 검사
   Future<void> _handleSave() async {
     if (!_isSaveButtonEnabled) return;
 
     final currentPw = _currentPwController.text.trim();
-    final newPw = _newPwController.text.trim();
+    final newPassword = _newPwController.text.trim();
     final confirmPw = _confirmPwController.text.trim();
 
-    final isFormatValid = _validatePassword(newPw);
-    final isMatch = (newPw == confirmPw);
-
-    // 조건 미달 또는 불일치 시 안내 문구 빨간색 변경
-    if (!isFormatValid || !isMatch) {
+    // 1) 비밀번호 조건 체크
+    if (!_validatePassword(newPassword)) {
       setState(() {
-        _isNewPwFormatError = true;
+        _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상을 입력해 주세요";
+        _pwColor = TColor.red; // 에러 색상 (레드)
+      });
+      return;
+    }
+
+    // 2) 새 비밀번호와 새 비밀번호 확인 일치 여부 체크
+    if (newPassword != confirmPw) {
+      setState(() {
+        _pwMessage = "새 비밀번호를 다시 확인해 주세요";
+        _pwColor = TColor.red; // 에러 색상 (레드)
       });
       return;
     }
 
     setState(() {
-      _isNewPwFormatError = false;
+      _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상";
+      _pwColor = const Color(0xFF828282); // 기본 회색
       _isLoading = true;
     });
 
     // 비밀번호 최종 변경 API 호출
     final success = await _myPageService.updatePassword(
       currentPassword: currentPw,
-      newPassword: newPw,
+      newPassword: newPassword,
     );
 
     if (!mounted) return;
@@ -147,11 +154,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         ),
         title: const Text(
           "비밀번호 재설정",
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         actions: [
           GestureDetector(
@@ -187,73 +190,63 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- 1. 현재 비밀번호 ---
-            const Text(
-              "현재 비밀번호",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
-            ),
-            const SizedBox(height: 8),
-
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _currentPwController,
-                    obscureText: _isObscureCurrent,
-                    onChanged: (_) {
-                      // 입력값이 바뀌면 검증/에러 상태 초기화
-                      if (_isCurrentPwVerified || _showCurrentPwError) {
-                        setState(() {
-                          _isCurrentPwVerified = false;
-                          _showCurrentPwError = false;
-                        });
-                      }
-                    },
-                    decoration: InputDecoration(
-                      hintText: "현재 비밀번호",
-                      hintStyle: const TextStyle(color: TColor.gray),
-                      contentPadding: const EdgeInsets.symmetric(
-                        vertical: 16,
-                        horizontal: 20,
+            const SizedBox(height: 32),
+            // --- 1. 현재 비밀번호 입력창 + 확인 버튼 ---
+            TextField(
+              controller: _currentPwController,
+              obscureText: _isObscureCurrent,
+              onChanged: (_) {
+                if (_isCurrentPwVerified || _showCurrentPwError) {
+                  setState(() {
+                    _isCurrentPwVerified = false;
+                    _showCurrentPwError = false;
+                  });
+                }
+              },
+              decoration: InputDecoration(
+                hintText: "현재 비밀번호",
+                hintStyle: const TextStyle(color: TColor.gray),
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 20,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Color(0xFFD9D9D9)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: Colors.black),
+                ),
+                suffixIcon: Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: _verifyCurrentPassword,
+                        child: Container(
+                          width: 64,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: TColor.darkGreen,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            "확인",
+                            style: TextStyle(
+                              color: Color(0xFF235E26),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFD9D9D9)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Colors.black),
-                      ),
-                    ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                // [확인] 버튼
-                GestureDetector(
-                  onTap: _verifyCurrentPassword,
-                  child: Container(
-                    width: 72,
-                    height: 56,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _isCurrentPwVerified
-                          ? const Color(0xFF235E26)
-                          : const Color(0x4C235E26),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      "확인",
-                      style: TextStyle(
-                        color: _isCurrentPwVerified
-                            ? Colors.white
-                            : Colors.black,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
 
             // 불일치 시 에러 문구
@@ -262,22 +255,33 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 padding: EdgeInsets.only(top: 8, left: 4),
                 child: Text(
                   '현재 비밀번호를 다시 확인해 주세요',
-                  style: TextStyle(color: Color(0xFFF05650), fontSize: 12),
+                  style: TextStyle(color: TColor.red, fontSize: 12),
                 ),
               ),
 
-            const SizedBox(height: 28),
+            if (_isCurrentPwVerified)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, left: 4),
+                child: Text(
+                  '비밀번호가 인증되었습니다',
+                  style: TextStyle(color: TColor.buttonGreen, fontSize: 12),
+                ),
+              ),
+
+            const SizedBox(height: 20),
 
             // --- 2. 새 비밀번호 ---
-            const Text(
-              "새 비밀번호",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
-            ),
-            const SizedBox(height: 8),
-
             TextField(
               controller: _newPwController,
               obscureText: _isObscureNew,
+              onChanged: (_) {
+                if (_pwColor == TColor.red) {
+                  setState(() {
+                    _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상";
+                    _pwColor = TColor.gray;
+                  });
+                }
+              },
               decoration: InputDecoration(
                 hintText: "새 비밀번호",
                 hintStyle: const TextStyle(color: TColor.gray),
@@ -306,12 +310,20 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
 
             // --- 3. 새 비밀번호 확인 ---
             TextField(
               controller: _confirmPwController,
               obscureText: _isObscureConfirm,
+              onChanged: (_) {
+                if (_pwColor == TColor.red) {
+                  setState(() {
+                    _pwMessage = "영문, 숫자, 특수문자 포함 8자 이상";
+                    _pwColor = TColor.gray;
+                  });
+                }
+              },
               decoration: InputDecoration(
                 hintText: "새 비밀번호 확인",
                 hintStyle: const TextStyle(color: TColor.gray),
@@ -340,17 +352,12 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
               ),
             ),
 
-            // 💡 비밀번호 조건 안내 문구 (에러 시 레드)
+            // 비밀번호 조건 및 에러 안내 문구
             Padding(
               padding: const EdgeInsets.only(top: 8, left: 4),
               child: Text(
-                '영문, 숫자, 특수문자 포함 8자 이상',
-                style: TextStyle(
-                  color: _isNewPwFormatError
-                      ? const Color(0xFFF05650)
-                      : const Color(0xFF828282),
-                  fontSize: 12,
-                ),
+                _pwMessage,
+                style: TextStyle(color: _pwColor, fontSize: 12),
               ),
             ),
           ],
@@ -392,22 +399,22 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 const Spacer(),
                 GestureDetector(
                   onTap: () {
-                    Navigator.pop(dialogContext); // 팝업 닫기
-                    Navigator.pop(context); // 마이페이지 복귀
+                    Navigator.pop(dialogContext);
+                    Navigator.pop(context);
                   },
                   child: Container(
                     width: 286,
                     height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: const Color(0x7F235E26),
+                      color: const Color(0x4D235E26),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Text(
                       "확인",
                       style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 16,
+                        color: Color(0xFF235E26),
+                        fontSize: 13,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

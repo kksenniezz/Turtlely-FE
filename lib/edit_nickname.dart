@@ -61,7 +61,7 @@ class _EditNicknamePageState extends State<EditNicknamePage> {
       _showEditCompleteDialog(context);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("닉네임 변경에 실패했습니다 다시 시도해 주세요")),
+        const SnackBar(content: Text("닉네임 변경에 실패했습니다 다시 시도해 주세요.")),
       );
     }
   }
@@ -80,11 +80,7 @@ class _EditNicknamePageState extends State<EditNicknamePage> {
         ),
         title: const Text(
           "닉네임 변경",
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         actions: [
           GestureDetector(
@@ -116,14 +112,20 @@ class _EditNicknamePageState extends State<EditNicknamePage> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 32),
             TextField(
               controller: _nicknameController,
               decoration: InputDecoration(
                 hintText: "새 닉네임",
+                hintStyle: const TextStyle(color: TColor.gray),
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 20,
+                ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: const BorderSide(color: Color(0xFFE0E0E0)),

@@ -478,11 +478,15 @@ class _MyPageViewState extends State<MyPageView> {
             child: Column(
               children: [
                 const Padding(
-                  padding: EdgeInsets.only(top: 75, left: 20, right: 20),
+                  padding: EdgeInsets.only(top: 50, left: 20, right: 20),
                   child: Text(
                     '구글 로그인 시\n비밀번호 재설정이 불가능합니다',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
                 const Spacer(),
