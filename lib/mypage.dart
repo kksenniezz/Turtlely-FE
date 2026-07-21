@@ -106,12 +106,16 @@ class _MyPageViewState extends State<MyPageView> {
               }
             }),
             _buildMenuItem(context, "비밀번호 재설정", () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ResetPasswordPage(),
-                ),
-              );
+              if (userId.contains('@')) {
+                _showSocialUserNoticeDialog(context);
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ResetPasswordPage(),
+                  ),
+                );
+              }
             }),
             //_buildMenuItem(context, "앱 권한", () {}),
 
@@ -451,6 +455,59 @@ class _MyPageViewState extends State<MyPageView> {
             color: Colors.black,
             fontSize: 16,
             fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 비밀번호 재설정 시 구글 로그인 예외 처리
+  void _showSocialUserNoticeDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 336,
+            height: 200,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAFAFA),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 75, left: 20, right: 20),
+                  child: Text(
+                    '구글 로그인 시\n비밀번호 재설정이 불가능합니다',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.pop(dialogContext),
+                  child: Container(
+                    width: 286,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0x7F235E26),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      "확인",
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
