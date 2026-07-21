@@ -229,16 +229,22 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           width: 64,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: TColor.darkGreen,
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            "확인",
-                            style: TextStyle(
-                              color: Color(0xFF235E26),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: const Color(0x4D235E26),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Text(
+                              "확인",
+                              style: TextStyle(
+                                color: Color(0xFF235E26),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ),
@@ -407,14 +413,14 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                     height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: const Color(0x4D235E26),
+                      color: const Color(0x7F235E26),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Text(
                       "확인",
                       style: TextStyle(
-                        color: Color(0xFF235E26),
-                        fontSize: 13,
+                        color: Colors.black,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
