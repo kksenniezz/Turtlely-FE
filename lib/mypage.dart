@@ -138,10 +138,11 @@ class _MyPageViewState extends State<MyPageView> {
 
   // 다이얼로그
   void _showLogoutDialog(BuildContext context) {
+    final parentContext = context;
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.7),
-      builder: (context) => Center(
+      builder: (dialogContext) => Center(
         child: Material(
           color: Colors.transparent,
           child: Container(
@@ -172,14 +173,14 @@ class _MyPageViewState extends State<MyPageView> {
                     _dialogButton(
                       "취소",
                       const Color(0xFFD9D9D9),
-                      () => Navigator.pop(context),
+                      () => Navigator.pop(dialogContext),
                     ),
                     _dialogButton("확인", const Color(0x7F235E26), () async {
-                      Navigator.pop(context);
+                      Navigator.pop(dialogContext);
                       await _myPageService.logout();
 
-                      if (context.mounted) {
-                        _showLogoutCompleteDialog(context);
+                      if (parentContext.mounted) {
+                        _showLogoutCompleteDialog(parentContext);
                       }
                     }),
                   ],
@@ -260,10 +261,11 @@ class _MyPageViewState extends State<MyPageView> {
   }
 
   void _showDeleteDialog(BuildContext context) {
+    final parentContext = context;
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.7),
-      builder: (context) => Center(
+      builder: (dialogContext) => Center(
         child: Material(
           color: Colors.transparent,
           child: Container(
@@ -309,17 +311,17 @@ class _MyPageViewState extends State<MyPageView> {
                     _dialogButton(
                       "계속 사용하기",
                       const Color(0xFFD9D9D9),
-                      () => Navigator.pop(context),
+                      () => Navigator.pop(dialogContext),
                     ),
                     _dialogButton(
                       "네, 탈퇴할게요",
                       const Color(0x7F235E26),
                       () async {
-                        Navigator.pop(context);
+                        Navigator.pop(dialogContext);
                         await _myPageService.withdraw();
 
-                        if (context.mounted) {
-                          _showDeleteCompleteDialog(context);
+                        if (parentContext.mounted) {
+                          _showDeleteCompleteDialog(parentContext);
                         }
                       },
                     ),
@@ -362,7 +364,7 @@ class _MyPageViewState extends State<MyPageView> {
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Colors.black,
-                            height: 1.4,
+                            height: 1.5,
                           ),
                         ),
                         TextSpan(
@@ -372,7 +374,6 @@ class _MyPageViewState extends State<MyPageView> {
                             fontSize: 16,
                             fontWeight: FontWeight.normal,
                             color: Colors.grey,
-                            height: 1.5,
                           ),
                         ),
                       ],
