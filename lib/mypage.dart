@@ -212,7 +212,7 @@ class _MyPageViewState extends State<MyPageView> {
             child: Column(
               children: [
                 const Padding(
-                  padding: EdgeInsets.only(top: 50, left: 20, right: 20),
+                  padding: EdgeInsets.only(top: 75, left: 20, right: 20),
                   child: Text(
                     '로그아웃 되었습니다',
                     textAlign: TextAlign.center,
