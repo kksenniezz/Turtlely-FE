@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'style.dart';
 import 'splash.dart';
 import 'login_selection.dart';
+import 'edit_nickname.dart';
+import 'reset_password.dart';
 import 'services/mypage_service.dart';
 
 class MyPageView extends StatefulWidget {
@@ -91,10 +93,26 @@ class _MyPageViewState extends State<MyPageView> {
             const SizedBox(height: 30),
 
             // 2. 설정 리스트
-            _buildMenuItem(context, "닉네임 변경", () {
-              // Navigator.push(context, MaterialPageRoute(builder: (context) => const EditNicknamePage()));
+            _buildMenuItem(context, "닉네임 변경", () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const EditNicknamePage(),
+                ),
+              );
+
+              if (result == true) {
+                _loadUserProfile();
+              }
             }),
-            _buildMenuItem(context, "비밀번호 재설정", () {}),
+            _buildMenuItem(context, "비밀번호 재설정", () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ResetPasswordPage(),
+                ),
+              );
+            }),
             //_buildMenuItem(context, "앱 권한", () {}),
 
             // 3. 진동 세기 조절 (슬라이더)
