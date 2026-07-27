@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'style.dart';
 import 'main.dart';
 import 'services/mediapipe_service.dart';
+import 'services/monthly_ble_service.dart';
 
 class VisionPage extends StatefulWidget {
   const VisionPage({Key? key}) : super(key: key);
@@ -15,14 +16,14 @@ class VisionPage extends StatefulWidget {
 }
 
 class _VisionPageState extends State<VisionPage> {
-  int step =
-      0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
+  int step =0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
   int? monthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
 
   final MediaPipeService _mediaPipeService = MediaPipeService();
-
+  final MonthlyBleService _monthlyBle = MonthlyBleService();
+  bool _bleReady = false;
   // 좌표 담을 변수들
   Offset eyePoint = Offset.zero; // 눈
   Offset earPoint = Offset.zero; // 외이도 (Tragus)
@@ -37,6 +38,10 @@ class _VisionPageState extends State<VisionPage> {
 
   // 서비스의 카메라를 깨우고 좌표 스트림을 구독합니다.
   Future<void> _bootUp() async {
+    _monthlyBle.onAccelUpdated = (x, y, z) {
+      _mediaPipeService.updateHwAccel(x, y, z);
+      debugPrint("📡 accel 전달: $x, $y, $z");
+    };
     // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기
     _mediaPipeService.poseStream.listen((poses) {
       if (!mounted) return;
@@ -49,6 +54,11 @@ class _VisionPageState extends State<VisionPage> {
       });
     });
 
+    _monthlyBle.onDeviceReadyChanged = (ready) {
+      if (!mounted) return;
+      setState(() => _bleReady = ready);
+    };
+
     await _mediaPipeService.initializeCamera();
     if (!mounted) return;
     setState(() {});
@@ -58,6 +68,7 @@ class _VisionPageState extends State<VisionPage> {
   void dispose() {
     _dotTimer?.cancel();
     _mediaPipeService.dispose();
+    _monthlyBle.dispose();
     super.dispose();
   }
 
@@ -69,6 +80,12 @@ class _VisionPageState extends State<VisionPage> {
         step++;
       }
     });
+
+    // setState 후에 체크해야 step이 1이 된 상태로 확인 가능
+    if (step == 1) {
+      debugPrint("🔍 월간 BLE 스캔 시작!");
+      _monthlyBle.init();
+    }
   }
 
   void _startMeasurement() {
@@ -76,46 +93,54 @@ class _VisionPageState extends State<VisionPage> {
       step = 4;
     }); // 측정 시작 단계로 이동
 
-    _mediaPipeService.start3SecondCapture();
+    _monthlyBle.sendCommand("MONTHLY_START");
+
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
+    _mediaPipeService.start3SecondCapture();
 
     int count = 0;
 
     _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      setState(() {
-        count++;
-        loadingDots = "." * (count % 4);
-      });
-
-      if (!_mediaPipeService.isInitialized ||
-          _mediaPipeService.cameraController == null) {
-        print("카메라 준비 중입니다. 잠시만 기다려주세요.");
-        return;
-      }
-
-      if (count == 3) {
-        timer.cancel();
-        final response = await _mediaPipeService.sendBatchVisionData();
-        if (!mounted) return;
-        setState(() {
-          if (response["success"] == true && response["result"] != null) {
-            monthlyId = response["result"]["monthly_id"];
-            step = 5;
-          } else {
-            print("측정 실패: ${response["code"]} / ${response["message"]}");
-            step = 8;
-          }
-        });
-      }
+    
+    setState(() {
+      count++;
+      loadingDots = "." * (count % 4);
     });
+
+    if (!_mediaPipeService.isInitialized || _mediaPipeService.cameraController == null) {
+      print("카메라 준비 중입니다.");
+      return;
+    }
+
+    if (count == 3) {
+      timer.cancel();
+      await _monthlyBle.sendCommand("STOP");
+      debugPrint("📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}");
+      final response = await _mediaPipeService.sendBatchVisionData();
+      if (!mounted) return;
+      if (response["success"] == true) {
+        final result = response["result"];
+        setState(() {
+          if (result != null) {
+            monthlyId = result["monthly_id"];
+          }
+          step = 5;
+        });
+      } else {
+        print("측정 실패: ${response["code"]} / ${response["message"]}");
+        setState(() => step = 8);
+      }
+    }
+  });
   }
 
   String _getStepText() {
     switch (step) {
       case 0:
         return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!";
-      case 1:
-        return "거북목 측정을 위해\n터틀훅을 연결해 주세요";
+      case 1: return _bleReady 
+        ? "터틀훅이 연결되었어요!\n다음을 눌러주세요" 
+        : "거북목 측정을 위해\n터틀훅을 연결해 주세요";
       case 2:
         return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 3:
@@ -136,8 +161,9 @@ class _VisionPageState extends State<VisionPage> {
   }
 
   bool _shouldShowButton() {
-    // 4단계(측정중), 7단계(종료 안내), 8단계(예외 발생)는 역삼각형 버튼 숨김
-    if ([4, 7, 8].contains(step)) return false;
+    if (step == 4) return false;
+    if (step == 1 && !_bleReady) return false; // BLE 연결 전엔 버튼 숨김
+    if ([7, 8].contains(step)) return false;
     return true;
   }
 
@@ -164,10 +190,11 @@ class _VisionPageState extends State<VisionPage> {
         actions: [
           if (step == 7 || step == 8) ...[
             GestureDetector(
-              onTap: () {
+              onTap: () async {
                 if (step == 7) {
                   Navigator.pop(context);
                 } else {
+                  await _mediaPipeService.initializeCamera(); // 카메라 다시 초기화
                   setState(() => step = 2);
                 }
               },

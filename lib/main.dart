@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // 추가!
 
 import 'style.dart';
 import 'exercise.dart';
@@ -16,9 +17,9 @@ import 'posture_api_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('ko_KR', null);
+  await Hive.initFlutter(); // 추가!
   runApp(const TurtlelyApp());
 }
-
 class TurtlelyApp extends StatelessWidget {
   const TurtlelyApp({super.key});
 
@@ -67,6 +68,7 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
               backgroundColor: TColor.white,
               elevation: 0,
               centerTitle: true,
+              automaticallyImplyLeading: false,
               title: Text("Turtlely", style: TText.logo),
               actions: [
                 IconButton(
