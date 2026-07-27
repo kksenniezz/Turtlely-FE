@@ -146,4 +146,39 @@ class ApiService {
     }
     return null;
   }
+
+  // ✅ /api/exercise 운동존 영상 목록 조회
+  Future<List<dynamic>> getExerciseVideos({
+    String? postureType,
+    String? category,
+    int? durationMinutes,
+    String? keyword,
+  }) async {
+    try {
+      final token = await _getToken();
+      final queryParams = <String, String>{};
+      if (postureType != null && postureType != 'ALL') queryParams['postureType'] = postureType;
+      if (category != null && category != 'ALL') queryParams['category'] = category;
+      if (durationMinutes != null) queryParams['durationMinutes'] = durationMinutes.toString();
+      if (keyword != null && keyword.isNotEmpty) queryParams['keyword'] = keyword;
+
+      final uri = Uri.parse("$springUrl/api/exercise").replace(queryParameters: queryParams);
+      final response = await http.get(uri, headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      });
+
+      debugPrint("🏋️ 운동존 응답: ${response.statusCode}");
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        final result = json['result'];
+        if (result != null && result['videoList'] != null) {
+          return result['videoList'] as List<dynamic>;
+        }
+      }
+    } catch (e) {
+      debugPrint("❌ 운동존 오류: $e");
+    }
+    return [];
+  }
 }

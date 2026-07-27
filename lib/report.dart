@@ -132,6 +132,7 @@ class _ReportViewState extends State<ReportView> {
     if (mounted) setState(() { _isLoadingReport = false; });
   }
 
+  // ✅ 주간뷰 날짜 클릭 → 인라인 리포트
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
     setState(() {
       _selectedDay    = selectedDay;
@@ -151,6 +152,25 @@ class _ReportViewState extends State<ReportView> {
     }
   }
 
+  // ✅ 월간뷰 날짜 클릭 → TodayReportView로 이동
+  void _onMonthlyDaySelected(DateTime selectedDay, DateTime focusedDay) {
+    setState(() {
+      _selectedDay = selectedDay;
+      _focusedDay  = focusedDay;
+    });
+
+    if (_hasRecord(selectedDay)) {
+      final id = _getDailyId(selectedDay);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TodayReportView(date: selectedDay, dailyId: id),
+        ),
+      );
+    }
+  }
+
   int? _getDailyId(DateTime date) {
     final dateStr = "${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}";
     for (final dynamic report in _calendarReports) {
@@ -159,7 +179,6 @@ class _ReportViewState extends State<ReportView> {
     return null;
   }
 
-  // ✅ 매초 raw 데이터 + 시간(HH:MM:SS) 포함 CSV 공유
   Future<void> _exportCsv() async {
     if (_selectedDay == null) return;
     final dateKey = "${_selectedDay!.year}-${_selectedDay!.month.toString().padLeft(2,'0')}-${_selectedDay!.day.toString().padLeft(2,'0')}";
@@ -177,15 +196,12 @@ class _ReportViewState extends State<ReportView> {
     final List<String> postureRawHistory = List<String>.from(data['postureRawHistory'] ?? []);
 
     StringBuffer csv = StringBuffer();
-
-    // ✅ 매초 raw 데이터 (시간 HH:MM:SS 포함)
     csv.writeln('날짜,시간,accX,accY,accZ,CVA각도,자세상태');
     for (int i = 0; i < accXHistory.length; i++) {
-      // ✅ 시간을 텍스트로 강제 지정 (엑셀에서 ## 방지)
       final timeStr = i < rawTimeHistory.length ? rawTimeHistory[i] : '';
       csv.writeln(
         '$dateKey,'
-        '\t$timeStr,'   // ✅ 앞에 탭 추가 → 엑셀이 텍스트로 인식
+        '\t$timeStr,'
         '${accXHistory[i].toStringAsFixed(4)},'
         '${accYHistory.length > i ? accYHistory[i].toStringAsFixed(4) : ""},'
         '${accZHistory.length > i ? accZHistory[i].toStringAsFixed(4) : ""},'
@@ -198,14 +214,11 @@ class _ReportViewState extends State<ReportView> {
       final directory = await getTemporaryDirectory();
       final file = File('${directory.path}/turtlely_$dateKey.csv');
       await file.writeAsString(csv.toString());
-      debugPrint("📊 CSV 저장됨: ${file.path}");
-
       await Share.shareXFiles(
         [XFile(file.path)],
         text: 'Turtlely 자세 측정 데이터 ($dateKey)',
       );
     } catch (e) {
-      debugPrint("❌ CSV 공유 실패: $e");
       _showSnackBar("공유 실패");
     }
   }
@@ -291,13 +304,15 @@ class _ReportViewState extends State<ReportView> {
     if (_isLoadingReport) return const Center(child: Padding(padding: EdgeInsets.only(top: 50), child: CircularProgressIndicator()));
 
     final double screenHeight = MediaQuery.of(context).size.height;
-    final double chartHeight  = screenHeight * 0.22;
+    final double imageHeight  = screenHeight * 0.25;
+    final double chartHeight  = screenHeight * 0.25;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 타이틀 + CSV
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -312,6 +327,7 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 16),
 
+          // 자세 점수
           Container(
             width: double.infinity, padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: const Color(0xFFF1F8E9), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFC8E6C9))),
@@ -325,6 +341,7 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 16),
 
+          // 경고/주의 횟수
           Row(
             children: [
               Expanded(
@@ -354,21 +371,25 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 32),
 
-          const Text("CVA 각도 변화 그래프", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
+          // 평균 CVA 목 각도 + 사람 사진
+          const Text("평균 CVA 목 각도", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
           Row(
             children: [
               SizedBox(
-                width: 120,
-                height: chartHeight,
+                width: 150,
+                height: imageHeight,
                 child: Stack(
                   children: [
                     Image.asset(
                       'assets/neck_side.jpg',
                       fit: BoxFit.contain,
-                      width: 120,
-                      height: chartHeight,
-                      errorBuilder: (_, __, ___) => CustomPaint(painter: NeckAnglePainter(cvaAngle: _avgCva), size: Size(120, chartHeight)),
+                      width: 150,
+                      height: imageHeight,
+                      errorBuilder: (_, __, ___) => CustomPaint(
+                        painter: NeckAnglePainter(cvaAngle: _avgCva),
+                        size: Size(150, imageHeight),
+                      ),
                     ),
                     Positioned.fill(
                       child: CustomPaint(painter: NeckAngleLinePainter(cvaAngle: _avgCva)),
@@ -376,16 +397,71 @@ class _ReportViewState extends State<ReportView> {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(child: SizedBox(height: chartHeight, child: NeckAngleChart(angles: _cvaHistory, times: _timeHistory))),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text("${_avgCva.toStringAsFixed(1)}°",
+                      style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Color(0xFF1D9E75))),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _avgCva >= 53 ? const Color(0xFFE8F5E9) : _avgCva >= 45 ? const Color(0xFFFFF3E0) : const Color(0xFFFCEBEB),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _avgCva >= 53 ? "정상" : _avgCva >= 45 ? "주의" : "경고",
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
+                          color: _avgCva >= 53 ? const Color(0xFF1D9E75) : _avgCva >= 45 ? const Color(0xFFFF9800) : const Color(0xFFE24B4A)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _avgCva >= 53 ? "바른 자세를 유지하고 있어요!" : _avgCva >= 45 ? "목 각도에 주의가 필요해요" : "거북목 위험 구간이에요",
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 32),
 
-          const Text("타임라인 히트맵", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          PostureHeatmap(postureHistory: _postureHistory, timeHistory: _timeHistory),
-          const SizedBox(height: 100),
+          // CVA 각도 변화 그래프
+          const Text("CVA 각도 변화 그래프", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFF1D9E75), borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 4), const Text("정상", style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const SizedBox(width: 12),
+              Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFFFF9800), borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 4), const Text("주의", style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const SizedBox(width: 12),
+              Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFFE24B4A), borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 4), const Text("경고", style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const SizedBox(width: 12),
+              Container(width: 16, height: 2, color: const Color(0xFFE24B4A)),
+              const SizedBox(width: 4), const Text("경고선", style: TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: chartHeight,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: math.max(MediaQuery.of(context).size.width - 48, _cvaHistory.length * 20.0),
+                child: CustomPaint(
+                  painter: _ColoredChartPainter(angles: _cvaHistory, times: _timeHistory, postureHistory: _postureHistory),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 80),
         ],
       ),
     );
@@ -406,7 +482,11 @@ class _ReportViewState extends State<ReportView> {
         _buildDayOfWeekHeader(),
         Expanded(child: ListView.builder(controller: _scrollController, reverse: true, itemCount: 24, itemBuilder: (context, index) {
           final DateTime monthToShow = DateTime(DateTime.now().year, DateTime.now().month - index);
-          return Container(padding: const EdgeInsets.only(bottom: 20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Padding(padding: const EdgeInsets.only(left: 24, top: 24, bottom: 8), child: Text("${monthToShow.year}년 ${monthToShow.month}월", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), TableCalendar(locale: 'ko_KR', firstDay: DateTime(monthToShow.year, monthToShow.month, 1), lastDay: DateTime(monthToShow.year, monthToShow.month + 1, 0), focusedDay: monthToShow, calendarFormat: CalendarFormat.month, headerVisible: false, daysOfWeekVisible: false, selectedDayPredicate: (day) => isSameDay(_selectedDay, day), onDaySelected: _onDaySelected, calendarBuilders: _customBuilders())]));
+          return Container(padding: const EdgeInsets.only(bottom: 20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.only(left: 24, top: 24, bottom: 8), child: Text("${monthToShow.year}년 ${monthToShow.month}월", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            // ✅ 월간뷰 날짜 클릭 → TodayReportView
+            TableCalendar(locale: 'ko_KR', firstDay: DateTime(monthToShow.year, monthToShow.month, 1), lastDay: DateTime(monthToShow.year, monthToShow.month + 1, 0), focusedDay: monthToShow, calendarFormat: CalendarFormat.month, headerVisible: false, daysOfWeekVisible: false, selectedDayPredicate: (day) => isSameDay(_selectedDay, day), onDaySelected: _onMonthlyDaySelected, calendarBuilders: _customBuilders()),
+          ]));
         })),
       ],
     );
@@ -425,6 +505,69 @@ class _ReportViewState extends State<ReportView> {
   }
 }
 
+class _ColoredChartPainter extends CustomPainter {
+  final List<double> angles;
+  final List<String> times;
+  final List<String> postureHistory;
+
+  _ColoredChartPainter({required this.angles, required this.times, required this.postureHistory});
+
+  Color _postureColor(String posture) {
+    if (posture == 'warning') return const Color(0xFFE24B4A);
+    if (posture == 'caution') return const Color(0xFFFF9800);
+    return const Color(0xFF1D9E75);
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (angles.isEmpty) return;
+    const double padL = 36, padR = 16, padT = 8, padB = 28;
+    final double chartW = size.width - padL - padR;
+    final double chartH = size.height - padT - padB;
+    const double warningLine = 50.0;
+    final double minVal = (angles.reduce(math.min) - 5).clamp(0.0, 40.0);
+    final double maxVal = (angles.reduce(math.max) + 5).clamp(60.0, 120.0);
+
+    double toX(int i) => padL + i * chartW / math.max(angles.length - 1, 1);
+    double toY(double v) => padT + (1 - (v - minVal) / (maxVal - minVal)) * chartH;
+
+    for (double v in [minVal, (minVal + maxVal) / 2, maxVal]) {
+      canvas.drawLine(Offset(padL, toY(v)), Offset(padL + chartW, toY(v)), Paint()..color = Colors.grey.withOpacity(0.1)..strokeWidth = 0.5);
+      final tp = TextPainter(text: TextSpan(text: "${v.toInt()}°", style: const TextStyle(color: Colors.grey, fontSize: 9)), textDirection: TextDirection.ltr)..layout();
+      tp.paint(canvas, Offset(0, toY(v) - 5));
+    }
+
+    double x = padL;
+    while (x < padL + chartW) {
+      canvas.drawLine(Offset(x, toY(warningLine)), Offset(math.min(x + 6, padL + chartW), toY(warningLine)), Paint()..color = const Color(0xFFE24B4A)..strokeWidth = 1.5);
+      x += 10;
+    }
+
+    for (int i = 0; i < angles.length - 1; i++) {
+      final posture = i < postureHistory.length ? postureHistory[i] : 'normal';
+      canvas.drawLine(Offset(toX(i), toY(angles[i])), Offset(toX(i + 1), toY(angles[i + 1])),
+          Paint()..color = _postureColor(posture)..strokeWidth = 2.5..strokeCap = StrokeCap.round);
+    }
+
+    for (int i = 0; i < angles.length; i++) {
+      final posture = i < postureHistory.length ? postureHistory[i] : 'normal';
+      canvas.drawCircle(Offset(toX(i), toY(angles[i])), 4, Paint()..color = _postureColor(posture));
+      canvas.drawCircle(Offset(toX(i), toY(angles[i])), 4, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
+    }
+
+    if (times.isNotEmpty) {
+      final step = math.max((times.length / 5).ceil(), 1);
+      for (int i = 0; i < times.length; i += step) {
+        final tp = TextPainter(text: TextSpan(text: times[i], style: const TextStyle(color: Colors.grey, fontSize: 8)), textDirection: TextDirection.ltr)..layout();
+        tp.paint(canvas, Offset(toX(i) - tp.width / 2, size.height - padB + 4));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
 class NeckAngleLinePainter extends CustomPainter {
   final double cvaAngle;
   NeckAngleLinePainter({required this.cvaAngle});
@@ -433,21 +576,14 @@ class NeckAngleLinePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final double cx = size.width * 0.60;
     final double c7Y = size.height * 0.65;
-
     canvas.drawLine(Offset(cx, c7Y - 60), Offset(cx, c7Y + 20), Paint()..color = Colors.grey.withOpacity(0.5)..strokeWidth = 1.5);
-
     final angleRad = (90 - cvaAngle) * math.pi / 180;
     final endX = cx - math.cos(angleRad) * 80.0;
     final endY = c7Y - math.sin(angleRad) * 80.0;
-
     canvas.drawLine(Offset(cx, c7Y), Offset(endX, endY), Paint()..color = const Color(0xFF378ADD)..strokeWidth = 3..strokeCap = StrokeCap.round);
     canvas.drawArc(Rect.fromCenter(center: Offset(cx, c7Y), width: 50, height: 50), -math.pi / 2, -(90 - cvaAngle) * math.pi / 180, false, Paint()..color = const Color(0xFF378ADD).withOpacity(0.6)..strokeWidth = 1.5..style = PaintingStyle.stroke);
     canvas.drawCircle(Offset(cx, c7Y), 5, Paint()..color = const Color(0xFFE24B4A));
-
-    final textPainter = TextPainter(
-      text: TextSpan(text: "${cvaAngle.toStringAsFixed(1)}°", style: const TextStyle(color: Color(0xFF378ADD), fontSize: 14, fontWeight: FontWeight.bold)),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final textPainter = TextPainter(text: TextSpan(text: "${cvaAngle.toStringAsFixed(1)}°", style: const TextStyle(color: Color(0xFF378ADD), fontSize: 14, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
     textPainter.paint(canvas, Offset(cx - 60, c7Y - 50));
   }
 
@@ -464,10 +600,8 @@ class NeckAnglePainter extends CustomPainter {
     final double cx = size.width * 0.5;
     final bodyPaint  = Paint()..color = const Color(0xFFE8D5C4)..style = PaintingStyle.fill;
     final bodyStroke = Paint()..color = const Color(0xFFC4A882)..style = PaintingStyle.stroke..strokeWidth = 1;
-
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.88), width: 60, height: 36), bodyPaint);
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.88), width: 60, height: 36), bodyStroke);
-
     final neckPath = Path()
       ..moveTo(cx - 12, size.height * 0.76)
       ..quadraticBezierTo(cx - 14, size.height * 0.65, cx - 12, size.height * 0.57)
@@ -478,203 +612,21 @@ class NeckAnglePainter extends CustomPainter {
     canvas.drawPath(neckPath, bodyStroke);
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.42), width: 48, height: 54), bodyPaint);
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.42), width: 48, height: 54), bodyStroke);
-
     final hairPaint = Paint()..color = const Color(0xFF5C3D2E)..style = PaintingStyle.fill;
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.32), width: 50, height: 46), hairPaint);
     canvas.drawCircle(Offset(cx - 6, size.height * 0.40), 3, Paint()..color = const Color(0xFF5C3D2E));
-
     final c7Y = size.height * 0.65;
     canvas.drawCircle(Offset(cx, c7Y), 5, Paint()..color = const Color(0xFFE24B4A));
     canvas.drawLine(Offset(cx, size.height * 0.1), Offset(cx, size.height * 0.9), Paint()..color = Colors.grey.withOpacity(0.25)..strokeWidth = 1);
-
     final angleRad = (90 - cvaAngle) * math.pi / 180;
     final endX = cx - math.cos(angleRad) * 60.0;
     final endY = c7Y - math.sin(angleRad) * 60.0;
     canvas.drawLine(Offset(cx, c7Y), Offset(endX, endY), Paint()..color = const Color(0xFF378ADD)..strokeWidth = 2..strokeCap = StrokeCap.round);
     canvas.drawArc(Rect.fromCenter(center: Offset(cx, c7Y), width: 40, height: 40), -math.pi / 2, -angleRad, false, Paint()..color = const Color(0xFF378ADD).withOpacity(0.6)..strokeWidth = 1.5..style = PaintingStyle.stroke);
-
     final textPainter = TextPainter(text: TextSpan(text: "${cvaAngle.toStringAsFixed(1)}°", style: const TextStyle(color: Color(0xFF378ADD), fontSize: 13, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
     textPainter.paint(canvas, Offset(cx + 14, c7Y - 28));
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class NeckAngleChart extends StatelessWidget {
-  final List<double> angles;
-  final List<String> times;
-  const NeckAngleChart({super.key, required this.angles, required this.times});
-
-  @override
-  Widget build(BuildContext context) {
-    if (angles.isEmpty) return const SizedBox();
-    const double warningLine = 50.0;
-    final double minVal = (angles.reduce(math.min) - 5).clamp(20.0, 40.0);
-    final double maxVal = (angles.reduce(math.max) + 5).clamp(60.0, 90.0);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [
-          Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFF1D9E75), borderRadius: BorderRadius.circular(2))),
-          const SizedBox(width: 4),
-          const Text("CVA 각도", style: TextStyle(fontSize: 11, color: Colors.grey)),
-          const SizedBox(width: 12),
-          Container(width: 10, height: 3, color: const Color(0xFFE24B4A)),
-          const SizedBox(width: 4),
-          const Text("경고선", style: TextStyle(fontSize: 11, color: Colors.grey)),
-        ]),
-        const SizedBox(height: 8),
-        Expanded(child: CustomPaint(painter: _ChartPainter(angles: angles, times: times, warningLine: warningLine, minVal: minVal, maxVal: maxVal), size: Size.infinite)),
-      ],
-    );
-  }
-}
-
-class _ChartPainter extends CustomPainter {
-  final List<double> angles;
-  final List<String> times;
-  final double warningLine, minVal, maxVal;
-  _ChartPainter({required this.angles, required this.times, required this.warningLine, required this.minVal, required this.maxVal});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (angles.isEmpty) return;
-    const double padL = 32, padR = 8, padT = 8, padB = 28;
-    final double chartW = size.width - padL - padR;
-    final double chartH = size.height - padT - padB;
-
-    double toX(int i) => padL + i * chartW / math.max(angles.length - 1, 1);
-    double toY(double v) => padT + (1 - (v - minVal) / (maxVal - minVal)) * chartH;
-
-    final gridPaint = Paint()..color = Colors.grey.withOpacity(0.1)..strokeWidth = 0.5;
-    for (double v in [minVal, (minVal + maxVal) / 2, maxVal]) {
-      canvas.drawLine(Offset(padL, toY(v)), Offset(padL + chartW, toY(v)), gridPaint);
-      final tp = TextPainter(text: TextSpan(text: "${v.toInt()}°", style: const TextStyle(color: Colors.grey, fontSize: 9)), textDirection: TextDirection.ltr)..layout();
-      tp.paint(canvas, Offset(0, toY(v) - 5));
-    }
-
-    final warnY = toY(warningLine);
-    final warnPaint = Paint()..color = const Color(0xFFE24B4A)..strokeWidth = 1.5;
-    double x = padL;
-    while (x < padL + chartW) {
-      canvas.drawLine(Offset(x, warnY), Offset(math.min(x + 6, padL + chartW), warnY), warnPaint);
-      x += 10;
-    }
-
-    if (angles.length == 1) {
-      canvas.drawCircle(Offset(toX(0), toY(angles[0])), 4, Paint()..color = const Color(0xFF1D9E75));
-    } else {
-      final fillPath = Path()..moveTo(toX(0), toY(angles[0]));
-      for (int i = 1; i < angles.length; i++) {
-        final cpx = (toX(i - 1) + toX(i)) / 2;
-        fillPath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
-      }
-      fillPath.lineTo(toX(angles.length - 1), toY(minVal));
-      fillPath.lineTo(toX(0), toY(minVal));
-      fillPath.close();
-      canvas.drawPath(fillPath, Paint()..color = const Color(0xFF1D9E75).withOpacity(0.08));
-
-      final linePath = Path()..moveTo(toX(0), toY(angles[0]));
-      for (int i = 1; i < angles.length; i++) {
-        final cpx = (toX(i - 1) + toX(i)) / 2;
-        linePath.cubicTo(cpx, toY(angles[i - 1]), cpx, toY(angles[i]), toX(i), toY(angles[i]));
-      }
-      canvas.drawPath(linePath, Paint()..color = const Color(0xFF1D9E75)..strokeWidth = 2..style = PaintingStyle.stroke);
-    }
-
-    for (int i = 0; i < angles.length; i++) {
-      final isWarning = angles[i] < warningLine;
-      canvas.drawCircle(Offset(toX(i), toY(angles[i])), 3.5, Paint()..color = isWarning ? const Color(0xFFE24B4A) : const Color(0xFF1D9E75));
-    }
-
-    if (times.isNotEmpty) {
-      final step = math.max((times.length / 5).ceil(), 1);
-      for (int i = 0; i < times.length; i += step) {
-        final tp = TextPainter(text: TextSpan(text: times[i], style: const TextStyle(color: Colors.grey, fontSize: 8)), textDirection: TextDirection.ltr)..layout();
-        tp.paint(canvas, Offset(toX(i) - tp.width / 2, size.height - padB + 4));
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class PostureHeatmap extends StatelessWidget {
-  final List<String> postureHistory;
-  final List<String> timeHistory;
-  const PostureHeatmap({super.key, required this.postureHistory, required this.timeHistory});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.grey.shade200),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("시간대별 자세 상태", style: TextStyle(fontSize: 13, color: Colors.grey)),
-          const SizedBox(height: 12),
-          postureHistory.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Text("측정 데이터가 없어요", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  ),
-                )
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: postureHistory.map((posture) {
-                      Color color;
-                      if (posture == "warning") {
-                        color = const Color(0xFFE24B4A);
-                      } else if (posture == "caution") {
-                        color = const Color(0xFFFF9800);
-                      } else {
-                        color = const Color(0xFF1D9E75);
-                      }
-                      return Container(
-                        width: 12,
-                        height: 30,
-                        margin: const EdgeInsets.only(right: 3),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.8),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-          const SizedBox(height: 8),
-          if (timeHistory.isNotEmpty)
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text(timeHistory.first, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-              Text(timeHistory.last, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFF1D9E75), borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 4),
-            const Text("정상", style: TextStyle(fontSize: 10, color: Colors.grey)),
-            const SizedBox(width: 12),
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFFFF9800), borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 4),
-            const Text("주의", style: TextStyle(fontSize: 10, color: Colors.grey)),
-            const SizedBox(width: 12),
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: const Color(0xFFE24B4A), borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 4),
-            const Text("경고", style: TextStyle(fontSize: 10, color: Colors.grey)),
-          ]),
-        ],
-      ),
-    );
-  }
 }

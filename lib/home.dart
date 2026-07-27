@@ -34,6 +34,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
   // ✅ 이전 자세 상태 (전환될 때만 카운트)
   String _prevPostureResult = 'normal';
 
+  // ✅ 배터리 잔량
+  int _batteryPercent = 0;
+
   List<double> cvaHistory     = [];
   List<String> timeHistory    = [];
   List<String> postureHistory = [];
@@ -77,6 +80,11 @@ class _HomeViewContentState extends State<HomeViewContent> {
       if (!mounted) return;
       setState(() {});
     };
+    // ✅ 배터리 콜백 등록
+    _ble.onBatteryChanged = (batt) {
+      if (!mounted) return;
+      setState(() => _batteryPercent = batt);
+    };
     _ble.init();
 
     _storage.read(key: 'accessToken').then((token) {
@@ -116,10 +124,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
   Future<void> startMonitoring() async {
     setState(() {
-      isCalibrating     = false;
-      isMonitoring      = true;
-      monitoringSeconds = 0;
-      _prevPostureResult = 'normal'; // ✅ 초기화
+      isCalibrating      = false;
+      isMonitoring       = true;
+      monitoringSeconds  = 0;
+      _prevPostureResult = 'normal';
     });
 
     monitorTimer?.cancel();
@@ -159,7 +167,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
         _worstPostureInMinute = 'caution';
       }
 
-      final now = DateTime.now();
+      final now        = DateTime.now();
       final timeStr    = "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}";
       final rawTimeStr = "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}:${now.second.toString().padLeft(2,'0')}";
 
@@ -248,7 +256,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
     monitorTimer?.cancel();
     dailyApiTimer?.cancel();
 
-    // ✅ 버튼 누르는 즉시 UI 초기화
     setState(() {
       isMonitoring          = false;
       isCalibrating         = false;
@@ -262,9 +269,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
     await _ble.stopNotify();
 
     if (cvaHistory.isNotEmpty) {
-      final today = DateTime.now();
+      final today   = DateTime.now();
       final dateKey = "${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}";
-      final avgCva = cvaCount > 0 ? cvaSum / cvaCount : 0.0;
+      final avgCva  = cvaCount > 0 ? cvaSum / cvaCount : 0.0;
 
       // ✅ 기존 데이터 불러와서 합산
       final existingData = await DailyReportStorage.loadHistory(dateKey);
@@ -285,9 +292,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
       final prevCvaRawHistory     = List<double>.from(existingData?['cvaRawHistory']     ?? []);
       final prevPostureRawHistory = List<String>.from(existingData?['postureRawHistory'] ?? []);
 
-      // ✅ 평균 CVA 합산 평균
-      final prevCvaCount  = prevCvaHistory.length;
-      final mergedAvgCva  = (prevCvaCount + cvaCount) > 0
+      final prevCvaCount = prevCvaHistory.length;
+      final mergedAvgCva = (prevCvaCount + cvaCount) > 0
           ? (prevAvgCva * prevCvaCount + avgCva * cvaCount) / (prevCvaCount + cvaCount)
           : avgCva;
 
@@ -414,7 +420,11 @@ class _HomeViewContentState extends State<HomeViewContent> {
                     children: [
                       const Icon(Icons.battery_3_bar, color: TColor.gray, size: 20),
                       const SizedBox(width: 4),
-                      const Text("85%", style: TText.caption),
+                      // ✅ 실제 배터리 잔량 표시
+                      Text(
+                        _ble.isDeviceReady ? "$_batteryPercent%" : "--%",
+                        style: TText.caption,
+                      ),
                       const SizedBox(width: 8),
                       Icon(
                         _ble.isDeviceReady ? Icons.bluetooth_connected : Icons.bluetooth_searching,
