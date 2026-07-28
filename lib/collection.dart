@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'posture_api_service.dart';
 
@@ -89,8 +90,13 @@ class _CollectionViewState extends State<CollectionView> {
                     (v['youtube_video_key'] ?? v['youtubeVideoKey'] ?? '')
                         as String;
                 final title = (v['title'] ?? '') as String;
-                final duration =
-                    v['duration_minutes'] ?? v['durationMinutes'] ?? 0;
+
+                String thumbnailUrl =
+                    (v['thumbnail_url'] ?? v['thumbnailUrl'] ?? '') as String;
+                if (thumbnailUrl.isEmpty && youtubeKey.isNotEmpty) {
+                  thumbnailUrl =
+                      'https://img.youtube.com/vi/$youtubeKey/hqdefault.jpg';
+                }
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 16),
@@ -106,17 +112,62 @@ class _CollectionViewState extends State<CollectionView> {
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            width: 100,
-                            height: 60,
-                            decoration: BoxDecoration(
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              width: 100,
+                              height: 60,
                               color: const Color(0xFFF0F4F0),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.play_circle_outline,
-                                color: Color(0xFF3B5524),
+                              child: Stack(
+                                children: [
+                                  if (thumbnailUrl.isNotEmpty)
+                                    CachedNetworkImage(
+                                      imageUrl: thumbnailUrl,
+                                      width: 100,
+                                      height: 60,
+                                      fit: BoxFit.cover,
+                                      placeholder: (context, url) =>
+                                          const Center(
+                                            child: SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            ),
+                                          ),
+                                      errorWidget: (context, url, error) =>
+                                          const Center(
+                                            child: Icon(
+                                              Icons.play_circle_outline,
+                                              color: Color(0xFF3B5524),
+                                            ),
+                                          ),
+                                    )
+                                  else
+                                    const Center(
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.play_circle_outline,
+                                          color: Color(0xFF3B5524),
+                                        ),
+                                      ),
+                                    ),
+                                  Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.4),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.play_arrow,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -130,16 +181,6 @@ class _CollectionViewState extends State<CollectionView> {
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  "$duration분 영상",
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
