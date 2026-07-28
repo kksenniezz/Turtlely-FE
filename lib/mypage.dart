@@ -117,32 +117,32 @@ class _MyPageViewState extends State<MyPageView> {
                 );
               }
             }),
+
             //_buildMenuItem(context, "앱 권한", () {}),
 
-            // 3. 진동 세기 조절 (슬라이더)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "진동",
-                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
-                  ),
-                  Slider(
-                    value: vibrationValue,
-                    activeColor: TColor.buttonGreen,
-                    inactiveColor: TColor.lightGreen,
-                    onChanged: (value) {
-                      setState(() {
-                        vibrationValue = value;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-
+            // // 3. 진동 세기 조절 (슬라이더)
+            // Padding(
+            //   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            //   child: Column(
+            //     crossAxisAlignment: CrossAxisAlignment.start,
+            //     children: [
+            //       const Text(
+            //         "진동",
+            //         style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+            //       ),
+            //       Slider(
+            //         value: vibrationValue,
+            //         activeColor: TColor.buttonGreen,
+            //         inactiveColor: TColor.lightGreen,
+            //         onChanged: (value) {
+            //           setState(() {
+            //             vibrationValue = value;
+            //           });
+            //         },
+            //       ),
+            //     ],
+            //   ),
+            // ),
             const SizedBox(height: 20),
             // 4. 로그아웃 / 탈퇴
             _buildSimpleTextButton("로그아웃", () {
