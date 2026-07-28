@@ -24,7 +24,11 @@ class ApiService {
   }
 
   // /api/daily/calibration
-  Future<Map<String, dynamic>> sendCalibration(double avgX, double avgY, double avgZ) async {
+  Future<Map<String, dynamic>> sendCalibration(
+    double avgX,
+    double avgY,
+    double avgZ,
+  ) async {
     try {
       final token = await _getToken();
       final currentMonthlyId = await _getMonthlyId();
@@ -35,21 +39,21 @@ class ApiService {
           "Authorization": "Bearer $token",
         },
         body: jsonEncode({
-          "monthly_id"      : currentMonthlyId,
-          "current_accel_x" : avgX,
-          "current_accel_y" : avgY,
-          "current_accel_z" : avgZ,
+          "monthly_id": currentMonthlyId,
+          "current_accel_x": avgX,
+          "current_accel_y": avgY,
+          "current_accel_z": avgZ,
         }),
       );
-      debugPrint("📡 캘리브레이션 응답 코드: ${response.statusCode}");
-      debugPrint("📡 캘리브레이션 응답 바디: ${response.body}");
+      debugPrint("캘리브레이션 응답 코드: ${response.statusCode}");
+      debugPrint("캘리브레이션 응답 바디: ${response.body}");
       return {
         "statusCode": response.statusCode,
         "body": response.body,
         "token": token,
       };
     } catch (e) {
-      debugPrint("❌ 캘리브레이션 오류: $e");
+      debugPrint("캘리브레이션 오류: $e");
       return {"statusCode": 0, "body": e.toString(), "token": ""};
     }
   }
@@ -61,7 +65,7 @@ class ApiService {
     required double accZ,
     required String level,
   }) async {
-    debugPrint("🔄 sendDaily 호출됨 | accX: $accX, accY: $accY, accZ: $accZ");
+    debugPrint("sendDaily 호출됨 | accX: $accX, accY: $accY, accZ: $accZ");
     try {
       final token = await _getToken();
       final currentMonthlyId = await _getMonthlyId();
@@ -74,29 +78,29 @@ class ApiService {
           "Authorization": "Bearer $token",
         },
         body: jsonEncode({
-          "monthly_id"      : currentMonthlyId,
-          "member_id"       : currentMemberId,
-          "current_accel_x" : accX,
-          "current_accel_y" : accY,
-          "current_accel_z" : accZ,
-          "level"           : level,
+          "monthly_id": currentMonthlyId,
+          "member_id": currentMemberId,
+          "current_accel_x": accX,
+          "current_accel_y": accY,
+          "current_accel_z": accZ,
+          "level": level,
         }),
       );
-      debugPrint("📡 /api/daily 상태코드: ${response.statusCode}");
-      debugPrint("📡 /api/daily 응답바디: ${response.body}");
+      debugPrint("/api/daily 상태코드: ${response.statusCode}");
+      debugPrint("/api/daily 응답바디: ${response.body}");
       if (response.statusCode == 200) {
         final body = response.body.trim();
         final json = jsonDecode(body);
         final postureResult = json["posture_result"] ?? "normal";
-        final estimatedCva  = (json["estimated_cva"] ?? 0.0).toDouble();
+        final estimatedCva = (json["estimated_cva"] ?? 0.0).toDouble();
         return {
-          "postureResult" : postureResult,
-          "estimatedCva"  : estimatedCva,
-          "isWarning"     : postureResult == "warning",
+          "postureResult": postureResult,
+          "estimatedCva": estimatedCva,
+          "isWarning": postureResult == "warning",
         };
       }
     } catch (e) {
-      debugPrint("❌ /api/daily 실패: $e");
+      debugPrint("/api/daily 실패: $e");
     }
     return {"postureResult": "normal", "estimatedCva": 0.0, "isWarning": false};
   }
@@ -115,12 +119,13 @@ class ApiService {
       debugPrint("📅 캘린더 응답: ${response.body}");
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
-        if (json['result'] != null && json['result']['calendarReports'] != null) {
+        if (json['result'] != null &&
+            json['result']['calendarReports'] != null) {
           return json['result']['calendarReports'] as List<dynamic>;
         }
       }
     } catch (e) {
-      debugPrint("❌ 캘린더 오류: $e");
+      debugPrint("캘린더 오류: $e");
     }
     return [];
   }
@@ -142,12 +147,12 @@ class ApiService {
         return Map<String, dynamic>.from(json['result']);
       }
     } catch (e) {
-      debugPrint("❌ 일일 리포트 오류: $e");
+      debugPrint("일일 리포트 오류: $e");
     }
     return null;
   }
 
-  // ✅ /api/exercise 운동존 영상 목록 조회
+  // /api/exercise 운동존 영상 목록 조회
   Future<List<dynamic>> getExerciseVideos({
     String? postureType,
     String? category,
@@ -157,18 +162,27 @@ class ApiService {
     try {
       final token = await _getToken();
       final queryParams = <String, String>{};
-      if (postureType != null && postureType != 'ALL') queryParams['postureType'] = postureType;
-      if (category != null && category != 'ALL') queryParams['category'] = category;
-      if (durationMinutes != null) queryParams['durationMinutes'] = durationMinutes.toString();
-      if (keyword != null && keyword.isNotEmpty) queryParams['keyword'] = keyword;
+      if (postureType != null && postureType != 'ALL')
+        queryParams['postureType'] = postureType;
+      if (category != null && category != 'ALL')
+        queryParams['category'] = category;
+      if (durationMinutes != null)
+        queryParams['durationMinutes'] = durationMinutes.toString();
+      if (keyword != null && keyword.isNotEmpty)
+        queryParams['keyword'] = keyword;
 
-      final uri = Uri.parse("$springUrl/api/exercise").replace(queryParameters: queryParams);
-      final response = await http.get(uri, headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $token",
-      });
+      final uri = Uri.parse(
+        "$springUrl/api/exercise",
+      ).replace(queryParameters: queryParams);
+      final response = await http.get(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
 
-      debugPrint("🏋️ 운동존 응답: ${response.statusCode}");
+      debugPrint("운동존 응답: ${response.statusCode}");
       if (response.statusCode == 200) {
         final json = jsonDecode(response.body);
         final result = json['result'];
@@ -177,7 +191,67 @@ class ApiService {
         }
       }
     } catch (e) {
-      debugPrint("❌ 운동존 오류: $e");
+      debugPrint("운동존 오류: $e");
+    }
+    return [];
+  }
+
+  //  POST /api/exercise/{video_id} 북마크 토글
+  Future<bool?> toggleBookmark(int videoId) async {
+    try {
+      final token = await _getToken();
+      final uri = Uri.parse("$springUrl/api/exercise/$videoId");
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
+
+      debugPrint("북마크 토글 응답 코드: ${response.statusCode}");
+      debugPrint("북마크 토글 응답 바디: ${response.body}");
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        if (json['isSuccess'] == true && json['result'] != null) {
+          return json['result']['is_bookmarked'] as bool?;
+        }
+      }
+    } catch (e) {
+      debugPrint("북마크 토글 오류: $e");
+    }
+    return null;
+  }
+
+  // GET /api/exercise/bookmarks 북마크한 운동 영상 목록 조회
+  Future<List<dynamic>> getBookmarkedVideos() async {
+    try {
+      final token = await _getToken();
+      final uri = Uri.parse("$springUrl/api/exercise/bookmarks");
+
+      final response = await http.get(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
+
+      debugPrint("북마크 목록 응답 코드: ${response.statusCode}");
+      debugPrint("북마크 목록 응답 바디: ${response.body}");
+
+      if (response.statusCode == 200) {
+        final json = jsonDecode(response.body);
+        if (json['isSuccess'] == true &&
+            json['result'] != null &&
+            json['result']['bookmark_list'] != null) {
+          return json['result']['bookmark_list'] as List<dynamic>;
+        }
+      }
+    } catch (e) {
+      debugPrint("북마크 목록 조회 오류: $e");
     }
     return [];
   }
