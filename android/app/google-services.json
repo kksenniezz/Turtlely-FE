@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "485049902555",
+    "project_id": "turtlely-b39e0",
+    "storage_bucket": "turtlely-b39e0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:485049902555:android:a47a81e5ed8441d82b33fe",
+        "android_client_info": {
+          "package_name": "com.project.turtlely"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4P8wk9oKwN8QZTDWR-Pcg0Z6GoNGdbiE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

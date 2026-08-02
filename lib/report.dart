@@ -6,7 +6,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'style.dart';
 import 'monthly_report.dart';
-import 'today_report.dart';
 import 'daily_report_storage.dart';
 import 'posture_api_service.dart';
 
@@ -18,7 +17,7 @@ class ReportView extends StatefulWidget {
 }
 
 class _ReportViewState extends State<ReportView> {
-  int _viewIndex = 0;
+  int _viewIndex = 0; // 0: 주간/리포트 메인 뷰, 1: 월간 달력 뷰
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay = DateTime.now();
 
@@ -36,6 +35,14 @@ class _ReportViewState extends State<ReportView> {
   List<String> _timeHistory    = [];
   List<String> _postureHistory = [];
   bool    _isLoadingReport = false;
+
+  // CVA 그래프 제어용 변수
+  int _selectedInterval = 1; // 기본 1분
+  List<Map<String, dynamic>> _processedGraphData = [];
+  Map<String, dynamic>? _selectedPoint;
+
+  // 나의 개인 보정/기준 각도 (기본값)
+  double _myBaseCva = 50.0; 
 
   @override
   void initState() {
@@ -129,14 +136,59 @@ class _ReportViewState extends State<ReportView> {
       }
     }
 
+    _processGraphData();
+
     if (mounted) setState(() { _isLoadingReport = false; });
   }
 
-  // ✅ 주간뷰 날짜 클릭 → 인라인 리포트
+  void _processGraphData() {
+    if (_cvaHistory.isEmpty) {
+      setState(() {
+        _processedGraphData = [];
+        _selectedPoint = null;
+      });
+      return;
+    }
+
+    List<Map<String, dynamic>> temp = [];
+    int step = _selectedInterval;
+
+    for (int i = 0; i < _cvaHistory.length; i += step) {
+      int end = math.min(i + step, _cvaHistory.length);
+      List<double> chunkCva = _cvaHistory.sublist(i, end);
+      List<String> chunkPosture = _postureHistory.sublist(i, end);
+
+      if (chunkCva.isEmpty) continue;
+
+      double sum = chunkCva.reduce((a, b) => a + b);
+      double avg = sum / chunkCva.length;
+
+      int wCount = chunkPosture.where((p) => p == "warning").length;
+      int cCount = chunkPosture.where((p) => p == "caution").length;
+
+      String timeStr = i < _timeHistory.length ? _timeHistory[i] : '';
+
+      temp.add({
+        'avgCva': avg,
+        'warningCount': wCount,
+        'cautionCount': cCount,
+        'time': timeStr,
+        'index': i,
+      });
+    }
+
+    setState(() {
+      _processedGraphData = temp;
+      _selectedPoint = null;
+    });
+  }
+
+  // ★ [수정 핵심] 날짜 선택 시 뷰 인덱스 전환 및 데이터 즉시 로드 ★
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
     setState(() {
       _selectedDay    = selectedDay;
       _focusedDay     = focusedDay;
+      _viewIndex      = 0; // 👈 월간 달력에서 클릭하더라도 리포트 화면으로 즉시 화면 전환!
       _selectedScore  = null;
       _avgCva         = 0.0;
       _cvaHistory     = [];
@@ -144,30 +196,13 @@ class _ReportViewState extends State<ReportView> {
       _timeHistory    = [];
       _warningCount   = 0;
       _cautionCount   = 0;
+      _processedGraphData = [];
+      _selectedPoint  = null;
     });
 
     if (_hasRecord(selectedDay)) {
       final id = _getDailyId(selectedDay);
       await _loadFullData(selectedDay, id);
-    }
-  }
-
-  // ✅ 월간뷰 날짜 클릭 → TodayReportView로 이동
-  void _onMonthlyDaySelected(DateTime selectedDay, DateTime focusedDay) {
-    setState(() {
-      _selectedDay = selectedDay;
-      _focusedDay  = focusedDay;
-    });
-
-    if (_hasRecord(selectedDay)) {
-      final id = _getDailyId(selectedDay);
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => TodayReportView(date: selectedDay, dailyId: id),
-        ),
-      );
     }
   }
 
@@ -305,14 +340,12 @@ class _ReportViewState extends State<ReportView> {
 
     final double screenHeight = MediaQuery.of(context).size.height;
     final double imageHeight  = screenHeight * 0.25;
-    final double chartHeight  = screenHeight * 0.25;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 타이틀 + CSV
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -327,7 +360,6 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 16),
 
-          // 자세 점수
           Container(
             width: double.infinity, padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(color: const Color(0xFFF1F8E9), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFC8E6C9))),
@@ -341,7 +373,6 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 16),
 
-          // 경고/주의 횟수
           Row(
             children: [
               Expanded(
@@ -371,7 +402,6 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 32),
 
-          // 평균 CVA 목 각도 + 사람 사진
           const Text("평균 CVA 목 각도", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           Row(
@@ -430,37 +460,135 @@ class _ReportViewState extends State<ReportView> {
           ),
           const SizedBox(height: 32),
 
-          // CVA 각도 변화 그래프
           const Text("CVA 각도 변화 그래프", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
+          const Text("그래프 위 측정 지점을 눌러 나의 상태를 확인해 보세요", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 12),
+
           Row(
-            children: [
-              Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFF1D9E75), borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 4), const Text("정상", style: TextStyle(fontSize: 11, color: Colors.grey)),
-              const SizedBox(width: 12),
-              Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFFFF9800), borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 4), const Text("주의", style: TextStyle(fontSize: 11, color: Colors.grey)),
-              const SizedBox(width: 12),
-              Container(width: 10, height: 10, decoration: BoxDecoration(color: const Color(0xFFE24B4A), borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 4), const Text("경고", style: TextStyle(fontSize: 11, color: Colors.grey)),
-              const SizedBox(width: 12),
-              Container(width: 16, height: 2, color: const Color(0xFFE24B4A)),
-              const SizedBox(width: 4), const Text("경고선", style: TextStyle(fontSize: 11, color: Colors.grey)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: chartHeight,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: math.max(MediaQuery.of(context).size.width - 48, _cvaHistory.length * 20.0),
-                child: CustomPaint(
-                  painter: _ColoredChartPainter(angles: _cvaHistory, times: _timeHistory, postureHistory: _postureHistory),
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [1, 10, 30, 60].map((interval) {
+              bool isSelected = _selectedInterval == interval;
+              String label = interval == 60 ? "1시간" : "$interval분";
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedInterval = interval;
+                    _processGraphData();
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFFF1F8E9) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFFC8E6C9) : const Color(0xFFE0E0E0),
+                    ),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? const Color(0xFF33691E) : Colors.grey,
+                    ),
+                  ),
                 ),
-              ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFAFAFA),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE0E0E0)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.grey, shape: BoxShape.circle)),
+                    const SizedBox(width: 2),
+                    const Text("정상(53°)", style: TextStyle(fontSize: 9, color: Colors.grey)),
+                    const SizedBox(width: 6),
+                    Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle)),
+                    const SizedBox(width: 2),
+                    const Text("나의 기준", style: TextStyle(fontSize: 9, color: Colors.blueAccent)),
+                    const SizedBox(width: 6),
+                    Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF33691E), shape: BoxShape.circle)),
+                    const SizedBox(width: 2),
+                    const Text("나의 각도", style: TextStyle(fontSize: 9, color: Colors.grey)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                SizedBox(
+                  height: screenHeight * 0.25,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: math.max(
+                        MediaQuery.of(context).size.width - 48 - 24,
+                        _processedGraphData.length * 50.0,
+                      ),
+                      child: GestureDetector(
+                        onTapDown: (TapDownDetails details) {
+                          if (_processedGraphData.isEmpty) return;
+                          double tapX = details.localPosition.dx;
+                          double chartW = math.max(
+                            MediaQuery.of(context).size.width - 48 - 24,
+                            _processedGraphData.length * 50.0,
+                          ) - 36 - 16;
+
+                          double ratio = ((tapX - 36) / chartW).clamp(0.0, 1.0);
+                          int clickedIdx = (ratio * (_processedGraphData.length - 1)).round();
+                          setState(() {
+                            _selectedPoint = _processedGraphData[clickedIdx];
+                          });
+                        },
+                        child: CustomPaint(
+                          size: Size.infinite,
+                          painter: CorrectedCvaChartPainter(
+                            data: _processedGraphData,
+                            selectedPoint: _selectedPoint,
+                            myBaseCva: _myBaseCva,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
+
+          if (_selectedPoint != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F8E9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFC8E6C9)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Text("시간: ${_selectedPoint!['time']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text("평균: ${(_selectedPoint!['avgCva'] as double).toStringAsFixed(1)}°", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF33691E))),
+                  Text("경고: ${_selectedPoint!['warningCount']}회", style: const TextStyle(fontSize: 12, color: Color(0xFFE24B4A))),
+                  Text("주의: ${_selectedPoint!['cautionCount']}회", style: const TextStyle(fontSize: 12, color: Color(0xFFFF9800))),
+                ],
+              ),
+            ),
+          ],
+
           const SizedBox(height: 80),
         ],
       ),
@@ -480,14 +608,37 @@ class _ReportViewState extends State<ReportView> {
       children: [
         Padding(padding: const EdgeInsets.all(8.0), child: Row(children: [IconButton(icon: const Icon(Icons.arrow_back_ios, size: 18), onPressed: () => setState(() => _viewIndex = 0)), const Spacer()])),
         _buildDayOfWeekHeader(),
-        Expanded(child: ListView.builder(controller: _scrollController, reverse: true, itemCount: 24, itemBuilder: (context, index) {
-          final DateTime monthToShow = DateTime(DateTime.now().year, DateTime.now().month - index);
-          return Container(padding: const EdgeInsets.only(bottom: 20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Padding(padding: const EdgeInsets.only(left: 24, top: 24, bottom: 8), child: Text("${monthToShow.year}년 ${monthToShow.month}월", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-            // ✅ 월간뷰 날짜 클릭 → TodayReportView
-            TableCalendar(locale: 'ko_KR', firstDay: DateTime(monthToShow.year, monthToShow.month, 1), lastDay: DateTime(monthToShow.year, monthToShow.month + 1, 0), focusedDay: monthToShow, calendarFormat: CalendarFormat.month, headerVisible: false, daysOfWeekVisible: false, selectedDayPredicate: (day) => isSameDay(_selectedDay, day), onDaySelected: _onMonthlyDaySelected, calendarBuilders: _customBuilders()),
-          ]));
-        })),
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController, 
+            reverse: true, 
+            itemCount: 24, 
+            itemBuilder: (context, index) {
+              final DateTime monthToShow = DateTime(DateTime.now().year, DateTime.now().month - index);
+              return Container(
+                padding: const EdgeInsets.only(bottom: 20), 
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  children: [
+                    Padding(padding: const EdgeInsets.only(left: 24, top: 24, bottom: 8), child: Text("${monthToShow.year}년 ${monthToShow.month}월", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                    TableCalendar(
+                      locale: 'ko_KR', 
+                      firstDay: DateTime(monthToShow.year, monthToShow.month, 1), 
+                      lastDay: DateTime(monthToShow.year, monthToShow.month + 1, 0), 
+                      focusedDay: monthToShow, 
+                      calendarFormat: CalendarFormat.month, 
+                      headerVisible: false, 
+                      daysOfWeekVisible: false, 
+                      selectedDayPredicate: (day) => isSameDay(_selectedDay, day), 
+                      onDaySelected: _onDaySelected, // 클릭 시 _viewIndex = 0 으로 바꾸어 리포트 화면으로 즉시 전환!
+                      calendarBuilders: _customBuilders(),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
       ],
     );
   }
@@ -505,61 +656,145 @@ class _ReportViewState extends State<ReportView> {
   }
 }
 
-class _ColoredChartPainter extends CustomPainter {
-  final List<double> angles;
-  final List<String> times;
-  final List<String> postureHistory;
+// ------------------------------------------------------------------
+// CVA 그래프 CustomPainter
+// ------------------------------------------------------------------
+class CorrectedCvaChartPainter extends CustomPainter {
+  final List<Map<String, dynamic>> data;
+  final Map<String, dynamic>? selectedPoint;
+  final double myBaseCva;
 
-  _ColoredChartPainter({required this.angles, required this.times, required this.postureHistory});
-
-  Color _postureColor(String posture) {
-    if (posture == 'warning') return const Color(0xFFE24B4A);
-    if (posture == 'caution') return const Color(0xFFFF9800);
-    return const Color(0xFF1D9E75);
-  }
+  CorrectedCvaChartPainter({
+    required this.data, 
+    this.selectedPoint,
+    required this.myBaseCva,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (angles.isEmpty) return;
-    const double padL = 36, padR = 16, padT = 8, padB = 28;
+    if (data.isEmpty) return;
+
+    const double padL = 36, padR = 16, padT = 12, padB = 32;
     final double chartW = size.width - padL - padR;
     final double chartH = size.height - padT - padB;
-    const double warningLine = 50.0;
-    final double minVal = (angles.reduce(math.min) - 5).clamp(0.0, 40.0);
-    final double maxVal = (angles.reduce(math.max) + 5).clamp(60.0, 120.0);
 
-    double toX(int i) => padL + i * chartW / math.max(angles.length - 1, 1);
+    const double minVal = 30.0;
+    const double maxVal = 90.0;
+
+    double toX(int i) => padL + (i * chartW / math.max(data.length - 1, 1));
     double toY(double v) => padT + (1 - (v - minVal) / (maxVal - minVal)) * chartH;
 
-    for (double v in [minVal, (minVal + maxVal) / 2, maxVal]) {
-      canvas.drawLine(Offset(padL, toY(v)), Offset(padL + chartW, toY(v)), Paint()..color = Colors.grey.withOpacity(0.1)..strokeWidth = 0.5);
-      final tp = TextPainter(text: TextSpan(text: "${v.toInt()}°", style: const TextStyle(color: Colors.grey, fontSize: 9)), textDirection: TextDirection.ltr)..layout();
-      tp.paint(canvas, Offset(0, toY(v) - 5));
+    // 1. 영역별 색상 띠 배경
+    final paintZone = Paint()..style = PaintingStyle.fill;
+    
+    canvas.drawRect(
+      Rect.fromLTRB(padL, toY(maxVal), padL + chartW, toY(myBaseCva)),
+      paintZone..color = const Color(0xFFC8E6C9).withOpacity(0.4),
+    );
+    canvas.drawRect(
+      Rect.fromLTRB(padL, toY(myBaseCva), padL + chartW, toY(45)),
+      paintZone..color = const Color(0xFFFFE0B2).withOpacity(0.5),
+    );
+    canvas.drawRect(
+      Rect.fromLTRB(padL, toY(45), padL + chartW, toY(minVal)),
+      paintZone..color = const Color(0xFFFFCDD2).withOpacity(0.5),
+    );
+
+    // 2. Y축 눈금선
+    final gridPaint = Paint()..color = Colors.grey.withOpacity(0.2)..strokeWidth = 0.5;
+    for (double v in [30.0, 50.0, 70.0, 90.0]) {
+      canvas.drawLine(Offset(padL, toY(v)), Offset(padL + chartW, toY(v)), gridPaint);
+      final tp = TextPainter(
+        text: TextSpan(text: "${v.toInt()}°", style: const TextStyle(color: Colors.grey, fontSize: 9)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(4, toY(v) - 5));
     }
 
-    double x = padL;
-    while (x < padL + chartW) {
-      canvas.drawLine(Offset(x, toY(warningLine)), Offset(math.min(x + 6, padL + chartW), toY(warningLine)), Paint()..color = const Color(0xFFE24B4A)..strokeWidth = 1.5);
-      x += 10;
+    // 3-A. 정상 53° 회색 선
+    final normalGuideLinePaint = Paint()
+      ..color = Colors.grey.shade500
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset(padL, toY(53)), Offset(padL + chartW, toY(53)), normalGuideLinePaint);
+
+    // 3-B. 나의 기준 파란 점선
+    final myBaseGuideLinePaint = Paint()
+      ..color = Colors.blueAccent
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    double dashW = 4, dashS = 3;
+    double currentX = padL;
+    double targetY = toY(myBaseCva);
+    while (currentX < padL + chartW) {
+      canvas.drawLine(
+        Offset(currentX, targetY),
+        Offset(math.min(currentX + dashW, padL + chartW), targetY),
+        myBaseGuideLinePaint,
+      );
+      currentX += dashW + dashS;
     }
 
-    for (int i = 0; i < angles.length - 1; i++) {
-      final posture = i < postureHistory.length ? postureHistory[i] : 'normal';
-      canvas.drawLine(Offset(toX(i), toY(angles[i])), Offset(toX(i + 1), toY(angles[i + 1])),
-          Paint()..color = _postureColor(posture)..strokeWidth = 2.5..strokeCap = StrokeCap.round);
+    // 4. 데이터 꺾은선 & 점선
+    final linePaint = Paint()
+      ..color = const Color(0xFF33691E)
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final verticalDashPaint = Paint()
+      ..color = Colors.grey.shade400
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    for (int i = 0; i < data.length - 1; i++) {
+      double x1 = toX(i);
+      double y1 = toY(data[i]['avgCva']);
+      double x2 = toX(i + 1);
+      double y2 = toY(data[i + 1]['avgCva']);
+
+      int idxDiff = data[i + 1]['index'] - data[i]['index'];
+      if (idxDiff > 10) {
+        double currY = padT;
+        while (currY < padT + chartH) {
+          canvas.drawLine(Offset(x2, currY), Offset(x2, math.min(currY + 4, padT + chartH)), verticalDashPaint);
+          currY += 7;
+        }
+      } else {
+        canvas.drawLine(Offset(x1, y1), Offset(x2, y2), linePaint);
+      }
     }
 
-    for (int i = 0; i < angles.length; i++) {
-      final posture = i < postureHistory.length ? postureHistory[i] : 'normal';
-      canvas.drawCircle(Offset(toX(i), toY(angles[i])), 4, Paint()..color = _postureColor(posture));
-      canvas.drawCircle(Offset(toX(i), toY(angles[i])), 4, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
+    // 5. 포인트 및 시간 텍스트
+    for (int i = 0; i < data.length; i++) {
+      double x = toX(i);
+      double y = toY(data[i]['avgCva']);
+
+      canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = const Color(0xFF33691E));
+      canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.0);
+
+      String t = data[i]['time'] as String;
+      if (t.isNotEmpty) {
+        final tp = TextPainter(
+          text: TextSpan(text: t, style: TextStyle(color: Colors.grey.shade600, fontSize: 8)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset(x - tp.width / 2, size.height - padB + 6));
+      }
     }
 
-    if (times.isNotEmpty) {
-      final step = math.max((times.length / 5).ceil(), 1);
-      for (int i = 0; i < times.length; i += step) {
-        final tp = TextPainter(text: TextSpan(text: times[i], style: const TextStyle(color: Colors.grey, fontSize: 8)), textDirection: TextDirection.ltr)..layout();
-        tp.paint(canvas, Offset(toX(i) - tp.width / 2, size.height - padB + 4));
+    // 6. 점 터치 강조
+    if (selectedPoint != null) {
+      int selIdx = data.indexOf(selectedPoint!);
+      if (selIdx != -1) {
+        double selX = toX(selIdx);
+        double selY = toY(selectedPoint!['avgCva']);
+
+        canvas.drawLine(Offset(selX, padT), Offset(selX, padT + chartH), Paint()..color = const Color(0xFF33691E).withOpacity(0.4)..strokeWidth = 1);
+
+        canvas.drawCircle(Offset(selX, selY), 6, Paint()..color = const Color(0xFF33691E));
+        canvas.drawCircle(Offset(selX, selY), 6, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2);
       }
     }
   }
@@ -598,7 +833,7 @@ class NeckAnglePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final double cx = size.width * 0.5;
-    final bodyPaint  = Paint()..color = const Color(0xFFE8D5C4)..style = PaintingStyle.fill;
+    final bodyPaint   = Paint()..color = const Color(0xFFE8D5C4)..style = PaintingStyle.fill;
     final bodyStroke = Paint()..color = const Color(0xFFC4A882)..style = PaintingStyle.stroke..strokeWidth = 1;
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.88), width: 60, height: 36), bodyPaint);
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.88), width: 60, height: 36), bodyStroke);

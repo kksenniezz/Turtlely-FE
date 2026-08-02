@@ -7,6 +7,7 @@ import 'vision.dart';
 import 'ble_service.dart';
 import 'posture_api_service.dart';
 import 'daily_report_storage.dart';
+import 'main.dart'; // localNotifications, hasUnreadNotification 연동
 
 class HomeViewContent extends StatefulWidget {
   const HomeViewContent({super.key});
@@ -16,44 +17,41 @@ class HomeViewContent extends StatefulWidget {
 }
 
 class _HomeViewContentState extends State<HomeViewContent> {
-
-  bool isMonitoring  = false;
+  bool isMonitoring = false;
   bool isCalibrating = false;
-  bool isBadPosture  = false;
+  bool isBadPosture = false;
 
-  int    calibrationTimer   = 3;
-  int    monitoringSeconds  = 0;
+  int calibrationTimer = 3;
+  int monitoringSeconds = 0;
   String selectedDifficulty = '보통';
 
-  double lastAccX         = 0.0;
-  double lastAccY         = 0.0;
-  double lastAccZ         = 0.0;
+  double lastAccX = 0.0;
+  double lastAccY = 0.0;
+  double lastAccZ = 0.0;
   double lastEstimatedCva = 0.0;
-  String postureResult    = 'normal';
+  String postureResult = 'normal';
 
-  // ✅ 이전 자세 상태 (전환될 때만 카운트)
   String _prevPostureResult = 'normal';
+  int? _batteryPercent;
+  bool _hasSentBatteryNotification = false; // 중복 알림 생성 방지 플래그
 
-  // ✅ 배터리 잔량
-  int _batteryPercent = 0;
-
-  List<double> cvaHistory     = [];
-  List<String> timeHistory    = [];
+  List<double> cvaHistory = [];
+  List<String> timeHistory = [];
   List<String> postureHistory = [];
 
-  List<double> accXHistory       = [];
-  List<double> accYHistory       = [];
-  List<double> accZHistory       = [];
-  List<String> rawTimeHistory    = [];
-  List<double> cvaRawHistory     = [];
+  List<double> accXHistory = [];
+  List<double> accYHistory = [];
+  List<double> accZHistory = [];
+  List<String> rawTimeHistory = [];
+  List<double> cvaRawHistory = [];
   List<String> postureRawHistory = [];
 
-  double cvaSum         = 0.0;
-  int    cvaCount       = 0;
-  int    warningCount   = 0;
-  int    cautionCount   = 0;
-  int    normalDuration = 0;
-  int    totalDuration  = 0;
+  double cvaSum = 0.0;
+  int cvaCount = 0;
+  int warningCount = 0;
+  int cautionCount = 0;
+  int normalDuration = 0;
+  int totalDuration = 0;
 
   List<double> calibAccXList = [];
   List<double> calibAccYList = [];
@@ -68,10 +66,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
   Timer? monitorTimer;
   Timer? dailyApiTimer;
 
-  String get _level =>
-      selectedDifficulty == '낮음' ? 'easy'
-    : selectedDifficulty == '높음' ? 'hard'
-    : 'normal';
+  String get _level => selectedDifficulty == '낮음' ? 'easy' : selectedDifficulty == '높음' ? 'hard' : 'normal';
 
   @override
   void initState() {
@@ -79,17 +74,218 @@ class _HomeViewContentState extends State<HomeViewContent> {
     _ble.onDeviceReadyChanged = (ready) {
       if (!mounted) return;
       setState(() {});
+      if (!ready && isMonitoring) {
+        _showDisconnectDialog();
+      }
     };
-    // ✅ 배터리 콜백 등록
     _ble.onBatteryChanged = (batt) {
       if (!mounted) return;
       setState(() => _batteryPercent = batt);
+      _checkBatteryLevelAndNotify(batt); // ★ 배터리 20% 이하 감지 시 로컬 알림 생성 ★
     };
     _ble.init();
 
     _storage.read(key: 'accessToken').then((token) {
       debugPrint("🔑 accessToken: $token");
     });
+  }
+
+  // ------------------------------------------------------------------
+  // ★ 배터리 20% 이하 감지 시 프론트엔드 자체 알림 생성 로직 ★
+  // ------------------------------------------------------------------
+  void _checkBatteryLevelAndNotify(int battery) {
+    if (battery <= 20) {
+      if (!_hasSentBatteryNotification) {
+        _hasSentBatteryNotification = true; // 1회만 알림 생성
+
+        final now = DateTime.now();
+        final timeStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+
+        // 1. 서버 통신 없이 프론트엔드 전역 알림 리스트에 즉시 삽입
+        localNotifications.insert(0, {
+          "notification_id": DateTime.now().millisecondsSinceEpoch,
+          "type": "BATTERY",
+          "content": "터틀훅 배터리가 $battery% 남았습니다. 충전해 주세요!",
+          "is_read": false,
+          "created_at": timeStr,
+        });
+
+        // 2. 상단 종 아이콘에 안 읽은 알림 빨간 점 켜기
+        hasUnreadNotification.value = true;
+      }
+    } else {
+      _hasSentBatteryNotification = false; // 충전되어 20% 초과 시 플래그 리셋
+    }
+  }
+
+  // 팝업 1: 자세 교정 종료 확인 다이얼로그 (HomeView-5)
+  void _showStopConfirmDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Colors.black),
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "자세 교정을 종료하시겠습니까?",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE0E0E0),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          child: const Text(
+                            "취소",
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF91A88C),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.of(dialogContext).pop();
+                            stopMonitoring();
+                          },
+                          child: const Text(
+                            "확인",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // 팝업 2: 블루투스 연결 끊김 안내 다이얼로그 (HomeView-6)
+  void _showDisconnectDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                const Text(
+                  "터틀훅 연결이 끊겼어요!",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "블루투스 연결 상태를 확인한 후\n다시 시도해 주세요",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.black54,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF91A88C),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      stopMonitoring();
+                    },
+                    child: const Text(
+                      "확인",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> startCalibration() async {
@@ -103,9 +299,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
     calibAccZList.clear();
 
     setState(() {
-      isCalibrating    = true;
+      isCalibrating = true;
       calibrationTimer = 3;
-      isBadPosture     = false;
+      isBadPosture = false;
     });
 
     await _ble.sendCommand("CALIB_START");
@@ -124,9 +320,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
   Future<void> startMonitoring() async {
     setState(() {
-      isCalibrating      = false;
-      isMonitoring       = true;
-      monitoringSeconds  = 0;
+      isCalibrating = false;
+      isMonitoring = true;
+      monitoringSeconds = 0;
       _prevPostureResult = 'normal';
     });
 
@@ -143,19 +339,20 @@ class _HomeViewContentState extends State<HomeViewContent> {
         accZ: lastAccZ,
         level: _level,
       );
+
+      if (!isMonitoring) return;
+
       final newPostureResult = result["postureResult"] as String;
-      final estimatedCva     = result["estimatedCva"] as double;
-      final isBad            = result["isWarning"] as bool;
+      final estimatedCva = result["estimatedCva"] as double;
+      final isBad = result["isWarning"] as bool;
 
       if (newPostureResult == "warning") {
-        debugPrint("🚨 경고! CVA: $estimatedCva | 진동 울림");
+        await _ble.sendCommand("VIBRATE");
+        await Future.delayed(const Duration(milliseconds: 150));
+        await _ble.sendCommand("VIBRATE");
+        await Future.delayed(const Duration(milliseconds: 150));
         await _ble.sendCommand("VIBRATE");
       } else if (newPostureResult == "caution") {
-        debugPrint("⚠️ 주의! CVA: $estimatedCva | 진동 연속 울림");
-        await _ble.sendCommand("VIBRATE");
-        await Future.delayed(const Duration(milliseconds: 150));
-        await _ble.sendCommand("VIBRATE");
-        await Future.delayed(const Duration(milliseconds: 150));
         await _ble.sendCommand("VIBRATE");
       } else {
         debugPrint("✅ 자세 정상 | CVA: $estimatedCva");
@@ -167,20 +364,19 @@ class _HomeViewContentState extends State<HomeViewContent> {
         _worstPostureInMinute = 'caution';
       }
 
-      final now        = DateTime.now();
-      final timeStr    = "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}";
-      final rawTimeStr = "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}:${now.second.toString().padLeft(2,'0')}";
+      final now = DateTime.now();
+      final timeStr = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+      final rawTimeStr = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
 
       setState(() {
-        postureResult    = newPostureResult;
-        isBadPosture     = isBad || newPostureResult == "caution" || newPostureResult == "warning";
+        postureResult = newPostureResult;
+        isBadPosture = isBad || newPostureResult == "caution" || newPostureResult == "warning";
         lastEstimatedCva = estimatedCva;
 
-        cvaSum   += estimatedCva;
+        cvaSum += estimatedCva;
         cvaCount++;
         totalDuration++;
 
-        // ✅ 전환될 때만 카운트
         if (newPostureResult == "warning" && _prevPostureResult != "warning") {
           warningCount++;
         } else if (newPostureResult == "caution" && _prevPostureResult != "caution") {
@@ -190,7 +386,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
         }
         _prevPostureResult = newPostureResult;
 
-        // 매초 raw 데이터 저장
         rawTimeHistory.add(rawTimeStr);
         accXHistory.add(lastAccX);
         accYHistory.add(lastAccY);
@@ -198,7 +393,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
         cvaRawHistory.add(estimatedCva);
         postureRawHistory.add(newPostureResult);
 
-        // 분 단위 요약
         if (now.second == 0 || cvaHistory.isEmpty) {
           cvaHistory.add(estimatedCva);
           timeHistory.add(timeStr);
@@ -213,18 +407,13 @@ class _HomeViewContentState extends State<HomeViewContent> {
     final cleanData = data.trim();
     if (cleanData.isEmpty) return;
 
-    debugPrint("📥 BLE 수신: $cleanData");
-
     if (cleanData.startsWith("CALIB_DONE")) {
       final parts = cleanData.replaceFirst("CALIB_DONE:", "").split(',');
       if (parts.length >= 3) {
         final avgX = double.tryParse(parts[0]) ?? 0.0;
         final avgY = double.tryParse(parts[1]) ?? 0.0;
         final avgZ = double.tryParse(parts[2]) ?? 0.0;
-        debugPrint("📊 캘리브레이션 완료 | avgX: $avgX, avgY: $avgY, avgZ: $avgZ");
-        _api.sendCalibration(avgX, avgY, avgZ).then((result) {
-          debugPrint("📡 캘리브레이션 서버 응답: ${result['statusCode']} | ${result['body']}");
-        });
+        _api.sendCalibration(avgX, avgY, avgZ);
       }
       startMonitoring();
       return;
@@ -257,39 +446,38 @@ class _HomeViewContentState extends State<HomeViewContent> {
     dailyApiTimer?.cancel();
 
     setState(() {
-      isMonitoring          = false;
-      isCalibrating         = false;
-      isBadPosture          = false;
-      postureResult         = 'normal';
+      isMonitoring = false;
+      isCalibrating = false;
+      isBadPosture = false;
+      postureResult = 'normal';
       _worstPostureInMinute = 'normal';
-      _prevPostureResult    = 'normal';
+      _prevPostureResult = 'normal';
     });
 
     await _ble.sendCommand("STOP");
     await _ble.stopNotify();
 
     if (cvaHistory.isNotEmpty) {
-      final today   = DateTime.now();
-      final dateKey = "${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}";
-      final avgCva  = cvaCount > 0 ? cvaSum / cvaCount : 0.0;
+      final today = DateTime.now();
+      final dateKey = "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
+      final avgCva = cvaCount > 0 ? cvaSum / cvaCount : 0.0;
 
-      // ✅ 기존 데이터 불러와서 합산
       final existingData = await DailyReportStorage.loadHistory(dateKey);
 
-      final prevWarningCount      = existingData?['warningCount']    ?? 0;
-      final prevCautionCount      = existingData?['cautionCount']    ?? 0;
-      final prevNormalDuration    = existingData?['normalDuration']  ?? 0;
-      final prevDuration          = existingData?['duration']        ?? 0;
-      final prevAvgCva            = (existingData?['avgCva'] ?? 0.0).toDouble();
+      final prevWarningCount = existingData?['warningCount'] ?? 0;
+      final prevCautionCount = existingData?['cautionCount'] ?? 0;
+      final prevNormalDuration = existingData?['normalDuration'] ?? 0;
+      final prevDuration = existingData?['duration'] ?? 0;
+      final prevAvgCva = (existingData?['avgCva'] ?? 0.0).toDouble();
 
-      final prevCvaHistory        = List<double>.from(existingData?['cvaHistory']        ?? []);
-      final prevTimeHistory       = List<String>.from(existingData?['timeHistory']       ?? []);
-      final prevPostureHistory    = List<String>.from(existingData?['postureHistory']    ?? []);
-      final prevAccXHistory       = List<double>.from(existingData?['accXHistory']       ?? []);
-      final prevAccYHistory       = List<double>.from(existingData?['accYHistory']       ?? []);
-      final prevAccZHistory       = List<double>.from(existingData?['accZHistory']       ?? []);
-      final prevRawTimeHistory    = List<String>.from(existingData?['rawTimeHistory']    ?? []);
-      final prevCvaRawHistory     = List<double>.from(existingData?['cvaRawHistory']     ?? []);
+      final prevCvaHistory = List<double>.from(existingData?['cvaHistory'] ?? []);
+      final prevTimeHistory = List<String>.from(existingData?['timeHistory'] ?? []);
+      final prevPostureHistory = List<String>.from(existingData?['postureHistory'] ?? []);
+      final prevAccXHistory = List<double>.from(existingData?['accXHistory'] ?? []);
+      final prevAccYHistory = List<double>.from(existingData?['accYHistory'] ?? []);
+      final prevAccZHistory = List<double>.from(existingData?['accZHistory'] ?? []);
+      final prevRawTimeHistory = List<String>.from(existingData?['rawTimeHistory'] ?? []);
+      final prevCvaRawHistory = List<double>.from(existingData?['cvaRawHistory'] ?? []);
       final prevPostureRawHistory = List<String>.from(existingData?['postureRawHistory'] ?? []);
 
       final prevCvaCount = prevCvaHistory.length;
@@ -298,34 +486,34 @@ class _HomeViewContentState extends State<HomeViewContent> {
           : avgCva;
 
       await DailyReportStorage.saveHistory(
-        date              : dateKey,
-        cvaHistory        : [...prevCvaHistory,        ...cvaHistory],
-        timeHistory       : [...prevTimeHistory,       ...timeHistory],
-        postureHistory    : [...prevPostureHistory,    ...postureHistory],
-        avgCva            : mergedAvgCva,
-        warningCount      : prevWarningCount   + warningCount,
-        cautionCount      : prevCautionCount   + cautionCount,
-        duration          : prevDuration       + totalDuration,
-        normalDuration    : prevNormalDuration + normalDuration,
-        accXHistory       : [...prevAccXHistory,       ...accXHistory],
-        accYHistory       : [...prevAccYHistory,       ...accYHistory],
-        accZHistory       : [...prevAccZHistory,       ...accZHistory],
-        rawTimeHistory    : [...prevRawTimeHistory,    ...rawTimeHistory],
-        cvaRawHistory     : [...prevCvaRawHistory,     ...cvaRawHistory],
-        postureRawHistory : [...prevPostureRawHistory, ...postureRawHistory],
+        date: dateKey,
+        cvaHistory: [...prevCvaHistory, ...cvaHistory],
+        timeHistory: [...prevTimeHistory, ...timeHistory],
+        postureHistory: [...prevPostureHistory, ...postureHistory],
+        avgCva: mergedAvgCva,
+        warningCount: prevWarningCount + warningCount,
+        cautionCount: prevCautionCount + cautionCount,
+        duration: prevDuration + totalDuration,
+        normalDuration: prevNormalDuration + normalDuration,
+        accXHistory: [...prevAccXHistory, ...accXHistory],
+        accYHistory: [...prevAccYHistory, ...accYHistory],
+        accZHistory: [...prevAccZHistory, ...accZHistory],
+        rawTimeHistory: [...prevRawTimeHistory, ...rawTimeHistory],
+        cvaRawHistory: [...prevCvaRawHistory, ...cvaRawHistory],
+        postureRawHistory: [...prevPostureRawHistory, ...postureRawHistory],
       );
-      debugPrint("✅ Hive 저장 완료: $dateKey | 평균CVA: $mergedAvgCva | 경고: ${prevWarningCount + warningCount} | 주의: ${prevCautionCount + cautionCount}");
+      debugPrint("✅ Hive 저장 완료: $dateKey");
     }
 
     _showSnackBar("측정 결과가 저장되었어요");
 
     setState(() {
-      monitoringSeconds  = 0;
-      calibrationTimer   = 3;
-      lastAccX           = 0.0;
-      lastAccY           = 0.0;
-      lastAccZ           = 0.0;
-      lastEstimatedCva   = 0.0;
+      monitoringSeconds = 0;
+      calibrationTimer = 3;
+      lastAccX = 0.0;
+      lastAccY = 0.0;
+      lastAccZ = 0.0;
+      lastEstimatedCva = 0.0;
       cvaHistory.clear();
       timeHistory.clear();
       postureHistory.clear();
@@ -335,12 +523,12 @@ class _HomeViewContentState extends State<HomeViewContent> {
       rawTimeHistory.clear();
       cvaRawHistory.clear();
       postureRawHistory.clear();
-      cvaSum         = 0.0;
-      cvaCount       = 0;
-      warningCount   = 0;
-      cautionCount   = 0;
+      cvaSum = 0.0;
+      cvaCount = 0;
+      warningCount = 0;
+      cautionCount = 0;
       normalDuration = 0;
-      totalDuration  = 0;
+      totalDuration = 0;
     });
   }
 
@@ -398,7 +586,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                     boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
                   ),
                   child: Text(
-                    "월간 거북목 측정하러 가기 >",
+                    "월간 측정하러 가기 >",
                     style: TText.caption.copyWith(color: TColor.darkGreen, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -418,14 +606,19 @@ class _HomeViewContentState extends State<HomeViewContent> {
                   ),
                   Row(
                     children: [
-                      const Icon(Icons.battery_3_bar, color: TColor.gray, size: 20),
-                      const SizedBox(width: 4),
-                      // ✅ 실제 배터리 잔량 표시
-                      Text(
-                        _ble.isDeviceReady ? "$_batteryPercent%" : "--%",
-                        style: TText.caption,
-                      ),
-                      const SizedBox(width: 8),
+                      if (_ble.isDeviceReady && _batteryPercent != null) ...[
+                        Icon(
+                          (_batteryPercent! >= 75) ? Icons.battery_full : 
+                          (_batteryPercent! >= 50) ? Icons.battery_5_bar : 
+                          (_batteryPercent! >= 25) ? Icons.battery_3_bar : 
+                          (_batteryPercent! >= 10) ? Icons.battery_1_bar : Icons.battery_alert,
+                          color: (_batteryPercent! <= 20) ? Colors.red : TColor.gray,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 4),
+                        Text("$_batteryPercent%", style: TText.caption),
+                        const SizedBox(width: 8),
+                      ],
                       Icon(
                         _ble.isDeviceReady ? Icons.bluetooth_connected : Icons.bluetooth_searching,
                         color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray,
@@ -434,10 +627,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                       const SizedBox(width: 2),
                       Text(
                         _ble.isDeviceReady ? "기기 연결됨" : "기기 탐색 중",
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray,
-                        ),
+                        style: TextStyle(fontSize: 11, color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray),
                       ),
                     ],
                   ),
@@ -501,19 +691,15 @@ class _HomeViewContentState extends State<HomeViewContent> {
                               ? 'assets/surprised_turtle.png'
                               : 'assets/normal_turtle.png',
                       width: 280,
-                      errorBuilder: (_, __, ___) => Image.asset(
-                        'assets/normal_turtle.png',
-                        width: 280,
-                        errorBuilder: (_, __, ___) => const SizedBox(),
-                      ),
+                      errorBuilder: (_, __, ___) => Image.asset('assets/normal_turtle.png', width: 280),
                     ),
             ),
           ),
-          Text("거북목 교정 중에는 터틀훅을 착용해주세요", style: TText.caption),
+          Text("거북목 교정을 하는 동안 터틀훅을 꼭 착용해 주세요", style: TText.caption),
           const SizedBox(height: 16),
           ElevatedButton(
             style: T_MainButtonStyle,
-            onPressed: isMonitoring ? stopMonitoring : startCalibration,
+            onPressed: isMonitoring ? _showStopConfirmDialog : startCalibration,
             child: Text(
               isMonitoring ? "자세 교정 종료하기" : "자세 교정 시작하기",
               style: TText.button,
