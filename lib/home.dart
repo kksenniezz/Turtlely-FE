@@ -71,18 +71,31 @@ class _HomeViewContentState extends State<HomeViewContent> {
   @override
   void initState() {
     super.initState();
-    _ble.onDeviceReadyChanged = (ready) {
+    _ble.onDeviceReadyChanged = (ready) async {
       if (!mounted) return;
       setState(() {});
-      if (!ready && isMonitoring) {
-        _showDisconnectDialog();
+
+      if (!ready) {
+        // 측정 중 연결이 끊긴 경우 팝업 안내
+        if (isMonitoring) {
+          _showDisconnectDialog();
+        }
+
+        // ★ 연결 끊김 감지 시 3초 후 자동으로 스캔/재연결 시도 ★
+        await Future.delayed(const Duration(seconds: 3));
+        if (mounted && !_ble.isDeviceReady) {
+          debugPrint("🔄 BLE 기기 자동 재연결 시도...");
+          _ble.init();
+        }
       }
     };
+
     _ble.onBatteryChanged = (batt) {
       if (!mounted) return;
       setState(() => _batteryPercent = batt);
       _checkBatteryLevelAndNotify(batt); // ★ 배터리 20% 이하 감지 시 로컬 알림 생성 ★
     };
+
     _ble.init();
 
     _storage.read(key: 'accessToken').then((token) {
@@ -118,7 +131,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
     }
   }
 
-  // 팝업 1: 자세 교정 종료 확인 다이얼로그 (HomeView-5)
+  // 팝업 1: 자세 교정 종료 확인 다이얼로그
   void _showStopConfirmDialog() {
     showDialog(
       context: context,
@@ -217,7 +230,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
     );
   }
 
-  // 팝업 2: 블루투스 연결 끊김 안내 다이얼로그 (HomeView-6)
+  // 팝업 2: 블루투스 연결 끊김 안내 다이얼로그
   void _showDisconnectDialog() {
     showDialog(
       context: context,
@@ -288,12 +301,25 @@ class _HomeViewContentState extends State<HomeViewContent> {
     );
   }
 
+  // 캘리브레이션 시작 로직: 전원 꺼짐 실시간 감지
   Future<void> startCalibration() async {
+    // 1. 기본 연결 상태 체크
     if (!_ble.isDeviceReady || _ble.targetCharacteristic == null) {
-      _showSnackBar("기기가 연결되지 않았어요");
+      _showSnackBar("기기가 연결되지 않았어요. 전원을 확인해 주세요.");
       return;
     }
 
+    // 2. 타이머를 띄우기 '전'에 실제 통신을 시도하여 전원 상태 검증
+    try {
+      await _ble.sendCommand("CALIB_START");
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar("기기와 연결할 수 없어요. 전원이 켜져 있는지 확인해 주세요.");
+      }
+      return; // 에러 발생 시 타이머 및 화면 전환 동작 중단
+    }
+
+    // 3. 통신 성공 시에만 캘리브레이션 타이머 시작
     calibAccXList.clear();
     calibAccYList.clear();
     calibAccZList.clear();
@@ -303,8 +329,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
       calibrationTimer = 3;
       isBadPosture = false;
     });
-
-    await _ble.sendCommand("CALIB_START");
 
     monitorTimer?.cancel();
     monitorTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -454,8 +478,12 @@ class _HomeViewContentState extends State<HomeViewContent> {
       _prevPostureResult = 'normal';
     });
 
-    await _ble.sendCommand("STOP");
-    await _ble.stopNotify();
+    if (_ble.isDeviceReady) {
+      try {
+        await _ble.sendCommand("STOP");
+        await _ble.stopNotify();
+      } catch (_) {}
+    }
 
     if (cvaHistory.isNotEmpty) {
       final today = DateTime.now();

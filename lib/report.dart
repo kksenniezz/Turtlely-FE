@@ -28,9 +28,9 @@ class _ReportViewState extends State<ReportView> {
   List<dynamic> _calendarReports = [];
 
   int?    _selectedScore;
-  double  _avgCva        = 0.0;
-  int     _warningCount  = 0;
-  int     _cautionCount  = 0;
+  double  _avgCva         = 0.0;
+  int     _warningCount   = 0;
+  int     _cautionCount   = 0;
   List<double> _cvaHistory     = [];
   List<String> _timeHistory    = [];
   List<String> _postureHistory = [];
@@ -41,8 +41,26 @@ class _ReportViewState extends State<ReportView> {
   List<Map<String, dynamic>> _processedGraphData = [];
   Map<String, dynamic>? _selectedPoint;
 
-  // 나의 개인 보정/기준 각도 (기본값)
-  double _myBaseCva = 50.0; 
+  // ★ 사용자 개별 설정값 ★
+  double _myBaseCva = 52.0;    // 월간 측정에서 나온 개인 기준 각도
+  String _selectedLevel = 'normal'; // 난이도 ('easy', 'normal', 'hard')
+
+  // 이탈 각도 기준 산출 함수
+  Map<String, double> getThresholds(String level, double baseCva) {
+    double cautionOffset;
+    if (level == 'hard') {
+      cautionOffset = 2.0;
+    } else if (level == 'easy') {
+      cautionOffset = 8.0;
+    } else {
+      cautionOffset = 5.0; // normal
+    }
+
+    return {
+      'cautionY': baseCva - cautionOffset, // 주의 임계 각도
+      'warningY': baseCva - 15.0,         // 경고 임계 각도 (공통 15도)
+    };
+  }
 
   @override
   void initState() {
@@ -183,12 +201,11 @@ class _ReportViewState extends State<ReportView> {
     });
   }
 
-  // ★ [수정 핵심] 날짜 선택 시 뷰 인덱스 전환 및 데이터 즉시 로드 ★
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
     setState(() {
       _selectedDay    = selectedDay;
       _focusedDay     = focusedDay;
-      _viewIndex      = 0; // 👈 월간 달력에서 클릭하더라도 리포트 화면으로 즉시 화면 전환!
+      _viewIndex      = 0;
       _selectedScore  = null;
       _avgCva         = 0.0;
       _cvaHistory     = [];
@@ -341,6 +358,13 @@ class _ReportViewState extends State<ReportView> {
     final double screenHeight = MediaQuery.of(context).size.height;
     final double imageHeight  = screenHeight * 0.25;
 
+    final thresholds = getThresholds(_selectedLevel, _myBaseCva);
+    final double cautionY = thresholds['cautionY']!;
+    final double warningY = thresholds['warningY']!;
+
+    bool isNormal  = _avgCva >= cautionY;
+    bool isCaution = _avgCva < cautionY && _avgCva >= warningY;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -439,18 +463,18 @@ class _ReportViewState extends State<ReportView> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: _avgCva >= 53 ? const Color(0xFFE8F5E9) : _avgCva >= 45 ? const Color(0xFFFFF3E0) : const Color(0xFFFCEBEB),
+                        color: isNormal ? const Color(0xFFE8F5E9) : isCaution ? const Color(0xFFFFF3E0) : const Color(0xFFFCEBEB),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        _avgCva >= 53 ? "정상" : _avgCva >= 45 ? "주의" : "경고",
+                        isNormal ? "정상" : isCaution ? "주의" : "경고",
                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
-                          color: _avgCva >= 53 ? const Color(0xFF1D9E75) : _avgCva >= 45 ? const Color(0xFFFF9800) : const Color(0xFFE24B4A)),
+                          color: isNormal ? const Color(0xFF1D9E75) : isCaution ? const Color(0xFFFF9800) : const Color(0xFFE24B4A)),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _avgCva >= 53 ? "바른 자세를 유지하고 있어요!" : _avgCva >= 45 ? "목 각도에 주의가 필요해요" : "거북목 위험 구간이에요",
+                      isNormal ? "바른 자세를 유지하고 있어요!" : isCaution ? "목 각도에 주의가 필요해요" : "거북목 위험 구간이에요",
                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
@@ -518,7 +542,7 @@ class _ReportViewState extends State<ReportView> {
                     const SizedBox(width: 6),
                     Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle)),
                     const SizedBox(width: 2),
-                    const Text("나의 기준", style: TextStyle(fontSize: 9, color: Colors.blueAccent)),
+                    Text("나의 기준(${_myBaseCva.toInt()}°)", style: const TextStyle(fontSize: 9, color: Colors.blueAccent)),
                     const SizedBox(width: 6),
                     Container(width: 8, height: 8, decoration: const BoxDecoration(color: Color(0xFF33691E), shape: BoxShape.circle)),
                     const SizedBox(width: 2),
@@ -557,6 +581,7 @@ class _ReportViewState extends State<ReportView> {
                             data: _processedGraphData,
                             selectedPoint: _selectedPoint,
                             myBaseCva: _myBaseCva,
+                            selectedLevel: _selectedLevel,
                           ),
                         ),
                       ),
@@ -630,7 +655,7 @@ class _ReportViewState extends State<ReportView> {
                       headerVisible: false, 
                       daysOfWeekVisible: false, 
                       selectedDayPredicate: (day) => isSameDay(_selectedDay, day), 
-                      onDaySelected: _onDaySelected, // 클릭 시 _viewIndex = 0 으로 바꾸어 리포트 화면으로 즉시 전환!
+                      onDaySelected: _onDaySelected, 
                       calendarBuilders: _customBuilders(),
                     ),
                   ],
@@ -663,12 +688,30 @@ class CorrectedCvaChartPainter extends CustomPainter {
   final List<Map<String, dynamic>> data;
   final Map<String, dynamic>? selectedPoint;
   final double myBaseCva;
+  final String selectedLevel;
 
   CorrectedCvaChartPainter({
     required this.data, 
     this.selectedPoint,
     required this.myBaseCva,
+    required this.selectedLevel,
   });
+
+  Map<String, double> getThresholds(String level, double baseCva) {
+    double cautionOffset;
+    if (level == 'hard') {
+      cautionOffset = 2.0;
+    } else if (level == 'easy') {
+      cautionOffset = 8.0;
+    } else {
+      cautionOffset = 5.0; // normal
+    }
+
+    return {
+      'cautionY': baseCva - cautionOffset,
+      'warningY': baseCva - 15.0,
+    };
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -679,30 +722,36 @@ class CorrectedCvaChartPainter extends CustomPainter {
     final double chartH = size.height - padT - padB;
 
     const double minVal = 30.0;
-    const double maxVal = 90.0;
+    const double maxVal = 70.0;
 
     double toX(int i) => padL + (i * chartW / math.max(data.length - 1, 1));
-    double toY(double v) => padT + (1 - (v - minVal) / (maxVal - minVal)) * chartH;
+    
+    double toY(double v) {
+      double clampedV = v.clamp(minVal, maxVal);
+      return padT + (1 - (clampedV - minVal) / (maxVal - minVal)) * chartH;
+    }
 
-    // 1. 영역별 색상 띠 배경
+    final thresholds = getThresholds(selectedLevel, myBaseCva);
+    final double cautionY = thresholds['cautionY']!;
+    final double warningY = thresholds['warningY']!;
+
     final paintZone = Paint()..style = PaintingStyle.fill;
     
     canvas.drawRect(
-      Rect.fromLTRB(padL, toY(maxVal), padL + chartW, toY(myBaseCva)),
+      Rect.fromLTRB(padL, toY(maxVal), padL + chartW, toY(cautionY)),
       paintZone..color = const Color(0xFFC8E6C9).withOpacity(0.4),
     );
     canvas.drawRect(
-      Rect.fromLTRB(padL, toY(myBaseCva), padL + chartW, toY(45)),
+      Rect.fromLTRB(padL, toY(cautionY), padL + chartW, toY(warningY)),
       paintZone..color = const Color(0xFFFFE0B2).withOpacity(0.5),
     );
     canvas.drawRect(
-      Rect.fromLTRB(padL, toY(45), padL + chartW, toY(minVal)),
+      Rect.fromLTRB(padL, toY(warningY), padL + chartW, toY(minVal)),
       paintZone..color = const Color(0xFFFFCDD2).withOpacity(0.5),
     );
 
-    // 2. Y축 눈금선
     final gridPaint = Paint()..color = Colors.grey.withOpacity(0.2)..strokeWidth = 0.5;
-    for (double v in [30.0, 50.0, 70.0, 90.0]) {
+    for (double v in [30.0, 40.0, 50.0, 60.0, 70.0]) {
       canvas.drawLine(Offset(padL, toY(v)), Offset(padL + chartW, toY(v)), gridPaint);
       final tp = TextPainter(
         text: TextSpan(text: "${v.toInt()}°", style: const TextStyle(color: Colors.grey, fontSize: 9)),
@@ -711,14 +760,12 @@ class CorrectedCvaChartPainter extends CustomPainter {
       tp.paint(canvas, Offset(4, toY(v) - 5));
     }
 
-    // 3-A. 정상 53° 회색 선
     final normalGuideLinePaint = Paint()
-      ..color = Colors.grey.shade500
-      ..strokeWidth = 1.2
+      ..color = Colors.grey.shade400
+      ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(padL, toY(53)), Offset(padL + chartW, toY(53)), normalGuideLinePaint);
+    canvas.drawLine(Offset(padL, toY(53.0)), Offset(padL + chartW, toY(53.0)), normalGuideLinePaint);
 
-    // 3-B. 나의 기준 파란 점선
     final myBaseGuideLinePaint = Paint()
       ..color = Colors.blueAccent
       ..strokeWidth = 1.5
@@ -736,7 +783,6 @@ class CorrectedCvaChartPainter extends CustomPainter {
       currentX += dashW + dashS;
     }
 
-    // 4. 데이터 꺾은선 & 점선
     final linePaint = Paint()
       ..color = const Color(0xFF33691E)
       ..strokeWidth = 2.5
@@ -750,9 +796,9 @@ class CorrectedCvaChartPainter extends CustomPainter {
 
     for (int i = 0; i < data.length - 1; i++) {
       double x1 = toX(i);
-      double y1 = toY(data[i]['avgCva']);
+      double y1 = toY((data[i]['avgCva'] as double));
       double x2 = toX(i + 1);
-      double y2 = toY(data[i + 1]['avgCva']);
+      double y2 = toY((data[i + 1]['avgCva'] as double));
 
       int idxDiff = data[i + 1]['index'] - data[i]['index'];
       if (idxDiff > 10) {
@@ -766,12 +812,19 @@ class CorrectedCvaChartPainter extends CustomPainter {
       }
     }
 
-    // 5. 포인트 및 시간 텍스트
     for (int i = 0; i < data.length; i++) {
       double x = toX(i);
-      double y = toY(data[i]['avgCva']);
+      double rawCva = (data[i]['avgCva'] as double);
+      double y = toY(rawCva);
 
-      canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = const Color(0xFF33691E));
+      Color pointColor = const Color(0xFF33691E);
+      if (rawCva < minVal) {
+        pointColor = Colors.redAccent;
+      } else if (rawCva > maxVal) {
+        pointColor = Colors.orangeAccent;
+      }
+
+      canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = pointColor);
       canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.0);
 
       String t = data[i]['time'] as String;
@@ -784,12 +837,11 @@ class CorrectedCvaChartPainter extends CustomPainter {
       }
     }
 
-    // 6. 점 터치 강조
     if (selectedPoint != null) {
       int selIdx = data.indexOf(selectedPoint!);
       if (selIdx != -1) {
         double selX = toX(selIdx);
-        double selY = toY(selectedPoint!['avgCva']);
+        double selY = toY((selectedPoint!['avgCva'] as double));
 
         canvas.drawLine(Offset(selX, padT), Offset(selX, padT + chartH), Paint()..color = const Color(0xFF33691E).withOpacity(0.4)..strokeWidth = 1);
 
@@ -803,23 +855,58 @@ class CorrectedCvaChartPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
+// ------------------------------------------------------------------
+// ★ CVA (C7 귓볼 완벽 대응 및 수평선 위쪽 호 교정) Painter ★
+// ------------------------------------------------------------------
 class NeckAngleLinePainter extends CustomPainter {
   final double cvaAngle;
   NeckAngleLinePainter({required this.cvaAngle});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double cx = size.width * 0.60;
-    final double c7Y = size.height * 0.65;
-    canvas.drawLine(Offset(cx, c7Y - 60), Offset(cx, c7Y + 20), Paint()..color = Colors.grey.withOpacity(0.5)..strokeWidth = 1.5);
-    final angleRad = (90 - cvaAngle) * math.pi / 180;
-    final endX = cx - math.cos(angleRad) * 80.0;
-    final endY = c7Y - math.sin(angleRad) * 80.0;
-    canvas.drawLine(Offset(cx, c7Y), Offset(endX, endY), Paint()..color = const Color(0xFF378ADD)..strokeWidth = 3..strokeCap = StrokeCap.round);
-    canvas.drawArc(Rect.fromCenter(center: Offset(cx, c7Y), width: 50, height: 50), -math.pi / 2, -(90 - cvaAngle) * math.pi / 180, false, Paint()..color = const Color(0xFF378ADD).withOpacity(0.6)..strokeWidth = 1.5..style = PaintingStyle.stroke);
-    canvas.drawCircle(Offset(cx, c7Y), 5, Paint()..color = const Color(0xFFE24B4A));
-    final textPainter = TextPainter(text: TextSpan(text: "${cvaAngle.toStringAsFixed(1)}°", style: const TextStyle(color: Color(0xFF378ADD), fontSize: 14, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
-    textPainter.paint(canvas, Offset(cx - 60, c7Y - 50));
+    // 이미상 C7 점 정확히 조준 (빨간 점 위치)
+    final double cx = size.width * 0.62;
+    final double c7Y = size.height * 0.62;
+
+    // 1. C7 수평 기준선
+    final horizontalLinePaint = Paint()
+      ..color = Colors.grey.withOpacity(0.6)
+      ..strokeWidth = 1.2;
+    canvas.drawLine(Offset(cx - 55, c7Y), Offset(cx + 20, c7Y), horizontalLinePaint);
+
+    // 2. C7 -> 귓볼(위쪽/왼쪽) 방향 사선 계산 (Flutter Y축 반전 반영)
+    final angleRad = cvaAngle * math.pi / 180;
+    final endX = cx - math.cos(angleRad) * 60.0;
+    final endY = c7Y - math.sin(angleRad) * 60.0; // Y축 차감으로 위쪽 이동!
+
+    canvas.drawLine(
+      Offset(cx, c7Y), 
+      Offset(endX, endY), 
+      Paint()..color = const Color(0xFF378ADD)..strokeWidth = 2.5..strokeCap = StrokeCap.round,
+    );
+
+    // 3. 수평선(180°)부터 귓볼 사선 사이(위쪽 공간)의 CVA 각도 호(Arc)
+    canvas.drawArc(
+      Rect.fromCenter(center: Offset(cx, c7Y), width: 32, height: 32),
+      math.pi,     // 수평선 좌측(180°)에서 시작
+      angleRad,    // 위쪽 방향으로 cvaAngle만큼 채움
+      false,
+      Paint()..color = const Color(0xFF378ADD).withOpacity(0.8)..strokeWidth = 1.5..style = PaintingStyle.stroke,
+    );
+
+    // 4. C7 포인트 (빨간 점)
+    canvas.drawCircle(Offset(cx, c7Y), 4, Paint()..color = const Color(0xFFE24B4A));
+
+    // 5. CVA 수치 텍스트 표기
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: "${cvaAngle.toStringAsFixed(1)}°", 
+        style: const TextStyle(color: Color(0xFF378ADD), fontSize: 13, fontWeight: FontWeight.bold),
+      ), 
+      textDirection: TextDirection.ltr,
+    )..layout();
+    
+    textPainter.paint(canvas, Offset(cx - 45, c7Y - 26));
   }
 
   @override
@@ -832,11 +919,15 @@ class NeckAnglePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double cx = size.width * 0.5;
+    final double cx = size.width * 0.62;
+    final double c7Y = size.height * 0.62;
+
     final bodyPaint   = Paint()..color = const Color(0xFFE8D5C4)..style = PaintingStyle.fill;
     final bodyStroke = Paint()..color = const Color(0xFFC4A882)..style = PaintingStyle.stroke..strokeWidth = 1;
+
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.88), width: 60, height: 36), bodyPaint);
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.88), width: 60, height: 36), bodyStroke);
+
     final neckPath = Path()
       ..moveTo(cx - 12, size.height * 0.76)
       ..quadraticBezierTo(cx - 14, size.height * 0.65, cx - 12, size.height * 0.57)
@@ -845,21 +936,38 @@ class NeckAnglePainter extends CustomPainter {
       ..close();
     canvas.drawPath(neckPath, bodyPaint);
     canvas.drawPath(neckPath, bodyStroke);
+
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.42), width: 48, height: 54), bodyPaint);
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.42), width: 48, height: 54), bodyStroke);
+
     final hairPaint = Paint()..color = const Color(0xFF5C3D2E)..style = PaintingStyle.fill;
     canvas.drawOval(Rect.fromCenter(center: Offset(cx, size.height * 0.32), width: 50, height: 46), hairPaint);
     canvas.drawCircle(Offset(cx - 6, size.height * 0.40), 3, Paint()..color = const Color(0xFF5C3D2E));
-    final c7Y = size.height * 0.65;
-    canvas.drawCircle(Offset(cx, c7Y), 5, Paint()..color = const Color(0xFFE24B4A));
-    canvas.drawLine(Offset(cx, size.height * 0.1), Offset(cx, size.height * 0.9), Paint()..color = Colors.grey.withOpacity(0.25)..strokeWidth = 1);
-    final angleRad = (90 - cvaAngle) * math.pi / 180;
-    final endX = cx - math.cos(angleRad) * 60.0;
-    final endY = c7Y - math.sin(angleRad) * 60.0;
+
+    canvas.drawCircle(Offset(cx, c7Y), 4, Paint()..color = const Color(0xFFE24B4A));
+
+    // 수평선
+    canvas.drawLine(Offset(cx - 50, c7Y), Offset(cx + 20, c7Y), Paint()..color = Colors.grey.withOpacity(0.4)..strokeWidth = 1);
+
+    final angleRad = cvaAngle * math.pi / 180;
+    final endX = cx - math.cos(angleRad) * 55.0;
+    final endY = c7Y - math.sin(angleRad) * 55.0;
+
     canvas.drawLine(Offset(cx, c7Y), Offset(endX, endY), Paint()..color = const Color(0xFF378ADD)..strokeWidth = 2..strokeCap = StrokeCap.round);
-    canvas.drawArc(Rect.fromCenter(center: Offset(cx, c7Y), width: 40, height: 40), -math.pi / 2, -angleRad, false, Paint()..color = const Color(0xFF378ADD).withOpacity(0.6)..strokeWidth = 1.5..style = PaintingStyle.stroke);
-    final textPainter = TextPainter(text: TextSpan(text: "${cvaAngle.toStringAsFixed(1)}°", style: const TextStyle(color: Color(0xFF378ADD), fontSize: 13, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
-    textPainter.paint(canvas, Offset(cx + 14, c7Y - 28));
+    
+    canvas.drawArc(
+      Rect.fromCenter(center: Offset(cx, c7Y), width: 32, height: 32), 
+      math.pi, 
+      angleRad, 
+      false, 
+      Paint()..color = const Color(0xFF378ADD).withOpacity(0.6)..strokeWidth = 1.2..style = PaintingStyle.stroke,
+    );
+
+    final textPainter = TextPainter(
+      text: TextSpan(text: "${cvaAngle.toStringAsFixed(1)}°", style: const TextStyle(color: Color(0xFF378ADD), fontSize: 12, fontWeight: FontWeight.bold)), 
+      textDirection: TextDirection.ltr,
+    )..layout();
+    textPainter.paint(canvas, Offset(cx - 40, c7Y - 22));
   }
 
   @override
