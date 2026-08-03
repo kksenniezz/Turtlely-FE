@@ -16,7 +16,8 @@ class VisionPage extends StatefulWidget {
 }
 
 class _VisionPageState extends State<VisionPage> {
-  int step =0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
+  int step =
+      0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
   int? monthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
@@ -101,46 +102,49 @@ class _VisionPageState extends State<VisionPage> {
     int count = 0;
 
     _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-    
-    setState(() {
-      count++;
-      loadingDots = "." * (count % 4);
-    });
+      setState(() {
+        count++;
+        loadingDots = "." * (count % 4);
+      });
 
-    if (!_mediaPipeService.isInitialized || _mediaPipeService.cameraController == null) {
-      print("카메라 준비 중입니다.");
-      return;
-    }
-
-    if (count == 3) {
-      timer.cancel();
-      await _monthlyBle.sendCommand("STOP");
-      debugPrint("📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}");
-      final response = await _mediaPipeService.sendBatchVisionData();
-      if (!mounted) return;
-      if (response["success"] == true) {
-        final result = response["result"];
-        setState(() {
-          if (result != null) {
-            monthlyId = result["monthly_id"];
-          }
-          step = 5;
-        });
-      } else {
-        print("측정 실패: ${response["code"]} / ${response["message"]}");
-        setState(() => step = 8);
+      if (!_mediaPipeService.isInitialized ||
+          _mediaPipeService.cameraController == null) {
+        print("카메라 준비 중입니다.");
+        return;
       }
-    }
-  });
+
+      if (count == 3) {
+        timer.cancel();
+        await _monthlyBle.sendCommand("STOP");
+        debugPrint(
+          "📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}",
+        );
+        final response = await _mediaPipeService.sendBatchVisionData();
+        if (!mounted) return;
+        if (response["success"] == true) {
+          final result = response["result"];
+          setState(() {
+            if (result != null) {
+              monthlyId = result["monthly_id"];
+            }
+            step = 5;
+          });
+        } else {
+          print("측정 실패: ${response["code"]} / ${response["message"]}");
+          setState(() => step = 8);
+        }
+      }
+    });
   }
 
   String _getStepText() {
     switch (step) {
       case 0:
-        return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!";
-      case 1: return _bleReady 
-        ? "터틀훅이 연결되었어요!\n다음을 눌러주세요" 
-        : "거북목 측정을 위해\n터틀훅을 연결해 주세요";
+        return "안녕하세요 \n월간 측정에 \n오신 것을 환영합니다!";
+      case 1:
+        return _bleReady
+            ? "터틀훅이 연결되었어요!\n다음을 눌러주세요"
+            : "거북목 측정을 위해\n터틀훅을 연결해 주세요";
       case 2:
         return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 3:
@@ -148,11 +152,11 @@ class _VisionPageState extends State<VisionPage> {
       case 4:
         return "거북목 측정중 $loadingDots";
       case 5:
-        return "월간 거북목 측정이 \n완료되었습니다!";
+        return "월간 측정이 \n완료되었습니다!";
       case 6:
-        return "월간 거북목 측정 결과는 \n월간 리포트에서 확인해 주세요";
+        return "월간 측정 결과는 \n월간 리포트에서 확인해 주세요";
       case 7:
-        return "종료 버튼을 누르면 \n월간 거북목 측정이 종료됩니다 \n다음 달에 다시 만나요!";
+        return "종료 버튼을 누르면 \n월간 측정이 종료됩니다 \n다음 달에 다시 만나요!";
       case 8:
         return "거북목 측정이 어렵습니다 \n다시 시도해 주세요";
       default:
@@ -180,7 +184,7 @@ class _VisionPageState extends State<VisionPage> {
           onPressed: () => _showExitDialog(context),
         ),
         title: const Text(
-          "월간 거북목 측정",
+          "월간 측정",
           style: TextStyle(
             color: Colors.black,
             fontSize: 18,
@@ -660,7 +664,7 @@ void _showExitDialog(BuildContext context) {
               const Padding(
                 padding: EdgeInsets.only(top: 50, left: 20, right: 20),
                 child: Text(
-                  '월간 거북목 측정을 종료하시겠습니까?\n\n현재 측정은 저장되지 않습니다',
+                  '월간 측정을 종료하시겠습니까?\n\n현재 측정은 저장되지 않습니다',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
