@@ -105,10 +105,7 @@ class _VisionPageState extends State<VisionPage> {
       AudioContext(
         iOS: AudioContextIOS(
           category: AVAudioSessionCategory.playback,
-          options: {
-            AVAudioSessionOptions.mixWithOthers,
-            AVAudioSessionOptions.defaultToSpeaker,
-          },
+          options: {AVAudioSessionOptions.mixWithOthers},
         ),
         android: AudioContextAndroid(
           contentType: AndroidContentType.music,
