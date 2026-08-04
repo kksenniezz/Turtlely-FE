@@ -7,7 +7,12 @@ import 'vision.dart';
 import 'ble_service.dart';
 import 'posture_api_service.dart';
 import 'daily_report_storage.dart';
-import 'main.dart'; // localNotifications, hasUnreadNotification 연동
+import 'main.dart';
+import 'home_onboarding_dialog.dart';
+
+// ★ 홈 화면 내 특정 위젯 위치를 추적하기 위한 GlobalKey 변수 (전역 접근)
+final GlobalKey monthlyBtnKey = GlobalKey();
+final GlobalKey difficultyBtnKey = GlobalKey();
 
 class HomeViewContent extends StatefulWidget {
   const HomeViewContent({super.key});
@@ -33,7 +38,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
   String _prevPostureResult = 'normal';
   int? _batteryPercent;
-  bool _hasSentBatteryNotification = false; // 중복 알림 생성 방지 플래그
+  bool _hasSentBatteryNotification = false;
 
   List<double> cvaHistory = [];
   List<String> timeHistory = [];
@@ -76,12 +81,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
       setState(() {});
 
       if (!ready) {
-        // 측정 중 연결이 끊긴 경우 팝업 안내
         if (isMonitoring) {
           _showDisconnectDialog();
         }
 
-        // ★ 연결 끊김 감지 시 3초 후 자동으로 스캔/재연결 시도 ★
         await Future.delayed(const Duration(seconds: 3));
         if (mounted && !_ble.isDeviceReady) {
           debugPrint("🔄 BLE 기기 자동 재연결 시도...");
@@ -93,7 +96,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
     _ble.onBatteryChanged = (batt) {
       if (!mounted) return;
       setState(() => _batteryPercent = batt);
-      _checkBatteryLevelAndNotify(batt); // ★ 배터리 20% 이하 감지 시 로컬 알림 생성 ★
+      _checkBatteryLevelAndNotify(batt);
     };
 
     _ble.init();
@@ -101,20 +104,26 @@ class _HomeViewContentState extends State<HomeViewContent> {
     _storage.read(key: 'accessToken').then((token) {
       debugPrint("🔑 accessToken: $token");
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      HomeOnboardingDialog.checkAndShow(
+        context,
+        userName: "사용자",
+        onComplete: () {
+          debugPrint("홈 온보딩 완료!");
+        },
+      );
+    });
   }
 
-  // ------------------------------------------------------------------
-  // ★ 배터리 20% 이하 감지 시 프론트엔드 자체 알림 생성 로직 ★
-  // ------------------------------------------------------------------
   void _checkBatteryLevelAndNotify(int battery) {
     if (battery <= 20) {
       if (!_hasSentBatteryNotification) {
-        _hasSentBatteryNotification = true; // 1회만 알림 생성
+        _hasSentBatteryNotification = true;
 
         final now = DateTime.now();
         final timeStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
 
-        // 1. 서버 통신 없이 프론트엔드 전역 알림 리스트에 즉시 삽입
         localNotifications.insert(0, {
           "notification_id": DateTime.now().millisecondsSinceEpoch,
           "type": "BATTERY",
@@ -123,15 +132,13 @@ class _HomeViewContentState extends State<HomeViewContent> {
           "created_at": timeStr,
         });
 
-        // 2. 상단 종 아이콘에 안 읽은 알림 빨간 점 켜기
         hasUnreadNotification.value = true;
       }
     } else {
-      _hasSentBatteryNotification = false; // 충전되어 20% 초과 시 플래그 리셋
+      _hasSentBatteryNotification = false;
     }
   }
 
-  // 팝업 1: 자세 교정 종료 확인 다이얼로그
   void _showStopConfirmDialog() {
     showDialog(
       context: context,
@@ -230,7 +237,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
     );
   }
 
-  // 팝업 2: 블루투스 연결 끊김 안내 다이얼로그
   void _showDisconnectDialog() {
     showDialog(
       context: context,
@@ -301,25 +307,21 @@ class _HomeViewContentState extends State<HomeViewContent> {
     );
   }
 
-  // 캘리브레이션 시작 로직: 전원 꺼짐 실시간 감지
   Future<void> startCalibration() async {
-    // 1. 기본 연결 상태 체크
     if (!_ble.isDeviceReady || _ble.targetCharacteristic == null) {
       _showSnackBar("기기가 연결되지 않았어요. 전원을 확인해 주세요.");
       return;
     }
 
-    // 2. 타이머를 띄우기 '전'에 실제 통신을 시도하여 전원 상태 검증
     try {
       await _ble.sendCommand("CALIB_START");
     } catch (e) {
       if (mounted) {
         _showSnackBar("기기와 연결할 수 없어요. 전원이 켜져 있는지 확인해 주세요.");
       }
-      return; // 에러 발생 시 타이머 및 화면 전환 동작 중단
+      return;
     }
 
-    // 3. 통신 성공 시에만 캘리브레이션 타이머 시작
     calibAccXList.clear();
     calibAccYList.clear();
     calibAccZList.clear();
@@ -607,6 +609,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                   });
                 },
                 child: Container(
+                  key: monthlyBtnKey, // ★ [월간 측정하러 가기 >] 버튼에 GlobalKey 연결!
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -662,6 +665,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                 ],
               ),
               Row(
+                key: difficultyBtnKey, // ★ [낮음/보통/높음] 버튼 영역 전체에 GlobalKey 연결!
                 children: ['낮음', '보통', '높음'].map((level) {
                   final isSelected = selectedDifficulty == level;
                   return GestureDetector(

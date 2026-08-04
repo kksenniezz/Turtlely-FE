@@ -8,6 +8,7 @@ import 'style.dart';
 import 'monthly_report.dart';
 import 'daily_report_storage.dart';
 import 'posture_api_service.dart';
+import 'report_onboarding_dialog.dart'; // ★ 리포트 온보딩 다이얼로그 연동
 
 class ReportView extends StatefulWidget {
   const ReportView({super.key});
@@ -78,6 +79,17 @@ class _ReportViewState extends State<ReportView> {
           setState(() { _focusedDay = newDate; });
         }
       }
+    });
+
+    // ★ 화면 렌더링 완료 후 리포트 최초 1회 온보딩 팝업 노출 ★
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ReportOnboardingDialog.checkAndShow(
+        context,
+        userName: "사용자", // 필요 시 유저 닉네임 파라미터 연결
+        onComplete: () {
+          debugPrint("리포트 온보딩 완료!");
+        },
+      );
     });
   }
 
