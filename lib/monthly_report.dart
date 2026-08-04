@@ -506,7 +506,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             children: [
               TextSpan(text: "$userNickname님의 "),
               TextSpan(
-                text: "월간 거북목 측정",
+                text: "월간 측정",
                 style: const TextStyle(
                   color: TColor.darkGreen,
                   fontWeight: FontWeight.bold,
