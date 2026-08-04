@@ -16,9 +16,9 @@ class MyPageView extends StatefulWidget {
 class _MyPageViewState extends State<MyPageView> {
   final MyPageService _myPageService = MyPageService();
 
-  String nickname = "불러오는 중...";
-  String userId = "불러오는 중...";
-  double vibrationValue = 0.5;
+  String nickname = " ";
+  String userId = " ";
+  bool isVibrationOn = true;
 
   @override
   void initState() {
@@ -117,32 +117,55 @@ class _MyPageViewState extends State<MyPageView> {
                 );
               }
             }),
-            //_buildMenuItem(context, "앱 권한", () {}),
 
-            // 3. 진동 세기 조절 (슬라이더)
+            // // 3. 진동 토글
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
                     "진동",
                     style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
                   ),
-                  Slider(
-                    value: vibrationValue,
-                    activeColor: TColor.buttonGreen,
-                    inactiveColor: TColor.lightGreen,
+                  Switch(
+                    value: isVibrationOn,
+
+                    // 1. Thumb 색상: ON일 땐 buttonGreen, OFF일 땐 gray
+                    thumbColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return TColor.buttonGreen;
+                      }
+                      return Colors.grey;
+                    }),
+
+                    // 2. 테두리(Outline) 색상: ON일 땐 buttonGreen, OFF일 땐 gray
+                    trackOutlineColor: WidgetStateProperty.resolveWith((
+                      states,
+                    ) {
+                      if (states.contains(WidgetState.selected)) {
+                        return TColor.buttonGreen;
+                      }
+                      return Colors.grey;
+                    }),
+
+                    // 3. 트랙(배경) 색상: ON일 땐 buttonGreen 연하게, OFF일 땐 gray 연하게
+                    trackColor: WidgetStateProperty.resolveWith((states) {
+                      if (states.contains(WidgetState.selected)) {
+                        return TColor.buttonGreen.withOpacity(0.3);
+                      }
+                      return Colors.grey.withOpacity(0.2);
+                    }),
+
                     onChanged: (value) {
                       setState(() {
-                        vibrationValue = value;
+                        isVibrationOn = value;
                       });
                     },
                   ),
                 ],
               ),
             ),
-
             const SizedBox(height: 20),
             // 4. 로그아웃 / 탈퇴
             _buildSimpleTextButton("로그아웃", () {

@@ -171,9 +171,7 @@ class _ExerciseViewState extends State<ExerciseView> {
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => CollectionView(
-                                savedVideos: _videos.where((v) => v['isBookmarked'] == true).toList(),
-                              ),
+                              builder: (context) => CollectionView( ),
                             ),
                           );
                           _fetchVideos();
@@ -434,6 +432,7 @@ class _ExerciseViewState extends State<ExerciseView> {
     );
   }
 
+  // 북마크 API 연동
   Future<void> _toggleBookmark(Map<String, dynamic> v) async {
     final rawId = v['videoId'] ?? v['video_id'] ?? v['id'];
 

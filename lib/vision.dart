@@ -6,7 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'style.dart';
 import 'main.dart';
 import 'services/mediapipe_service.dart';
-import 'services/monthly_ble_service.dart';
+import 'package:audioplayers/audioplayers.dart';
+// import 'services/monthly_ble_service.dart';
 
 class VisionPage extends StatefulWidget {
   const VisionPage({Key? key}) : super(key: key);
@@ -16,32 +17,116 @@ class VisionPage extends StatefulWidget {
 }
 
 class _VisionPageState extends State<VisionPage> {
-  int step =0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
+  int step =
+      0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
   int? monthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
 
   final MediaPipeService _mediaPipeService = MediaPipeService();
-  final MonthlyBleService _monthlyBle = MonthlyBleService();
-  bool _bleReady = false;
+  // final MonthlyBleService _monthlyBle = MonthlyBleService();
+  // bool _bleReady = false;
   // 좌표 담을 변수들
   Offset eyePoint = Offset.zero; // 눈
   Offset earPoint = Offset.zero; // 외이도 (Tragus)
   Offset c7Point = Offset.zero; // C7 (경추 7번)
   double deviceTilt = 0.0;
 
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  Uint8List _generateBeepSound({int freq = 440, int durationMs = 150}) {
+    int sampleRate = 22050;
+    int numSamples = (sampleRate * durationMs / 1000).toInt();
+    int dataSize = numSamples * 2;
+    Uint8List bytes = Uint8List(44 + dataSize);
+    ByteData bd = ByteData.sublistView(bytes);
+
+    // WAV Header
+    bd.setUint32(0, 0x52494646, Endian.big); // "RIFF"
+    bd.setUint32(4, 36 + dataSize, Endian.little);
+    bd.setUint32(8, 0x57415645, Endian.big); // "WAVE"
+    bd.setUint32(12, 0x666d7420, Endian.big); // "fmt "
+    bd.setUint32(16, 16, Endian.little);
+    bd.setUint16(20, 1, Endian.little);
+    bd.setUint16(22, 1, Endian.little);
+    bd.setUint32(24, sampleRate, Endian.little);
+    bd.setUint32(28, sampleRate * 2, Endian.little);
+    bd.setUint16(32, 2, Endian.little);
+    bd.setUint16(34, 16, Endian.little);
+    bd.setUint32(36, 0x64617461, Endian.big); // "data"
+    bd.setUint32(40, dataSize, Endian.little);
+
+    // Waveform Generation (Sine wave)
+    for (int i = 0; i < numSamples; i++) {
+      double t = i / sampleRate;
+      double sample = math.sin(2 * math.pi * freq * t);
+      int sampleInt = (sample * 32767).toInt();
+      bd.setInt16(44 + i * 2, sampleInt, Endian.little);
+    }
+    return bytes;
+  }
+
+  // 띱- (낮은 측정 비프음: 440Hz, 0.15초)
+  Future<void> _playBeepSound() async {
+    try {
+      final bytes = _generateBeepSound(freq: 440, durationMs: 150);
+      await _audioPlayer.stop();
+      await _audioPlayer.play(BytesSource(bytes), volume: 1.0);
+    } catch (e) {
+      debugPrint("사운드 재생 에러: $e");
+    }
+  }
+
+  // 띰-! (높은 측정 성공 완료음: 880Hz, 0.35초)
+  Future<void> _playSuccessSound() async {
+    try {
+      final bytes = _generateBeepSound(freq: 880, durationMs: 350);
+      await _audioPlayer.stop();
+      await _audioPlayer.play(BytesSource(bytes), volume: 1.0);
+    } catch (e) {
+      debugPrint("성공음 재생 에러: $e");
+    }
+  }
+
+  Future<void> _playFailureSound() async {
+    try {
+      final bytes = _generateBeepSound(freq: 250, durationMs: 200);
+      await _audioPlayer.stop();
+      await _audioPlayer.play(BytesSource(bytes), volume: 1.0);
+    } catch (e) {
+      debugPrint("실패음 재생 에러: $e");
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
+    _audioPlayer.setAudioContext(
+      AudioContext(
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: {
+            AVAudioSessionOptions.mixWithOthers,
+            AVAudioSessionOptions.defaultToSpeaker,
+          },
+        ),
+        android: AudioContextAndroid(
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.media,
+          audioFocus: AndroidAudioFocus.gainTransient,
+        ),
+      ),
+    );
+
     _bootUp();
   }
 
   // 서비스의 카메라를 깨우고 좌표 스트림을 구독합니다.
   Future<void> _bootUp() async {
-    _monthlyBle.onAccelUpdated = (x, y, z) {
-      _mediaPipeService.updateHwAccel(x, y, z);
-      debugPrint("📡 accel 전달: $x, $y, $z");
-    };
+    // _monthlyBle.onAccelUpdated = (x, y, z) {
+    //   _mediaPipeService.updateHwAccel(x, y, z);
+    //   debugPrint("📡 accel 전달: $x, $y, $z");
+    // };
     // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기
     _mediaPipeService.poseStream.listen((poses) {
       if (!mounted) return;
@@ -54,10 +139,10 @@ class _VisionPageState extends State<VisionPage> {
       });
     });
 
-    _monthlyBle.onDeviceReadyChanged = (ready) {
-      if (!mounted) return;
-      setState(() => _bleReady = ready);
-    };
+    // _monthlyBle.onDeviceReadyChanged = (ready) {
+    //   if (!mounted) return;
+    //   setState(() => _bleReady = ready);
+    // };
 
     await _mediaPipeService.initializeCamera();
     if (!mounted) return;
@@ -67,8 +152,9 @@ class _VisionPageState extends State<VisionPage> {
   @override
   void dispose() {
     _dotTimer?.cancel();
+    _audioPlayer.dispose();
     _mediaPipeService.dispose();
-    _monthlyBle.dispose();
+    //_monthlyBle.dispose();
     super.dispose();
   }
 
@@ -82,77 +168,92 @@ class _VisionPageState extends State<VisionPage> {
     });
 
     // setState 후에 체크해야 step이 1이 된 상태로 확인 가능
-    if (step == 1) {
-      debugPrint("🔍 월간 BLE 스캔 시작!");
-      _monthlyBle.init();
-    }
+    // if (step == 1) {
+    //   debugPrint("🔍 월간 BLE 스캔 시작!");
+    //   _monthlyBle.init();
+    // }
   }
 
   void _startMeasurement() {
     setState(() {
       step = 4;
+      loadingDots = "";
     }); // 측정 시작 단계로 이동
 
-    _monthlyBle.sendCommand("MONTHLY_START");
+    // _monthlyBle.sendCommand("MONTHLY_START");
 
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
-    _mediaPipeService.start3SecondCapture();
 
     int count = 0;
 
     _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-    
-    setState(() {
       count++;
-      loadingDots = "." * (count % 4);
-    });
 
-    if (!_mediaPipeService.isInitialized || _mediaPipeService.cameraController == null) {
-      print("카메라 준비 중입니다.");
-      return;
-    }
-
-    if (count == 3) {
-      timer.cancel();
-      await _monthlyBle.sendCommand("STOP");
-      debugPrint("📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}");
-      final response = await _mediaPipeService.sendBatchVisionData();
-      if (!mounted) return;
-      if (response["success"] == true) {
-        final result = response["result"];
-        setState(() {
-          if (result != null) {
-            monthlyId = result["monthly_id"];
-          }
-          step = 5;
-        });
-      } else {
-        print("측정 실패: ${response["code"]} / ${response["message"]}");
-        setState(() => step = 8);
+      // [1초]: 1초 대기
+      if (count == 1) {
+        _mediaPipeService.start3SecondCapture();
       }
-    }
-  });
+
+      // [1-3초]: 띱- 비프음 재생
+      if (count >= 1 && count <= 3) {
+        _playBeepSound();
+        setState(() {
+          loadingDots = "." * (count % 4);
+        });
+      }
+
+      if (!_mediaPipeService.isInitialized ||
+          _mediaPipeService.cameraController == null) {
+        print("카메라 준비 중입니다");
+        return;
+      }
+
+      if (count == 4) {
+        timer.cancel();
+        // await _monthlyBle.sendCommand("STOP");
+        debugPrint(
+          "📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}",
+        );
+        final response = await _mediaPipeService.sendBatchVisionData();
+        if (!mounted) return;
+        if (response["success"] == true) {
+          final result = response["result"];
+          setState(() {
+            if (result != null) {
+              monthlyId = result["monthly_id"];
+            }
+            step = 5;
+          });
+          _playSuccessSound();
+        } else {
+          print("측정 실패: ${response["code"]} / ${response["message"]}");
+          setState(() => step = 8);
+          _playFailureSound();
+        }
+      }
+    });
   }
 
   String _getStepText() {
     switch (step) {
       case 0:
-        return "안녕하세요 \n월간 거북목 측정에 \n오신 것을 환영합니다!";
-      case 1: return _bleReady 
-        ? "터틀훅이 연결되었어요!\n다음을 눌러주세요" 
-        : "거북목 측정을 위해\n터틀훅을 연결해 주세요";
+        return "안녕하세요 \n월간 측정에 \n오신 것을 환영합니다!";
+      // case 1:
+      //   return _bleReady
+      //       ? "터틀훅이 연결되었어요!\n다음을 눌러주세요"
+      //       : "거북목 측정을 위해\n터틀훅을 연결해 주세요";
       case 2:
         return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
       case 3:
-        return "거북목 측정을 위해 \n3초간 자세를 유지해 주세요 \n버튼을 누르면 바로 시작됩니다!";
+        return "버튼을 누르면 \n잠시 후 시작됩니다! \n3초간 자세를 유지해 주세요";
       case 4:
         return "거북목 측정중 $loadingDots";
       case 5:
-        return "월간 거북목 측정이 \n완료되었습니다!";
+        return "월간 측정이 \n완료되었습니다!";
       case 6:
-        return "월간 거북목 측정 결과는 \n월간 리포트에서 확인해 주세요";
+        return "월간 측정 결과는 \n월간 리포트에서 확인해 주세요";
       case 7:
-        return "종료 버튼을 누르면 \n월간 거북목 측정이 종료됩니다 \n다음 달에 다시 만나요!";
+        return "종료 버튼을 누르면 \n월간 측정이 종료됩니다 \n다음 달에 다시 만나요!";
       case 8:
         return "거북목 측정이 어렵습니다 \n다시 시도해 주세요";
       default:
@@ -162,7 +263,7 @@ class _VisionPageState extends State<VisionPage> {
 
   bool _shouldShowButton() {
     if (step == 4) return false;
-    if (step == 1 && !_bleReady) return false; // BLE 연결 전엔 버튼 숨김
+    // if (step == 1 && !_bleReady) return false; // BLE 연결 전엔 버튼 숨김
     if ([7, 8].contains(step)) return false;
     return true;
   }
@@ -180,7 +281,7 @@ class _VisionPageState extends State<VisionPage> {
           onPressed: () => _showExitDialog(context),
         ),
         title: const Text(
-          "월간 거북목 측정",
+          "월간 측정",
           style: TextStyle(
             color: Colors.black,
             fontSize: 18,
@@ -660,7 +761,7 @@ void _showExitDialog(BuildContext context) {
               const Padding(
                 padding: EdgeInsets.only(top: 50, left: 20, right: 20),
                 child: Text(
-                  '월간 거북목 측정을 종료하시겠습니까?\n\n현재 측정은 저장되지 않습니다',
+                  '월간 측정을 종료하시겠습니까?\n\n현재 측정은 저장되지 않습니다',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,

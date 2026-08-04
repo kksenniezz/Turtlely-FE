@@ -10,7 +10,6 @@ import 'daily_report_storage.dart';
 import 'main.dart';
 import 'home_onboarding_dialog.dart';
 
-// ★ 홈 화면 내 특정 위젯 위치를 추적하기 위한 GlobalKey 변수 (전역 접근)
 final GlobalKey monthlyBtnKey = GlobalKey();
 final GlobalKey difficultyBtnKey = GlobalKey();
 
@@ -598,18 +597,26 @@ class _HomeViewContentState extends State<HomeViewContent> {
               ),
               GestureDetector(
                 onTap: () async {
-                  await _ble.stopNotify();
-                  await _ble.disconnect();
+                  try {
+                    await _ble.stopNotify();
+                    await _ble.disconnect();
+                  } catch (e) {
+                    debugPrint("BLE 해제 중 예외 발생 (무시하고 화면 이동): $e");
+                  }
+
                   if (!mounted) return;
+
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const VisionPage()),
                   ).then((_) {
-                    _ble.init();
+                    if (mounted) {
+                      _ble.init();
+                    }
                   });
                 },
                 child: Container(
-                  key: monthlyBtnKey, // ★ [월간 측정하러 가기 >] 버튼에 GlobalKey 연결!
+                  key: monthlyBtnKey,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -665,7 +672,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                 ],
               ),
               Row(
-                key: difficultyBtnKey, // ★ [낮음/보통/높음] 버튼 영역 전체에 GlobalKey 연결!
+                key: difficultyBtnKey,
                 children: ['낮음', '보통', '높음'].map((level) {
                   final isSelected = selectedDifficulty == level;
                   return GestureDetector(

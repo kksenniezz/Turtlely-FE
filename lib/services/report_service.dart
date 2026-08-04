@@ -142,7 +142,7 @@ class ReportService {
       }
 
       if (response.statusCode == 200) {
-        ReportData.fromJson(decodedData);
+        return ReportData.fromJson(decodedData);
       }
 
       if (response.statusCode == 202) {
