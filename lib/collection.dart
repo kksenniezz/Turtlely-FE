@@ -123,7 +123,14 @@ class _CollectionViewState extends State<CollectionView> {
       }
       grouped[dateKey]!.add(video);
     }
-    return grouped;
+    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final Map<String, List<Map<String, dynamic>>> sortedGrouped = {};
+    for (var key in sortedKeys) {
+      sortedGrouped[key] = grouped[key]!;
+    }
+
+    return sortedGrouped;
   }
 
   @override
@@ -218,8 +225,8 @@ class _CollectionViewState extends State<CollectionView> {
                     child: Center(
                       child: Text(
                         _searchController.text.isEmpty
-                            ? "저장된 영상이 없습니다."
-                            : "검색 결과가 없습니다.",
+                            ? "저장된 영상이 없습니다"
+                            : "해당하는 영상이 없습니다",
                         style: const TextStyle(
                           color: Color(0xFF818181),
                           fontSize: 16,
@@ -264,7 +271,7 @@ class _CollectionViewState extends State<CollectionView> {
                                 crossAxisCount: 2,
                                 mainAxisSpacing: 16,
                                 crossAxisSpacing: 14,
-                                childAspectRatio: 1.0,
+                                childAspectRatio: 0.75,
                               ),
                           delegate: SliverChildBuilderDelegate((
                             context,
@@ -301,7 +308,8 @@ class _CollectionViewState extends State<CollectionView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 썸네일 영역 + 북마크 아이콘 + 재생시간
-        Expanded(
+        AspectRatio(
+          aspectRatio: 16 / 9,
           child: InkWell(
             onTap: () => _launchYoutube(youtubeKey),
             borderRadius: BorderRadius.circular(10),
@@ -356,7 +364,7 @@ class _CollectionViewState extends State<CollectionView> {
                     child: const Icon(
                       Icons.play_arrow,
                       color: Colors.white,
-                      size: 22,
+                      size: 20,
                     ),
                   ),
                 ),
@@ -410,22 +418,39 @@ class _CollectionViewState extends State<CollectionView> {
             ),
           ),
         ),
-        const SizedBox(height: 6),
-        // 제목 (1줄 초과 시 ... 생략 처리)
-        InkWell(
-          onTap: () => _launchYoutube(youtubeKey),
-          child: Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.black,
-              fontSize: 12,
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w400,
-              height: 1.3,
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 영상 제목 (제목 클릭 시 유튜브 재생)
+            Expanded(
+              child: InkWell(
+                onTap: () => _launchYoutube(youtubeKey),
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 11,
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w400,
+                    height: 1.3,
+                  ),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 4),
+            // 초록색 북마크 아이콘
+            GestureDetector(
+              onTap: () => _removeBookmark(video),
+              behavior: HitTestBehavior.opaque,
+              child: const Padding(
+                padding: EdgeInsets.only(top: 2, left: 2, right: 2),
+                child: Icon(Icons.bookmark, color: Color(0xFF3B5524), size: 20),
+              ),
+            ),
+          ],
         ),
       ],
     );
