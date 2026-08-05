@@ -243,13 +243,17 @@ class ApiService {
       );
 
       debugPrint("북마크 토글 응답 코드: ${response.statusCode}");
-      debugPrint("북마크 토글 응답 바디: ${response.body}");
+      final String decodedBody = utf8.decode(response.bodyBytes);
+      debugPrint("북마크 토글 응답 바디: ${decodedBody}");
 
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        if (json['isSuccess'] == true && json['result'] != null) {
-          return json['result']['is_bookmarked'] as bool?;
+      final json = jsonDecode(decodedBody);
+
+      if (response.statusCode == 200 && json['isSuccess'] == true) {
+        if (json['result'] != null && json['result']['is_bookmarked'] != null) {
+          return json['result']['is_bookmarked'] as bool;
         }
+      } else {
+        debugPrint("북마크 처리 실패: ${json['message']}");
       }
     } catch (e) {
       debugPrint("북마크 토글 오류: $e");

@@ -171,7 +171,7 @@ class _ExerciseViewState extends State<ExerciseView> {
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => CollectionView( ),
+                              builder: (context) => CollectionView(),
                             ),
                           );
                           _fetchVideos();
@@ -316,7 +316,8 @@ class _ExerciseViewState extends State<ExerciseView> {
   }
 
   Widget _buildVideoCard(Map<String, dynamic> v) {
-    final isBookmarked = v['isBookmarked'] == true;
+    final isBookmarked =
+        v['is_bookmarked'] == true || v['isBookmarked'] == true;
     final thumbnailUrl = v['thumbnailUrl'] as String? ?? '';
     final youtubeKey = v['youtubeVideoKey'] as String? ?? '';
     final duration = v['durationMinutes'] ?? v['duration_minutes'] ?? 0;
