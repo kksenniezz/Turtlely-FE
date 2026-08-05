@@ -26,7 +26,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print("백그라운드 메시지 수신: ${message.messageId}");
 }
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
 // 전역에서 안 읽은 알림 상태를 관리하는 ValueNotifier
 final ValueNotifier<bool> hasUnreadNotification = ValueNotifier<bool>(false);
@@ -36,21 +37,21 @@ final List<Map<String, dynamic>> localNotifications = [];
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  
+
   await _setupNotification();
 
   await initializeDateFormatting('ko_KR', null);
   await Hive.initFlutter();
-  
+
   runApp(const TurtlelyApp());
 }
 
 Future<void> _setupNotification() async {
   FirebaseMessaging messaging = FirebaseMessaging.instance;
-  
+
   NotificationSettings settings = await messaging.requestPermission(
     alert: true,
     badge: true,
@@ -58,8 +59,12 @@ Future<void> _setupNotification() async {
   );
   print('알림 권한 상태: ${settings.authorizationStatus}');
 
-  String? token = await messaging.getToken();
-  print("FCM 토큰: $token");
+  try {
+    String? token = await FirebaseMessaging.instance.getToken();
+    print("FCM Token: $token");
+  } catch (e) {
+    print("FCM 토큰 발급 일시 실패 (설정 확인 필요): $e");
+  }
 
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
     'high_importance_channel',
@@ -71,12 +76,15 @@ Future<void> _setupNotification() async {
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@mipmap/ic_launcher');
 
-  const InitializationSettings initializationSettings =
-      InitializationSettings(android: initializationSettingsAndroid);
+  const InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+  );
 
   final AndroidFlutterLocalNotificationsPlugin? androidPlugin =
-      flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+      flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
 
   if (androidPlugin != null) {
     await androidPlugin.createNotificationChannel(channel);
@@ -116,7 +124,9 @@ Future<void> checkInitialUnreadStatus() async {
     if (token == null || token.isEmpty) return;
 
     final response = await http.get(
-      Uri.parse("http://54.144.66.35.nip.io:8080/api/notifications?page=0&size=50"),
+      Uri.parse(
+        "http://54.144.66.35.nip.io:8080/api/notifications?page=0&size=50",
+      ),
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",
@@ -126,7 +136,9 @@ Future<void> checkInitialUnreadStatus() async {
     if (response.statusCode == 200) {
       final json = jsonDecode(response.body);
       final list = json['result']['notification_list'] as List<dynamic>;
-      final hasUnread = list.any((n) => n['is_read'] != true) || localNotifications.any((n) => n['is_read'] != true);
+      final hasUnread =
+          list.any((n) => n['is_read'] != true) ||
+          localNotifications.any((n) => n['is_read'] != true);
       hasUnreadNotification.value = hasUnread;
     }
   } catch (e) {
@@ -141,17 +153,17 @@ void _showLocalNotification(String title, String body) async {
     importance: Importance.max,
     priority: Priority.high,
   );
-  
+
   const NotificationDetails platformChannelSpecifics = NotificationDetails(
     android: androidDetails,
   );
-  
+
   int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
 
   await flutterLocalNotificationsPlugin.show(
     id: notificationId,
-    title: title, 
-    body: body, 
+    title: title,
+    body: body,
     notificationDetails: platformChannelSpecifics,
   );
 }
@@ -167,7 +179,7 @@ class TurtlelyApp extends StatelessWidget {
         fontFamily: 'Pretendard',
         scaffoldBackgroundColor: TColor.white,
       ),
-      home: const Splash(), 
+      home: const Splash(),
     );
   }
 }
@@ -204,7 +216,9 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             decoration: BoxDecoration(
@@ -238,7 +252,8 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          onPressed: () => Navigator.of(dialogContext).pop(false),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
                           child: const Text(
                             "취소",
                             style: TextStyle(
@@ -327,10 +342,16 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
                             onPressed: () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (context) => const AlarmView()),
+                                MaterialPageRoute(
+                                  builder: (context) => const AlarmView(),
+                                ),
                               );
                             },
-                            icon: const Icon(Icons.notifications_none, color: TColor.black, size: 26),
+                            icon: const Icon(
+                              Icons.notifications_none,
+                              color: TColor.black,
+                              size: 26,
+                            ),
                           ),
                           if (hasUnread)
                             Positioned(
@@ -382,8 +403,22 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: isSelected ? TColor.buttonGreen : TColor.black.withOpacity(0.4), size: 28),
-            Text(label, style: TextStyle(color: isSelected ? TColor.buttonGreen : TColor.black.withOpacity(0.4), fontSize: 12)),
+            Icon(
+              icon,
+              color: isSelected
+                  ? TColor.buttonGreen
+                  : TColor.black.withOpacity(0.4),
+              size: 28,
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected
+                    ? TColor.buttonGreen
+                    : TColor.black.withOpacity(0.4),
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
       ),
