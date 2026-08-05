@@ -159,7 +159,7 @@ class _CollectionViewState extends State<CollectionView> {
       if (!grouped.containsKey(dateKey)) {
         grouped[dateKey] = [];
       }
-      grouped[dateKey]!.add(video);
+      grouped[dateKey]!.insert(0, video);
     }
     final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
