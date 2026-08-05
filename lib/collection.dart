@@ -34,10 +34,48 @@ class _CollectionViewState extends State<CollectionView> {
   // 서버로부터 저장된 영상 목록 가져오기
   Future<void> _fetchBookmarkedVideos() async {
     setState(() => _isLoading = true);
-    final list = await ApiService().getBookmarkedVideos();
+
+    final results = await Future.wait([
+      ApiService().getBookmarkedVideos(),
+      ApiService().getExerciseVideos(), // 운동존 데이터 (duration 포함)
+    ]);
+
+    final rawBookmarks = List<Map<String, dynamic>>.from(results[0]);
+    final rawExercises = List<dynamic>.from(results[1]);
+
+    // 2. 운동존 데이터를 videoId 키 기반 Map으로 변환하여 빠르게 조회 가능하도록 준비
+    final Map<String, dynamic> exerciseMap = {};
+    for (var ex in rawExercises) {
+      if (ex is Map<String, dynamic>) {
+        final id = (ex['id'] ?? ex['videoId'] ?? ex['video_id'])?.toString();
+        if (id != null) {
+          exerciseMap[id] = ex;
+        }
+      }
+    }
+
+    // 3. 북마크 목록에 missing된 duration/play_time 보충
+    final mergedBookmarks = rawBookmarks.map((video) {
+      final vMap = Map<String, dynamic>.from(video);
+      final id = (vMap['video_id'] ?? vMap['videoId'] ?? vMap['id'])
+          ?.toString();
+
+      if (id != null && exerciseMap.containsKey(id)) {
+        final exData = exerciseMap[id];
+        // duration 관련 키 매핑 (durationMinutes, duration, play_time 등)
+        vMap['duration'] ??=
+            exData['durationMinutes'] ??
+            exData['duration_minutes'] ??
+            exData['duration'] ??
+            exData['play_time'] ??
+            exData['playTime'];
+      }
+      return vMap;
+    }).toList();
+
     if (mounted) {
       setState(() {
-        _allBookmarkedVideos = List<Map<String, dynamic>>.from(list);
+        _allBookmarkedVideos = mergedBookmarks;
         _applySearchFilter();
         _isLoading = false;
       });
@@ -241,6 +279,18 @@ class _CollectionViewState extends State<CollectionView> {
                     final dateString = entry.key;
                     final videosInDate = entry.value;
 
+                    final List<List<Map<String, dynamic>>> rows = [];
+                    for (int i = 0; i < videosInDate.length; i += 2) {
+                      rows.add(
+                        videosInDate.sublist(
+                          i,
+                          i + 2 > videosInDate.length
+                              ? videosInDate.length
+                              : i + 2,
+                        ),
+                      );
+                    }
+
                     return [
                       // 날짜 헤더
                       SliverToBoxAdapter(
@@ -262,27 +312,37 @@ class _CollectionViewState extends State<CollectionView> {
                           ),
                         ),
                       ),
-                      // 2열 그리드 배치
                       SliverPadding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
-                        sliver: SliverGrid(
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                mainAxisSpacing: 16,
-                                crossAxisSpacing: 14,
-                                childAspectRatio: 0.88,
-                              ),
+                        sliver: SliverList(
                           delegate: SliverChildBuilderDelegate((
                             context,
-                            index,
+                            rowIndex,
                           ) {
-                            final video = videosInDate[index];
-                            return _buildVideoCard(video);
-                          }, childCount: videosInDate.length),
+                            final rowItems = rows[rowIndex];
+                            return Padding(
+                              padding: const EdgeInsets.only(
+                                bottom: 16,
+                              ), // 카드 행 간 간격
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // 첫 번째 아이템
+                                  Expanded(child: _buildVideoCard(rowItems[0])),
+                                  const SizedBox(width: 14), // 가로 간격
+                                  // 두 번째 아이템 (홀수개일 경우 빈 공간 처리)
+                                  Expanded(
+                                    child: rowItems.length > 1
+                                        ? _buildVideoCard(rowItems[1])
+                                        : const SizedBox.shrink(),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }, childCount: rows.length),
                         ),
                       ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
                     ];
                   }),
               ],
@@ -297,8 +357,14 @@ class _CollectionViewState extends State<CollectionView> {
             as String;
     final title = (video['title'] ?? '') as String;
     final rawDuration =
-        video['duration'] ?? video['play_time'] ?? video['playTime'];
-    final String duration = rawDuration != null ? rawDuration.toString() : '';
+        video['duration'] ??
+        video['durationMinutes'] ??
+        video['duration_minutes'] ??
+        video['play_time'] ??
+        video['playTime'];
+    final String durationStr = rawDuration != null
+        ? rawDuration.toString()
+        : '';
 
     String thumbnailUrl =
         (video['thumbnail_url'] ?? video['thumbnailUrl'] ?? '') as String;
@@ -307,6 +373,7 @@ class _CollectionViewState extends State<CollectionView> {
     }
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // 썸네일 영역 + 북마크 아이콘 + 재생시간
@@ -372,28 +439,29 @@ class _CollectionViewState extends State<CollectionView> {
                 ),
 
                 // 좌측 하단 영상 길이 (Duration)
-                Positioned(
-                  left: 8,
-                  bottom: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      duration.isNotEmpty ? "$duration분" : "영상",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                if (durationStr.isNotEmpty)
+                  Positioned(
+                    left: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        "$durationStr분",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
