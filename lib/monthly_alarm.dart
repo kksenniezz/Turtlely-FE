@@ -103,11 +103,12 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
         int.tryParse(widget.selectedMonth.replaceAll('월', '').trim()) ??
         now.month;
 
-    // 2. [핵심] 불러온 리포트가 '현재 선택한 달'의 리포트인지 검증
+    // 2. 불러온 리포트가 '현재 선택한 달'의 리포트인지 검증
     bool isReportForSelectedMonth = false;
     if (widget.report != null && widget.report!.measuredAt != null) {
       isReportForSelectedMonth =
-          (widget.report!.measuredAt!.month == selectedMonthNum);
+          (widget.report!.measuredAt!.month == selectedMonthNum &&
+          widget.report!.measuredAt!.year == now.year);
     }
 
     // 3. 선택한 달의 리포트가 존재하고 AVAILABLE 상태인 경우 -> 결과 뷰
@@ -115,31 +116,54 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
       return widget.buildReportResultView();
     }
 
-    // 4. [선택한 달이 '이번 달'인 경우의 처리]
+    // 4. 선택한 달이 '이번 달'인 경우의 처리
     bool isCurrentMonth = (selectedMonthNum == now.month);
 
     if (isCurrentMonth) {
       DateTime? lastMeasuredAt =
           widget.lastMeasuredAt ?? widget.report?.measuredAt;
 
-      // 4-1. 아예 측정한 적이 없거나(신규), 마지막 측정일로부터 30일이 지난 경우 -> 바로 측정 유도
-      if (lastMeasuredAt == null ||
-          now.difference(lastMeasuredAt).inDays >= 30) {
+      print("👉 selectedMonth: ${widget.selectedMonth}");
+      print("👉 widget.report: ${widget.report?.measuredAt}");
+      print("👉 widget.lastMeasuredAt: ${widget.lastMeasuredAt}");
+      print("👉 최종 lastMeasuredAt: $lastMeasuredAt");
+
+      // 4-1. 아예 측정한 적이 없는 신규 유저
+      if (lastMeasuredAt == null) {
         return _buildReadyView(
           title: "이번 달은 월간 측정을\n아직 하지 않았어요!",
           isMeasureActionMode: true,
         );
       }
 
-      // 4-2. 마지막 측정일로부터 30일이 안 지난 경우 -> N일 알림 안내
-      DateTime nextAvailableDate = lastMeasuredAt.add(const Duration(days: 30));
-      String nDay = "${nextAvailableDate.day}일";
-
-      return _buildReadyView(
-        title: "이번 달은 $nDay부터 월간 측정을 할 수 있어요",
-        guideText: "$nDay에 알림을 보내드릴까요?",
-        alarmType: "MEASURE",
+      DateTime today = DateTime(now.year, now.month, now.day);
+      DateTime lastDate = DateTime(
+        lastMeasuredAt.year,
+        lastMeasuredAt.month,
+        lastMeasuredAt.day,
       );
+      DateTime nextAvailableDate = lastDate.add(const Duration(days: 30));
+
+      // 4-2. 마지막 측정일로부터 30일이 지난 경우 -> 측정 유도 안내
+      bool canMeasureToday =
+          today.isAfter(nextAvailableDate) ||
+          today.isAtSameMomentAs(nextAvailableDate);
+
+      if (canMeasureToday) {
+        return _buildReadyView(
+          title: "이번 달은 월간 측정을\n아직 하지 않았어요!",
+          isMeasureActionMode: true,
+        );
+      } else {
+        // 아직 30일이 안 지난 경우 -> N일 알림 안내
+        String nDay = "${nextAvailableDate.day}일";
+
+        return _buildReadyView(
+          title: "이번 달은 $nDay부터 월간 측정을 할 수 있어요",
+          guideText: "$nDay에 알림을 보내드릴까요?",
+          alarmType: "MEASURE",
+        );
+      }
     }
 
     // 5. 예외 상황 -> 리포트 준비 중/알림 안내

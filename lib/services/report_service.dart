@@ -18,13 +18,14 @@ class MonthlyListItem {
   });
 
   factory MonthlyListItem.fromJson(Map<String, dynamic> json) {
+    final rawMeasuredAt = json['measuredAt'] ?? json['measured_at'];
     return MonthlyListItem(
       monthlyId: json['monthlyId'] ?? 0,
       year: json['reportYear'] ?? DateTime.now().year,
       month: json['reportMonth'] ?? DateTime.now().month,
-      measuredAt: json['measuredAt'] != null
-          ? DateTime.tryParse(json['measuredAt']) ?? DateTime.now()
-          : DateTime.now(),
+      measuredAt: rawMeasuredAt != null
+          ? (DateTime.tryParse(rawMeasuredAt.toString()) ?? DateTime(2000))
+          : DateTime(2000),
     );
   }
 }
@@ -111,9 +112,11 @@ class ReportData {
 
         measurementAlarm: result['measurement_alarm'] ?? false,
         reportAlarm: result['report_alarm'] ?? false,
-        measuredAt: result['measured_at'] == null
+        measuredAt: (result['measuredAt'] ?? result['measured_at']) == null
             ? null
-            : DateTime.tryParse(result['measured_at'].toString()),
+            : DateTime.tryParse(
+                (result['measuredAt'] ?? result['measured_at']).toString(),
+              ),
       );
     } catch (e) {
       print("[ReportData.fromJson 파싱 오류] $e");

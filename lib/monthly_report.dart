@@ -49,13 +49,17 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             monthlyId: -999,
             year: now.year,
             month: now.month,
-            measuredAt: now,
+            measuredAt: DateTime(2000),
             isVirtual: true,
           ),
         );
       }
 
-      list.sort((a, b) => b.measuredAt.compareTo(a.measuredAt));
+      list.sort((a, b) {
+        int yearCompare = b.year.compareTo(a.year);
+        if (yearCompare != 0) return yearCompare;
+        return b.month.compareTo(a.month);
+      });
 
       setState(() {
         _monthlyList = list;
@@ -115,6 +119,15 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   @override
   Widget build(BuildContext context) {
+    print("🔍 _monthlyList 전체 개수: ${_monthlyList.length}");
+    if (_monthlyList.isNotEmpty) {
+      print(
+        "🔍 _monthlyList.first.measuredAt: ${_monthlyList.first.measuredAt}",
+      );
+      print("🔍 _monthlyList.first 전체 내용: ${_monthlyList.first}");
+    } else {
+      print("🔍 _monthlyList가 비어있습니다.");
+    }
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -142,6 +155,22 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                     selectedMonth: _selectedItem != null
                         ? "${_selectedItem!.month}월"
                         : "",
+                    lastMeasuredAt: () {
+                      final realItems = _monthlyList
+                          .where(
+                            (item) =>
+                                !item.isVirtual && item.measuredAt.year > 2000,
+                          )
+                          .toList();
+
+                      if (realItems.isNotEmpty) {
+                        print("찾은 진짜 측정일: ${realItems.first.measuredAt}");
+                        return realItems.first.measuredAt;
+                      }
+
+                      print("진짜 측정 기록이 없음 (null 전달)");
+                      return null;
+                    }(),
 
                     isMeasureAlarmSet:
                         _currentReport?.measurementAlarm ?? false,
