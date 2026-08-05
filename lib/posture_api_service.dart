@@ -276,14 +276,18 @@ class ApiService {
       );
 
       debugPrint("북마크 목록 응답 코드: ${response.statusCode}");
-      debugPrint("북마크 목록 응답 바디: ${response.body}");
+      final String decodedBody = utf8.decode(response.bodyBytes);
+      debugPrint("북마크 목록 응답 바디: ${decodedBody}");
 
       if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
+        final json = jsonDecode(decodedBody);
         if (json['isSuccess'] == true &&
             json['result'] != null &&
             json['result']['bookmark_list'] != null) {
-          return json['result']['bookmark_list'] as List<dynamic>;
+          final rawList = json['result']['bookmark_list'] as List<dynamic>;
+          return rawList
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
         }
       }
     } catch (e) {
