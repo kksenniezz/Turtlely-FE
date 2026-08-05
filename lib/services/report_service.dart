@@ -68,7 +68,13 @@ class ReportData {
   });
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
-    final result = json['result'] as Map<String, dynamic>;
+    // result가 Map이 아닐 경우(예: List로 넘어오거나 null일 때)를 위한 안전 처리
+    final rawResult = json['result'];
+    final Map<String, dynamic> result =
+        (rawResult is List && rawResult.isNotEmpty)
+        ? rawResult[0] as Map<String, dynamic>
+        : (rawResult as Map<String, dynamic>? ?? {});
+
     try {
       return ReportData(
         message: json['message'] ?? '',
@@ -107,7 +113,7 @@ class ReportData {
         reportAlarm: result['report_alarm'] ?? false,
         measuredAt: result['measured_at'] == null
             ? null
-            : DateTime.tryParse(result['measured_at']) ?? DateTime.now(),
+            : DateTime.tryParse(result['measured_at'].toString()),
       );
     } catch (e) {
       print("[ReportData.fromJson 파싱 오류] $e");

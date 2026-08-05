@@ -6,6 +6,7 @@ import 'posture_api_service.dart';
 
 class MonthlyAlarmView extends StatefulWidget {
   final ReportData? report;
+  final DateTime? lastMeasuredAt;
   final String selectedMonth;
   final bool isMeasureAlarmSet;
   final bool isResultAlarmSet;
@@ -16,6 +17,7 @@ class MonthlyAlarmView extends StatefulWidget {
   const MonthlyAlarmView({
     super.key,
     required this.report,
+    this.lastMeasuredAt,
     required this.selectedMonth,
     required this.isMeasureAlarmSet,
     required this.isResultAlarmSet,
@@ -95,34 +97,41 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
       );
     }
 
-    // 1. 측정 완료 (AVAILABLE): 결과 뷰
-    if (widget.report?.dataStatus == "AVAILABLE") {
+    // 1. 현재 드롭다운에서 선택된 달(숫자)과 오늘 날짜(월)
+    DateTime now = DateTime.now();
+    int selectedMonthNum =
+        int.tryParse(widget.selectedMonth.replaceAll('월', '').trim()) ??
+        now.month;
+
+    // 2. [핵심] 불러온 리포트가 '현재 선택한 달'의 리포트인지 검증
+    bool isReportForSelectedMonth = false;
+    if (widget.report != null && widget.report!.measuredAt != null) {
+      isReportForSelectedMonth =
+          (widget.report!.measuredAt!.month == selectedMonthNum);
+    }
+
+    // 3. 선택한 달의 리포트가 존재하고 AVAILABLE 상태인 경우 -> 결과 뷰
+    if (isReportForSelectedMonth && widget.report?.dataStatus == "AVAILABLE") {
       return widget.buildReportResultView();
     }
 
-    // 2. 측정 미완료 상태 (NOT_YET)
-    if (widget.report?.dataStatus == "NOT_YET") {
-      DateTime now = DateTime.now();
-      DateTime? lastMeasuredAt = widget.report?.measuredAt;
+    // 4. [선택한 달이 '이번 달'인 경우의 처리]
+    bool isCurrentMonth = (selectedMonthNum == now.month);
 
-      // 이번 달이며 + 이전 측정 기록이 있고 + 30일이 넘었는지 확인
-      bool isCurrentMonth =
-          (widget.report?.year == now.year &&
-          widget.report?.month == now.month);
-      bool is30DaysPassed =
-          isCurrentMonth &&
-          lastMeasuredAt != null &&
-          now.difference(lastMeasuredAt).inDays >= 30;
+    if (isCurrentMonth) {
+      DateTime? lastMeasuredAt =
+          widget.lastMeasuredAt ?? widget.report?.measuredAt;
 
-      // 2-1. 한 번도 측정을 안 했거나 OR 30일이 지난 경우 -> 바로 측정 가능
-      if (lastMeasuredAt == null || is30DaysPassed) {
+      // 4-1. 아예 측정한 적이 없거나(신규), 마지막 측정일로부터 30일이 지난 경우 -> 바로 측정 유도
+      if (lastMeasuredAt == null ||
+          now.difference(lastMeasuredAt).inDays >= 30) {
         return _buildReadyView(
           title: "이번 달은 월간 측정을\n아직 하지 않았어요!",
           isMeasureActionMode: true,
         );
       }
 
-      // 2-2. 30일이 아직 지나지 않은 경우 -> 측정 가능일 알림 유도
+      // 4-2. 마지막 측정일로부터 30일이 안 지난 경우 -> N일 알림 안내
       DateTime nextAvailableDate = lastMeasuredAt.add(const Duration(days: 30));
       String nDay = "${nextAvailableDate.day}일";
 
@@ -133,7 +142,7 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
       );
     }
 
-    // 3. 리포트 준비 중: 알림 설정
+    // 5. 예외 상황 -> 리포트 준비 중/알림 안내
     return _buildReadyView(
       title: "${widget.selectedMonth} 월간 리포트를\n준비 중이에요",
       guideText: "결과가 나오면 알려드릴까요?",
