@@ -271,7 +271,7 @@ class _CollectionViewState extends State<CollectionView> {
                                 crossAxisCount: 2,
                                 mainAxisSpacing: 16,
                                 crossAxisSpacing: 14,
-                                childAspectRatio: 0.75,
+                                childAspectRatio: 0.88,
                               ),
                           delegate: SliverChildBuilderDelegate((
                             context,
@@ -296,7 +296,9 @@ class _CollectionViewState extends State<CollectionView> {
         (video['youtube_video_key'] ?? video['youtubeVideoKey'] ?? '')
             as String;
     final title = (video['title'] ?? '') as String;
-    final duration = (video['duration'] ?? video['play_time'] ?? '') as String;
+    final rawDuration =
+        video['duration'] ?? video['play_time'] ?? video['playTime'];
+    final String duration = rawDuration != null ? rawDuration.toString() : '';
 
     String thumbnailUrl =
         (video['thumbnail_url'] ?? video['thumbnailUrl'] ?? '') as String;
@@ -369,51 +371,29 @@ class _CollectionViewState extends State<CollectionView> {
                   ),
                 ),
 
-                // 우측 상단 북마크 아이콘
+                // 좌측 하단 영상 길이 (Duration)
                 Positioned(
-                  top: 6,
-                  right: 6,
-                  child: GestureDetector(
-                    onTap: () => _removeBookmark(video),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.85),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.bookmark,
-                        color: Color(0xFF3B5524),
-                        size: 18,
+                  left: 8,
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      duration.isNotEmpty ? "$duration분" : "영상",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                 ),
-
-                // 우측 하단 영상 길이 (Duration)
-                if (duration.isNotEmpty)
-                  Positioned(
-                    bottom: 6,
-                    right: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        duration,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -432,7 +412,7 @@ class _CollectionViewState extends State<CollectionView> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.black,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontFamily: 'Pretendard',
                     fontWeight: FontWeight.w400,
                     height: 1.3,
