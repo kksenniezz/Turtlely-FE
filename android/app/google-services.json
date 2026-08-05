@@ -16,14 +16,6 @@
         {
           "client_id": "485049902555-tcdrsjkchrrt7catj03dr8kbodcv14o7.apps.googleusercontent.com",
           "client_type": 3
-        },
-        {
-          "client_id": "485049902555-tcdrsjkchrrt7catj03dr8kbodcv14o7.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.project.turtlely",
-            "certificate_hash": "c43e6cd251d7f6fa80e3842a18eb68345b21480c"
-          }
         }
       ],
       "api_key": [
