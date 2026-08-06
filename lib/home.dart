@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 
 import 'style.dart';
 import 'vision.dart';
@@ -113,6 +115,188 @@ class _HomeViewContentState extends State<HomeViewContent> {
         },
       );
     });
+  }
+
+  // ------------------------------------------------------------------
+  // ★ 월간 측정 유효성 검증 API (/api/monthly/list)
+  // ------------------------------------------------------------------
+  Future<Map<String, dynamic>> _checkMonthlyMeasurementValid() async {
+    try {
+      final token = await _storage.read(key: 'accessToken');
+      if (token == null || token.isEmpty) {
+        return {'isValid': false, 'reason': 'NO_TOKEN'};
+      }
+
+      final response = await http.get(
+        Uri.parse("http://54.144.66.35.nip.io:8080/api/monthly/list"),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        final List<dynamic> list = jsonResponse['result'] ?? [];
+
+        final validReports = list.where((item) =>
+          item['data_status'] == 'AVAILABLE' && item['measured_at'] != null
+        ).toList();
+
+        // 1. 월간 측정 기록이 없는 경우
+        if (validReports.isEmpty) {
+          return {'isValid': false, 'reason': 'NO_MEASUREMENT'};
+        }
+
+        validReports.sort((a, b) =>
+          DateTime.parse(b['measured_at']).compareTo(DateTime.parse(a['measured_at']))
+        );
+
+        final DateTime lastMeasuredAt = DateTime.parse(validReports.first['measured_at']);
+        final DateTime expireDate = lastMeasuredAt.add(const Duration(days: 30));
+        final DateTime now = DateTime.now();
+
+        // 2. 측정 후 30일이 초과된 경우
+        if (now.isAfter(expireDate)) {
+          int passedDays = now.difference(lastMeasuredAt).inDays;
+          return {
+            'isValid': false,
+            'reason': 'EXPIRED',
+            'passedDays': passedDays,
+          };
+        }
+
+        return {'isValid': true, 'lastMeasuredAt': lastMeasuredAt};
+      }
+    } catch (e) {
+      debugPrint("월간 측정 검증 오류: $e");
+    }
+
+    return {'isValid': false, 'reason': 'ERROR'};
+  }
+
+  // ------------------------------------------------------------------
+  // ★ 월간 측정 요구 안내 다이얼로그 (TColor.buttonGreen 적용)
+  // ------------------------------------------------------------------
+  void _showMonthlyRequiredDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  size: 52,
+                  color: Color(0xFFFF9800),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "월간 측정 필요",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.black54,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE0E0E0),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          child: const Text(
+                            "취소",
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: TColor.buttonGreen, // ★ 메인 버튼과 일치하는 초록색
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () async {
+                            Navigator.of(dialogContext).pop();
+
+                            try {
+                              await _ble.stopNotify();
+                              await _ble.disconnect();
+                            } catch (_) {}
+
+                            if (!mounted) return;
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const VisionPage()),
+                            ).then((_) {
+                              if (mounted) _ble.init();
+                            });
+                          },
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              "측정하기",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _checkBatteryLevelAndNotify(int battery) {
@@ -306,7 +490,27 @@ class _HomeViewContentState extends State<HomeViewContent> {
     );
   }
 
+  // ------------------------------------------------------------------
+  // ★ 일일 측정 시작 시 C값 유효기간(30일) 검증
+  // ------------------------------------------------------------------
   Future<void> startCalibration() async {
+    final checkResult = await _checkMonthlyMeasurementValid();
+
+    if (!checkResult['isValid']) {
+      if (mounted) {
+        String reason = checkResult['reason'];
+        if (reason == 'NO_MEASUREMENT') {
+          _showMonthlyRequiredDialog("월간 측정 기록이 없습니다.");
+        } else if (reason == 'EXPIRED') {
+          int passedDays = checkResult['passedDays'] ?? 30;
+          _showMonthlyRequiredDialog("마지막 월간 측정 후 $passedDays일이 지났습니다.\n정확한 자세 교정을 위해 월간 측정을 다시 진행해 주세요.");
+        } else {
+          _showSnackBar("월간 측정 상태를 확인하지 못했습니다.");
+        }
+      }
+      return;
+    }
+
     if (!_ble.isDeviceReady || _ble.targetCharacteristic == null) {
       _showSnackBar("기기가 연결되지 않았어요. 전원을 확인해 주세요.");
       return;

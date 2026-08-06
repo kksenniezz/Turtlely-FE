@@ -214,9 +214,12 @@ class _ReportViewState extends State<ReportView> {
   }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
+    // ★ 미래 날짜 선택 클릭 차단
+    if (selectedDay.isAfter(DateTime.now())) return;
+
     setState(() {
       _selectedDay    = selectedDay;
-      _focusedDay     = focusedDay;
+      _focusedDay     = focusedDay.isAfter(DateTime.now()) ? DateTime.now() : focusedDay;
       _viewIndex      = 0;
       _selectedScore  = null;
       _avgCva         = 0.0;
@@ -348,12 +351,16 @@ class _ReportViewState extends State<ReportView> {
             ),
           ),
           TableCalendar(
-            locale: 'ko_KR', firstDay: DateTime.utc(2024, 1, 1), lastDay: DateTime.now(), focusedDay: _focusedDay,
+            locale: 'ko_KR',
+            firstDay: DateTime.utc(2024, 1, 1),
+            // ★ lastDay를 오늘로 고정하여 미래 날짜 제한
+            lastDay: DateTime.now(),
+            focusedDay: _focusedDay.isAfter(DateTime.now()) ? DateTime.now() : _focusedDay,
             calendarFormat: CalendarFormat.week, headerVisible: false,
             onCalendarCreated: (controller) => _calendarPageController = controller,
             selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
             onDaySelected: _onDaySelected,
-            onPageChanged: (focusedDay) => setState(() => _focusedDay = focusedDay),
+            onPageChanged: (focusedDay) => setState(() => _focusedDay = focusedDay.isAfter(DateTime.now()) ? DateTime.now() : focusedDay),
             calendarBuilders: _customBuilders(),
           ),
           const Divider(thickness: 1, color: Color(0xFFEEEEEE), height: 40),
@@ -652,6 +659,12 @@ class _ReportViewState extends State<ReportView> {
             itemCount: 24, 
             itemBuilder: (context, index) {
               final DateTime monthToShow = DateTime(DateTime.now().year, DateTime.now().month - index);
+              
+              // 현재 달인 경우 오늘 날짜까지, 이전 달인 경우 해당 월의 마지막 날까지 계산
+              final DateTime lastAllowedDay = (monthToShow.year == DateTime.now().year && monthToShow.month == DateTime.now().month)
+                  ? DateTime.now()
+                  : DateTime(monthToShow.year, monthToShow.month + 1, 0);
+
               return Container(
                 padding: const EdgeInsets.only(bottom: 20), 
                 child: Column(
@@ -661,8 +674,9 @@ class _ReportViewState extends State<ReportView> {
                     TableCalendar(
                       locale: 'ko_KR', 
                       firstDay: DateTime(monthToShow.year, monthToShow.month, 1), 
-                      lastDay: DateTime(monthToShow.year, monthToShow.month + 1, 0), 
-                      focusedDay: monthToShow, 
+                      // ★ 월간 뷰에서도 미래 날짜 제한 적용
+                      lastDay: lastAllowedDay, 
+                      focusedDay: monthToShow.isAfter(DateTime.now()) ? DateTime.now() : monthToShow, 
                       calendarFormat: CalendarFormat.month, 
                       headerVisible: false, 
                       daysOfWeekVisible: false, 

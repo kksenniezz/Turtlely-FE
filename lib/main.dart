@@ -52,12 +52,20 @@ void main() async {
 Future<void> _setupNotification() async {
   FirebaseMessaging messaging = FirebaseMessaging.instance;
 
+  // 1. 시스템 알림 권한 요청
   NotificationSettings settings = await messaging.requestPermission(
     alert: true,
     badge: true,
     sound: true,
   );
   print('알림 권한 상태: ${settings.authorizationStatus}');
+
+  // ★ 2. [핵심] 포그라운드(앱 켜짐) 상태에서도 상단바 팝업/소리 출력 허용
+  await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
 
   try {
     String? token = await FirebaseMessaging.instance.getToken();
@@ -66,10 +74,11 @@ Future<void> _setupNotification() async {
     print("FCM 토큰 발급 일시 실패 (설정 확인 필요): $e");
   }
 
+  // 3. Android 최고 중요도 알림 채널 구성
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
     'high_importance_channel',
     'High Importance Notifications',
-    description: '거북목 자세 경고 알림 채널입니다.',
+    description: '거북목 자세 경고 및 월간 알림 채널입니다.',
     importance: Importance.max,
   );
 
@@ -97,16 +106,14 @@ Future<void> _setupNotification() async {
     },
   );
 
-  // Foreground 푸시 수신 시 즉시 빨간 점 활성화
+  // ★ 4. [핵심] notification 객체 또는 data 객체만 올 때도 상단바 노티피케이션 강제 출력
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    if (message.notification != null) {
-      hasUnreadNotification.value = true;
+    hasUnreadNotification.value = true;
 
-      _showLocalNotification(
-        message.notification!.title ?? "알림",
-        message.notification!.body ?? "",
-      );
-    }
+    String title = message.notification?.title ?? message.data['title'] ?? "Turtlely 알림";
+    String body = message.notification?.body ?? message.data['body'] ?? "월간 측정할 시간입니다!";
+
+    _showLocalNotification(title, body);
   });
 }
 
