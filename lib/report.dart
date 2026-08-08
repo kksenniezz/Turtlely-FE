@@ -85,7 +85,7 @@ class _ReportViewState extends State<ReportView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ReportOnboardingDialog.checkAndShow(
         context,
-        userName: "사용자", // 필요 시 유저 닉네임 파라미터 연결
+        userName: "사용자",
         onComplete: () {
           debugPrint("리포트 온보딩 완료!");
         },
@@ -171,8 +171,9 @@ class _ReportViewState extends State<ReportView> {
     if (mounted) setState(() { _isLoadingReport = false; });
   }
 
+  // ★ [핵심] 실제 시간 기반 간격 정제 및 측정 중단 점선 판별 로직
   void _processGraphData() {
-    if (_cvaHistory.isEmpty) {
+    if (_cvaHistory.isEmpty || _timeHistory.isEmpty) {
       setState(() {
         _processedGraphData = [];
         _selectedPoint = null;
@@ -181,30 +182,74 @@ class _ReportViewState extends State<ReportView> {
     }
 
     List<Map<String, dynamic>> temp = [];
-    int step = _selectedInterval;
+    int intervalMin = _selectedInterval;
 
-    for (int i = 0; i < _cvaHistory.length; i += step) {
-      int end = math.min(i + step, _cvaHistory.length);
-      List<double> chunkCva = _cvaHistory.sublist(i, end);
-      List<String> chunkPosture = _postureHistory.sublist(i, end);
+    DateTime? parseTime(String tStr) {
+      try {
+        final p = tStr.split(':');
+        if (p.length >= 2) {
+          final now = DateTime.now();
+          return DateTime(now.year, now.month, now.day, int.parse(p[0]), int.parse(p[1]));
+        }
+      } catch (_) {}
+      return null;
+    }
 
-      if (chunkCva.isEmpty) continue;
+    int i = 0;
+    while (i < _cvaHistory.length) {
+      String startTimeStr = _timeHistory[i];
+      DateTime? startTime = parseTime(startTimeStr);
 
-      double sum = chunkCva.reduce((a, b) => a + b);
-      double avg = sum / chunkCva.length;
+      if (startTime == null) {
+        i++;
+        continue;
+      }
 
-      int wCount = chunkPosture.where((p) => p == "warning").length;
-      int cCount = chunkPosture.where((p) => p == "caution").length;
+      // 이전 지점과의 시간 차이가 (간격 * 1.8배) 이상으로 벌어졌을 때만 측정 중단 공백으로 오인 없이 판별
+      if (temp.isNotEmpty && temp.last['isGap'] != true) {
+        DateTime? prevTime = parseTime(temp.last['time']);
+        if (prevTime != null) {
+          int diffMinutes = startTime.difference(prevTime).inMinutes;
+          if (diffMinutes > (intervalMin * 1.8).round()) {
+            temp.add({
+              'avgCva': temp.last['avgCva'],
+              'warningCount': 0,
+              'cautionCount': 0,
+              'time': startTimeStr,
+              'isGap': true, // 회색 점선을 유도하는 플래그
+            });
+          }
+        }
+      }
 
-      String timeStr = i < _timeHistory.length ? _timeHistory[i] : '';
+      List<double> chunkCva = [];
+      List<String> chunkPosture = [];
 
-      temp.add({
-        'avgCva': avg,
-        'warningCount': wCount,
-        'cautionCount': cCount,
-        'time': timeStr,
-        'index': i,
-      });
+      while (i < _cvaHistory.length) {
+        DateTime? currTime = parseTime(_timeHistory[i]);
+        if (currTime != null && currTime.difference(startTime).inMinutes >= intervalMin) {
+          break; // 설정한 시간 단위(1분, 10분, 30분, 1시간) 경과 시 묶음 종료
+        }
+
+        chunkCva.add(_cvaHistory[i]);
+        if (i < _postureHistory.length) chunkPosture.add(_postureHistory[i]);
+        i++;
+      }
+
+      if (chunkCva.isNotEmpty) {
+        double sum = chunkCva.reduce((a, b) => a + b);
+        double avg = sum / chunkCva.length;
+        int wCount = chunkPosture.where((p) => p == "warning").length;
+        int cCount = chunkPosture.where((p) => p == "caution").length;
+
+        temp.add({
+          'avgCva': avg,
+          'warningCount': wCount,
+          'cautionCount': cCount,
+          'time': startTimeStr,
+          'isGap': false,
+        });
+      }
     }
 
     setState(() {
@@ -214,7 +259,7 @@ class _ReportViewState extends State<ReportView> {
   }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
-    // ★ 미래 날짜 선택 클릭 차단
+    // 미래 날짜 클릭 차단
     if (selectedDay.isAfter(DateTime.now())) return;
 
     setState(() {
@@ -353,8 +398,7 @@ class _ReportViewState extends State<ReportView> {
           TableCalendar(
             locale: 'ko_KR',
             firstDay: DateTime.utc(2024, 1, 1),
-            // ★ lastDay를 오늘로 고정하여 미래 날짜 제한
-            lastDay: DateTime.now(),
+            lastDay: DateTime.now(), // 오늘로 고정하여 미래 제한
             focusedDay: _focusedDay.isAfter(DateTime.now()) ? DateTime.now() : _focusedDay,
             calendarFormat: CalendarFormat.week, headerVisible: false,
             onCalendarCreated: (controller) => _calendarPageController = controller,
@@ -590,9 +634,11 @@ class _ReportViewState extends State<ReportView> {
 
                           double ratio = ((tapX - 36) / chartW).clamp(0.0, 1.0);
                           int clickedIdx = (ratio * (_processedGraphData.length - 1)).round();
-                          setState(() {
-                            _selectedPoint = _processedGraphData[clickedIdx];
-                          });
+                          if (_processedGraphData[clickedIdx]['isGap'] != true) {
+                            setState(() {
+                              _selectedPoint = _processedGraphData[clickedIdx];
+                            });
+                          }
                         },
                         child: CustomPaint(
                           size: Size.infinite,
@@ -659,8 +705,6 @@ class _ReportViewState extends State<ReportView> {
             itemCount: 24, 
             itemBuilder: (context, index) {
               final DateTime monthToShow = DateTime(DateTime.now().year, DateTime.now().month - index);
-              
-              // 현재 달인 경우 오늘 날짜까지, 이전 달인 경우 해당 월의 마지막 날까지 계산
               final DateTime lastAllowedDay = (monthToShow.year == DateTime.now().year && monthToShow.month == DateTime.now().month)
                   ? DateTime.now()
                   : DateTime(monthToShow.year, monthToShow.month + 1, 0);
@@ -674,7 +718,6 @@ class _ReportViewState extends State<ReportView> {
                     TableCalendar(
                       locale: 'ko_KR', 
                       firstDay: DateTime(monthToShow.year, monthToShow.month, 1), 
-                      // ★ 월간 뷰에서도 미래 날짜 제한 적용
                       lastDay: lastAllowedDay, 
                       focusedDay: monthToShow.isAfter(DateTime.now()) ? DateTime.now() : monthToShow, 
                       calendarFormat: CalendarFormat.month, 
@@ -730,7 +773,7 @@ class CorrectedCvaChartPainter extends CustomPainter {
     } else if (level == 'easy') {
       cautionOffset = 8.0;
     } else {
-      cautionOffset = 5.0; // normal
+      cautionOffset = 5.0;
     }
 
     return {
@@ -817,28 +860,36 @@ class CorrectedCvaChartPainter extends CustomPainter {
 
     final verticalDashPaint = Paint()
       ..color = Colors.grey.shade400
-      ..strokeWidth = 1.0
+      ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
 
+    // 선 그리기 (isGap 인 지점은 선 대신 회색 세로 점선 출력)
     for (int i = 0; i < data.length - 1; i++) {
       double x1 = toX(i);
       double y1 = toY((data[i]['avgCva'] as double));
       double x2 = toX(i + 1);
       double y2 = toY((data[i + 1]['avgCva'] as double));
 
-      int idxDiff = data[i + 1]['index'] - data[i]['index'];
-      if (idxDiff > 10) {
+      bool isNextGap = data[i + 1]['isGap'] == true;
+      bool isCurrGap = data[i]['isGap'] == true;
+
+      if (isNextGap) {
+        // 실제 측정 중단 공백 지점에만 회색 세로 점선 출력
         double currY = padT;
         while (currY < padT + chartH) {
           canvas.drawLine(Offset(x2, currY), Offset(x2, math.min(currY + 4, padT + chartH)), verticalDashPaint);
           currY += 7;
         }
-      } else {
+      } else if (!isCurrGap) {
+        // 정상 연속 구간에서는 선을 이어줌
         canvas.drawLine(Offset(x1, y1), Offset(x2, y2), linePaint);
       }
     }
 
+    // 각 포인트점 및 X축 시간 텍스트 출력
     for (int i = 0; i < data.length; i++) {
+      if (data[i]['isGap'] == true) continue; // 공백용 지점은 점/텍스트 생략
+
       double x = toX(i);
       double rawCva = (data[i]['avgCva'] as double);
       double y = toY(rawCva);
@@ -863,7 +914,7 @@ class CorrectedCvaChartPainter extends CustomPainter {
       }
     }
 
-    if (selectedPoint != null) {
+    if (selectedPoint != null && selectedPoint!['isGap'] != true) {
       int selIdx = data.indexOf(selectedPoint!);
       if (selIdx != -1) {
         double selX = toX(selIdx);
@@ -882,7 +933,7 @@ class CorrectedCvaChartPainter extends CustomPainter {
 }
 
 // ------------------------------------------------------------------
-// ★ CVA (C7 귓볼 완벽 대응 및 수평선 위쪽 호 교정) Painter ★
+// NeckAngleLinePainter & NeckAnglePainter
 // ------------------------------------------------------------------
 class NeckAngleLinePainter extends CustomPainter {
   final double cvaAngle;
@@ -890,20 +941,17 @@ class NeckAngleLinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 이미상 C7 점 정확히 조준 (빨간 점 위치)
     final double cx = size.width * 0.62;
     final double c7Y = size.height * 0.62;
 
-    // 1. C7 수평 기준선
     final horizontalLinePaint = Paint()
       ..color = Colors.grey.withOpacity(0.6)
       ..strokeWidth = 1.2;
     canvas.drawLine(Offset(cx - 55, c7Y), Offset(cx + 20, c7Y), horizontalLinePaint);
 
-    // 2. C7 -> 귓볼(위쪽/왼쪽) 방향 사선 계산 (Flutter Y축 반전 반영)
     final angleRad = cvaAngle * math.pi / 180;
     final endX = cx - math.cos(angleRad) * 60.0;
-    final endY = c7Y - math.sin(angleRad) * 60.0; // Y축 차감으로 위쪽 이동!
+    final endY = c7Y - math.sin(angleRad) * 60.0;
 
     canvas.drawLine(
       Offset(cx, c7Y), 
@@ -911,19 +959,16 @@ class NeckAngleLinePainter extends CustomPainter {
       Paint()..color = const Color(0xFF378ADD)..strokeWidth = 2.5..strokeCap = StrokeCap.round,
     );
 
-    // 3. 수평선(180°)부터 귓볼 사선 사이(위쪽 공간)의 CVA 각도 호(Arc)
     canvas.drawArc(
       Rect.fromCenter(center: Offset(cx, c7Y), width: 32, height: 32),
-      math.pi,     // 수평선 좌측(180°)에서 시작
-      angleRad,    // 위쪽 방향으로 cvaAngle만큼 채움
+      math.pi,
+      angleRad,
       false,
       Paint()..color = const Color(0xFF378ADD).withOpacity(0.8)..strokeWidth = 1.5..style = PaintingStyle.stroke,
     );
 
-    // 4. C7 포인트 (빨간 점)
     canvas.drawCircle(Offset(cx, c7Y), 4, Paint()..color = const Color(0xFFE24B4A));
 
-    // 5. CVA 수치 텍스트 표기
     final textPainter = TextPainter(
       text: TextSpan(
         text: "${cvaAngle.toStringAsFixed(1)}°", 
@@ -972,7 +1017,6 @@ class NeckAnglePainter extends CustomPainter {
 
     canvas.drawCircle(Offset(cx, c7Y), 4, Paint()..color = const Color(0xFFE24B4A));
 
-    // 수평선
     canvas.drawLine(Offset(cx - 50, c7Y), Offset(cx + 20, c7Y), Paint()..color = Colors.grey.withOpacity(0.4)..strokeWidth = 1);
 
     final angleRad = cvaAngle * math.pi / 180;
