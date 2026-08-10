@@ -327,7 +327,6 @@ class _VisionPageState extends State<VisionPage> {
 
     // 2. 30일 이내에 이미 측정한 경우 -> 재측정 경고/안내 뷰 노출
     if (isAlreadyMeasuredIn30Days) {
-      int currentMonth = DateTime.now().month;
       return Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
@@ -339,8 +338,8 @@ class _VisionPageState extends State<VisionPage> {
           ),
         ),
         body: _buildReadyView(
-          title: "이번 달은 이미\n월간 측정을 완료했어요\n그래도 다시 측정하시겠습니까?",
-          guideText: "재측정 시 기존 ${currentMonth}월 리포트는 삭제됩니다",
+          title: "월간 측정을 한 지\n30일이 지나지 않았어요\n그래도 다시 측정하시겠습니까?",
+          guideText: "재측정 시 직전 리포트가 삭제될 수 있습니다",
           onPressed: () {
             setState(() {
               isAlreadyMeasuredIn30Days = false; // 안내 뷰를 닫고 카메라 측정 진입
