@@ -8,6 +8,7 @@ import 'main.dart';
 import 'services/mediapipe_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'services/monthly_ble_service.dart';
+import 'services/report_service.dart';
 
 class VisionPage extends StatefulWidget {
   const VisionPage({Key? key}) : super(key: key);
@@ -25,7 +26,12 @@ class _VisionPageState extends State<VisionPage> {
 
   final MediaPipeService _mediaPipeService = MediaPipeService();
   final MonthlyBleService _monthlyBle = MonthlyBleService();
+  final ReportService _reportService = ReportService();
+
   bool _bleReady = false;
+  bool isCheckingEligibility = true;
+  bool isAlreadyMeasuredIn30Days = false;
+
   // 좌표 담을 변수들
   Offset eyePoint = Offset.zero; // 눈
   Offset earPoint = Offset.zero; // 외이도 (Tragus)
@@ -115,7 +121,51 @@ class _VisionPageState extends State<VisionPage> {
       ),
     );
 
+    _checkMeasurementEligibility();
     _bootUp();
+  }
+
+  // 최근 측정일로부터 30일이 지났는지 확인
+  Future<void> _checkMeasurementEligibility() async {
+    try {
+      final list = await _reportService.fetchMonthlyList();
+      if (list.isNotEmpty) {
+        DateTime? latestMeasuredAt;
+        for (var item in list) {
+          if (latestMeasuredAt == null ||
+              item.measuredAt.isAfter(latestMeasuredAt)) {
+            if (item.measuredAt.year > 2000) {
+              latestMeasuredAt = item.measuredAt;
+            }
+          }
+        }
+
+        if (latestMeasuredAt != null) {
+          DateTime now = DateTime.now();
+          DateTime today = DateTime(now.year, now.month, now.day);
+          DateTime lastDate = DateTime(
+            latestMeasuredAt.year,
+            latestMeasuredAt.month,
+            latestMeasuredAt.day,
+          );
+          DateTime nextAvailableDate = lastDate.add(const Duration(days: 30));
+
+          if (today.isBefore(nextAvailableDate)) {
+            setState(() {
+              isAlreadyMeasuredIn30Days = true;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("측정 자격 확인 실패: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          isCheckingEligibility = false;
+        });
+      }
+    }
   }
 
   // 서비스의 카메라를 깨우고 좌표 스트림을 구독합니다.
@@ -267,6 +317,39 @@ class _VisionPageState extends State<VisionPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 1. 30일 자격 검사 중 로딩
+    if (isCheckingEligibility) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    // 2. 30일 이내에 이미 측정한 경우 -> 재측정 경고/안내 뷰 노출
+    if (isAlreadyMeasuredIn30Days) {
+      int currentMonth = DateTime.now().month;
+      return Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: _buildReadyView(
+          title: "이번 달은 이미\n월간 측정을 완료했어요\n그래도 다시 측정하시겠습니까?",
+          guideText: "재측정 시 기존 ${currentMonth}월 리포트는 삭제됩니다",
+          onPressed: () {
+            setState(() {
+              isAlreadyMeasuredIn30Days = false; // 안내 뷰를 닫고 카메라 측정 진입
+            });
+          },
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -290,7 +373,7 @@ class _VisionPageState extends State<VisionPage> {
             GestureDetector(
               onTap: () async {
                 if (step == 7) {
-                  Navigator.pop(context);
+                  Navigator.pop(context, true); // 측정 완료 후 pop시 true 전달
                 } else {
                   await _mediaPipeService.initializeCamera(); // 카메라 다시 초기화
                   setState(() => step = 2);
@@ -410,6 +493,50 @@ class _VisionPageState extends State<VisionPage> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  // 30일 이내 재측정 안내 UI
+  Widget _buildReadyView({
+    required String title,
+    required String guideText,
+    required VoidCallback onPressed,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      child: Column(
+        children: [
+          const Spacer(flex: 2),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TText.title.copyWith(fontSize: 22, height: 1.5),
+          ),
+          const Spacer(flex: 3),
+          Text(
+            guideText,
+            style: TextStyle(
+              color: TColor.black,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: TColor.buttonGreen,
+              minimumSize: const Size(double.infinity, 56),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
+            ),
+            child: Text("월간 측정하러 가기", style: TText.button),
+          ),
+          const SizedBox(height: 40),
         ],
       ),
     );
