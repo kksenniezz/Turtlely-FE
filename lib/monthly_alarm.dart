@@ -56,7 +56,11 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
   }
 
   Future<void> _handleAlarmToggle(String alarmType) async {
-    if (_isUpdatingAlarm) return;
+    bool isSet = (alarmType == "MEASURE")
+        ? _isMeasureAlarmSet
+        : _isResultAlarmSet;
+
+    if (isSet || _isUpdatingAlarm) return;
 
     setState(() => _isUpdatingAlarm = true);
 
@@ -67,9 +71,9 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
     if (response != null && response['isSuccess'] == true) {
       setState(() {
         if (alarmType == "MEASURE") {
-          _isMeasureAlarmSet = !_isMeasureAlarmSet;
+          _isMeasureAlarmSet = true;
         } else {
-          _isResultAlarmSet = !_isResultAlarmSet;
+          _isResultAlarmSet = true;
         }
       });
 
