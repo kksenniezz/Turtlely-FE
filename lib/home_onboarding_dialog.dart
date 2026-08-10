@@ -65,14 +65,16 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
 
   Future<void> _nextStep() async {
     if (_currentStep == 2) {
-      await [
-        Permission.notification,
-        Permission.bluetooth,
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-        Permission.location,
-        Permission.camera,
-      ].request();
+      // 1. 알림 권한 요청
+      await Permission.notification.request();
+
+      // 2. 블루투스 / 위치 권한 요청
+      await Permission.bluetoothScan.request();
+      await Permission.bluetoothConnect.request();
+      await Permission.location.request();
+
+      // 3. 카메라 권한 요청
+      await Permission.camera.request();
     }
 
     if (_currentStep < 4) {
