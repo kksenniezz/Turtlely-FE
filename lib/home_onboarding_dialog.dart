@@ -36,6 +36,8 @@ class HomeOnboardingDialog extends StatefulWidget {
           );
         },
       );
+    } else {
+      if (onComplete != null) onComplete();
     }
   }
 
@@ -68,6 +70,7 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
         Permission.bluetooth,
         Permission.bluetoothScan,
         Permission.bluetoothConnect,
+        Permission.location,
         Permission.camera,
       ].request();
     }

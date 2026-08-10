@@ -72,7 +72,11 @@ class _HomeViewContentState extends State<HomeViewContent> {
   Timer? monitorTimer;
   Timer? dailyApiTimer;
 
-  String get _level => selectedDifficulty == '낮음' ? 'easy' : selectedDifficulty == '높음' ? 'hard' : 'normal';
+  String get _level => selectedDifficulty == '낮음'
+      ? 'easy'
+      : selectedDifficulty == '높음'
+      ? 'hard'
+      : 'normal';
 
   @override
   void initState() {
@@ -100,8 +104,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
       _checkBatteryLevelAndNotify(batt);
     };
 
-    _ble.init();
-
     _storage.read(key: 'accessToken').then((token) {
       debugPrint("🔑 accessToken: $token");
     });
@@ -112,6 +114,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
         userName: "사용자",
         onComplete: () {
           debugPrint("홈 온보딩 완료!");
+          _ble.init();
         },
       );
     });
@@ -139,21 +142,31 @@ class _HomeViewContentState extends State<HomeViewContent> {
         final jsonResponse = jsonDecode(response.body);
         final List<dynamic> list = jsonResponse['result'] ?? [];
 
-        final validReports = list.where((item) =>
-          item['data_status'] == 'AVAILABLE' && item['measured_at'] != null
-        ).toList();
+        final validReports = list
+            .where(
+              (item) =>
+                  item['data_status'] == 'AVAILABLE' &&
+                  item['measured_at'] != null,
+            )
+            .toList();
 
         // 1. 월간 측정 기록이 없는 경우
         if (validReports.isEmpty) {
           return {'isValid': false, 'reason': 'NO_MEASUREMENT'};
         }
 
-        validReports.sort((a, b) =>
-          DateTime.parse(b['measured_at']).compareTo(DateTime.parse(a['measured_at']))
+        validReports.sort(
+          (a, b) => DateTime.parse(
+            b['measured_at'],
+          ).compareTo(DateTime.parse(a['measured_at'])),
         );
 
-        final DateTime lastMeasuredAt = DateTime.parse(validReports.first['measured_at']);
-        final DateTime expireDate = lastMeasuredAt.add(const Duration(days: 30));
+        final DateTime lastMeasuredAt = DateTime.parse(
+          validReports.first['measured_at'],
+        );
+        final DateTime expireDate = lastMeasuredAt.add(
+          const Duration(days: 30),
+        );
         final DateTime now = DateTime.now();
 
         // 2. 측정 후 30일이 초과된 경우
@@ -184,7 +197,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             decoration: BoxDecoration(
@@ -251,7 +266,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
                         height: 48,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: TColor.buttonGreen, // ★ 메인 버튼과 일치하는 초록색
+                            backgroundColor:
+                                TColor.buttonGreen, // ★ 메인 버튼과 일치하는 초록색
                             elevation: 0,
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             shape: RoundedRectangleBorder(
@@ -270,7 +286,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const VisionPage()),
+                              MaterialPageRoute(
+                                builder: (_) => const VisionPage(),
+                              ),
                             ).then((_) {
                               if (mounted) _ble.init();
                             });
@@ -305,7 +323,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
         _hasSentBatteryNotification = true;
 
         final now = DateTime.now();
-        final timeStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+        final timeStr =
+            "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
 
         localNotifications.insert(0, {
           "notification_id": DateTime.now().millisecondsSinceEpoch,
@@ -328,7 +347,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             decoration: BoxDecoration(
@@ -343,7 +364,11 @@ class _HomeViewContentState extends State<HomeViewContent> {
                   child: IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Colors.black),
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new,
+                      size: 20,
+                      color: Colors.black,
+                    ),
                     onPressed: () => Navigator.of(dialogContext).pop(),
                   ),
                 ),
@@ -426,7 +451,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
       barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           child: Container(
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
@@ -503,7 +530,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
           _showMonthlyRequiredDialog("월간 측정 기록이 없습니다.");
         } else if (reason == 'EXPIRED') {
           int passedDays = checkResult['passedDays'] ?? 30;
-          _showMonthlyRequiredDialog("마지막 월간 측정 후 $passedDays일이 지났습니다.\n정확한 자세 교정을 위해 월간 측정을 다시 진행해 주세요.");
+          _showMonthlyRequiredDialog(
+            "마지막 월간 측정 후 $passedDays일이 지났습니다.\n정확한 자세 교정을 위해 월간 측정을 다시 진행해 주세요.",
+          );
         } else {
           _showSnackBar("월간 측정 상태를 확인하지 못했습니다.");
         }
@@ -589,17 +618,23 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
       if (newPostureResult == 'warning') {
         _worstPostureInMinute = 'warning';
-      } else if (newPostureResult == 'caution' && _worstPostureInMinute != 'warning') {
+      } else if (newPostureResult == 'caution' &&
+          _worstPostureInMinute != 'warning') {
         _worstPostureInMinute = 'caution';
       }
 
       final now = DateTime.now();
-      final timeStr = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
-      final rawTimeStr = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+      final timeStr =
+          "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+      final rawTimeStr =
+          "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
 
       setState(() {
         postureResult = newPostureResult;
-        isBadPosture = isBad || newPostureResult == "caution" || newPostureResult == "warning";
+        isBadPosture =
+            isBad ||
+            newPostureResult == "caution" ||
+            newPostureResult == "warning";
         lastEstimatedCva = estimatedCva;
 
         cvaSum += estimatedCva;
@@ -608,7 +643,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
         if (newPostureResult == "warning" && _prevPostureResult != "warning") {
           warningCount++;
-        } else if (newPostureResult == "caution" && _prevPostureResult != "caution") {
+        } else if (newPostureResult == "caution" &&
+            _prevPostureResult != "caution") {
           cautionCount++;
         } else if (newPostureResult == "normal") {
           normalDuration++;
@@ -692,7 +728,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
     if (cvaHistory.isNotEmpty) {
       final today = DateTime.now();
-      final dateKey = "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
+      final dateKey =
+          "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
       final avgCva = cvaCount > 0 ? cvaSum / cvaCount : 0.0;
 
       final existingData = await DailyReportStorage.loadHistory(dateKey);
@@ -703,19 +740,38 @@ class _HomeViewContentState extends State<HomeViewContent> {
       final prevDuration = existingData?['duration'] ?? 0;
       final prevAvgCva = (existingData?['avgCva'] ?? 0.0).toDouble();
 
-      final prevCvaHistory = List<double>.from(existingData?['cvaHistory'] ?? []);
-      final prevTimeHistory = List<String>.from(existingData?['timeHistory'] ?? []);
-      final prevPostureHistory = List<String>.from(existingData?['postureHistory'] ?? []);
-      final prevAccXHistory = List<double>.from(existingData?['accXHistory'] ?? []);
-      final prevAccYHistory = List<double>.from(existingData?['accYHistory'] ?? []);
-      final prevAccZHistory = List<double>.from(existingData?['accZHistory'] ?? []);
-      final prevRawTimeHistory = List<String>.from(existingData?['rawTimeHistory'] ?? []);
-      final prevCvaRawHistory = List<double>.from(existingData?['cvaRawHistory'] ?? []);
-      final prevPostureRawHistory = List<String>.from(existingData?['postureRawHistory'] ?? []);
+      final prevCvaHistory = List<double>.from(
+        existingData?['cvaHistory'] ?? [],
+      );
+      final prevTimeHistory = List<String>.from(
+        existingData?['timeHistory'] ?? [],
+      );
+      final prevPostureHistory = List<String>.from(
+        existingData?['postureHistory'] ?? [],
+      );
+      final prevAccXHistory = List<double>.from(
+        existingData?['accXHistory'] ?? [],
+      );
+      final prevAccYHistory = List<double>.from(
+        existingData?['accYHistory'] ?? [],
+      );
+      final prevAccZHistory = List<double>.from(
+        existingData?['accZHistory'] ?? [],
+      );
+      final prevRawTimeHistory = List<String>.from(
+        existingData?['rawTimeHistory'] ?? [],
+      );
+      final prevCvaRawHistory = List<double>.from(
+        existingData?['cvaRawHistory'] ?? [],
+      );
+      final prevPostureRawHistory = List<String>.from(
+        existingData?['postureRawHistory'] ?? [],
+      );
 
       final prevCvaCount = prevCvaHistory.length;
       final mergedAvgCva = (prevCvaCount + cvaCount) > 0
-          ? (prevAvgCva * prevCvaCount + avgCva * cvaCount) / (prevCvaCount + cvaCount)
+          ? (prevAvgCva * prevCvaCount + avgCva * cvaCount) /
+                (prevCvaCount + cvaCount)
           : avgCva;
 
       await DailyReportStorage.saveHistory(
@@ -797,7 +853,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
             children: [
               Text(
                 getTodayDate(),
-                style: TText.title.copyWith(fontSize: 22, fontWeight: FontWeight.bold),
+                style: TText.title.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               GestureDetector(
                 onTap: () async {
@@ -821,15 +880,27 @@ class _HomeViewContentState extends State<HomeViewContent> {
                 },
                 child: Container(
                   key: monthlyBtnKey,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Text(
                     "월간 측정하러 가기 >",
-                    style: TText.caption.copyWith(color: TColor.darkGreen, fontWeight: FontWeight.bold),
+                    style: TText.caption.copyWith(
+                      color: TColor.darkGreen,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
@@ -844,17 +915,27 @@ class _HomeViewContentState extends State<HomeViewContent> {
                 children: [
                   Text(
                     "${(monitoringSeconds ~/ 60).toString().padLeft(2, '0')}:${(monitoringSeconds % 60).toString().padLeft(2, '0')}",
-                    style: TText.title.copyWith(fontSize: 32, fontWeight: FontWeight.bold),
+                    style: TText.title.copyWith(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   Row(
                     children: [
                       if (_ble.isDeviceReady && _batteryPercent != null) ...[
                         Icon(
-                          (_batteryPercent! >= 75) ? Icons.battery_full : 
-                          (_batteryPercent! >= 50) ? Icons.battery_5_bar : 
-                          (_batteryPercent! >= 25) ? Icons.battery_3_bar : 
-                          (_batteryPercent! >= 10) ? Icons.battery_1_bar : Icons.battery_alert,
-                          color: (_batteryPercent! <= 20) ? Colors.red : TColor.gray,
+                          (_batteryPercent! >= 75)
+                              ? Icons.battery_full
+                              : (_batteryPercent! >= 50)
+                              ? Icons.battery_5_bar
+                              : (_batteryPercent! >= 25)
+                              ? Icons.battery_3_bar
+                              : (_batteryPercent! >= 10)
+                              ? Icons.battery_1_bar
+                              : Icons.battery_alert,
+                          color: (_batteryPercent! <= 20)
+                              ? Colors.red
+                              : TColor.gray,
                           size: 20,
                         ),
                         const SizedBox(width: 4),
@@ -862,14 +943,23 @@ class _HomeViewContentState extends State<HomeViewContent> {
                         const SizedBox(width: 8),
                       ],
                       Icon(
-                        _ble.isDeviceReady ? Icons.bluetooth_connected : Icons.bluetooth_searching,
-                        color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray,
+                        _ble.isDeviceReady
+                            ? Icons.bluetooth_connected
+                            : Icons.bluetooth_searching,
+                        color: _ble.isDeviceReady
+                            ? TColor.buttonGreen
+                            : TColor.gray,
                         size: 14,
                       ),
                       const SizedBox(width: 2),
                       Text(
                         _ble.isDeviceReady ? "기기 연결됨" : "기기 탐색 중",
-                        style: TextStyle(fontSize: 11, color: _ble.isDeviceReady ? TColor.buttonGreen : TColor.gray),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _ble.isDeviceReady
+                              ? TColor.buttonGreen
+                              : TColor.gray,
+                        ),
                       ),
                     ],
                   ),
@@ -883,9 +973,14 @@ class _HomeViewContentState extends State<HomeViewContent> {
                     onTap: () => setState(() => selectedDifficulty = level),
                     child: Container(
                       margin: const EdgeInsets.only(left: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
-                        color: isSelected ? TColor.buttonGreen : TColor.lightGreen,
+                        color: isSelected
+                            ? TColor.buttonGreen
+                            : TColor.lightGreen,
                         borderRadius: BorderRadius.circular(15),
                       ),
                       child: Text(
@@ -920,7 +1015,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
                         Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text("$calibrationTimer", style: TText.logo.copyWith(fontSize: 48)),
+                            Text(
+                              "$calibrationTimer",
+                              style: TText.logo.copyWith(fontSize: 48),
+                            ),
                             const SizedBox(height: 8),
                             Text("평소 자세 유지해주세요", style: TText.caption),
                           ],
@@ -931,10 +1029,11 @@ class _HomeViewContentState extends State<HomeViewContent> {
                       postureResult == "warning"
                           ? 'assets/fire_turtle.png'
                           : postureResult == "caution"
-                              ? 'assets/surprised_turtle.png'
-                              : 'assets/normal_turtle.png',
+                          ? 'assets/surprised_turtle.png'
+                          : 'assets/normal_turtle.png',
                       width: 280,
-                      errorBuilder: (_, __, ___) => Image.asset('assets/normal_turtle.png', width: 280),
+                      errorBuilder: (_, __, ___) =>
+                          Image.asset('assets/normal_turtle.png', width: 280),
                     ),
             ),
           ),
