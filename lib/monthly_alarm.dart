@@ -254,7 +254,7 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
     return ElevatedButton(
       onPressed: _isUpdatingAlarm ? null : () => _handleAlarmToggle(alarmType),
       style: ElevatedButton.styleFrom(
-        backgroundColor: TColor.darkGreen,
+        backgroundColor: TColor.buttonGreen,
         minimumSize: const Size(double.infinity, 56),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         elevation: 0,
