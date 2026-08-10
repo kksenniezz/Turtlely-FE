@@ -159,7 +159,7 @@ class _MonthlyAlarmViewState extends State<MonthlyAlarmView> {
         String nDay = "${nextAvailableDate.day}일";
 
         return _buildReadyView(
-          title: "이번 달은 $nDay부터 월간 측정을 할 수 있어요",
+          title: "이번 달은 $nDay부터\n월간 측정을 할 수 있어요",
           guideText: "$nDay에 알림을 보내드릴까요?",
           alarmType: "MEASURE",
         );
