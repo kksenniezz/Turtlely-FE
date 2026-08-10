@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-// home_view_content.dart의 Key 선언 임포트
+import 'package:permission_handler/permission_handler.dart';
 import 'home.dart';
 
 class HomeOnboardingDialog extends StatefulWidget {
@@ -52,12 +51,27 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
     if (renderObject is RenderBox) {
       final translation = renderObject.getTransformTo(null).getTranslation();
       final size = renderObject.size;
-      return Rect.fromLTWH(translation.x, translation.y, size.width, size.height);
+      return Rect.fromLTWH(
+        translation.x,
+        translation.y,
+        size.width,
+        size.height,
+      );
     }
     return null;
   }
 
-  void _nextStep() {
+  Future<void> _nextStep() async {
+    if (_currentStep == 2) {
+      await [
+        Permission.notification,
+        Permission.bluetooth,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.camera,
+      ].request();
+    }
+
     if (_currentStep < 4) {
       setState(() => _currentStep++);
     } else {
@@ -78,7 +92,9 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
 
   @override
   Widget build(BuildContext context) {
-    Rect? step3Rect = _currentStep == 3 ? _getWidgetRect(difficultyBtnKey) : null;
+    Rect? step3Rect = _currentStep == 3
+        ? _getWidgetRect(difficultyBtnKey)
+        : null;
     Rect? step4Rect = _currentStep == 4 ? _getWidgetRect(monthlyBtnKey) : null;
 
     final targetRect = step3Rect ?? step4Rect;
@@ -114,7 +130,10 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
               width: targetRect.width + 8,
               height: targetRect.height + 8,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
@@ -123,7 +142,7 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
                       color: Colors.white.withOpacity(0.95),
                       blurRadius: 12,
                       spreadRadius: 4,
-                    )
+                    ),
                   ],
                 ),
                 child: const Center(
@@ -192,7 +211,11 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
                             if (_currentStep > 0)
                               GestureDetector(
                                 onTap: _prevStep,
-                                child: const Icon(Icons.arrow_back_ios_new, size: 20, color: Colors.black87),
+                                child: const Icon(
+                                  Icons.arrow_back_ios_new,
+                                  size: 20,
+                                  color: Colors.black87,
+                                ),
                               )
                             else
                               const SizedBox(width: 24, height: 24),
@@ -202,7 +225,11 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
                             if (_currentStep == 4)
                               GestureDetector(
                                 onTap: _finishOnboarding,
-                                child: const Icon(Icons.close, size: 24, color: Colors.black87),
+                                child: const Icon(
+                                  Icons.close,
+                                  size: 24,
+                                  color: Colors.black87,
+                                ),
                               )
                             else
                               const SizedBox(width: 24, height: 24),
@@ -261,7 +288,7 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
             color: Colors.white.withOpacity(0.9),
             blurRadius: 10,
             spreadRadius: 3,
-          )
+          ),
         ],
       ),
       child: Text(
@@ -282,7 +309,11 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
           children: [
             const Text(
               "시작하기 전, 잠시만요!",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
             ),
             const SizedBox(height: 16),
             Image.asset(
@@ -294,7 +325,11 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
             const Text(
               "터틀리를 100% 활용할 수 있도록\n핵심 팁을 바로 알려드릴게요!",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.black87,
+                height: 1.4,
+              ),
             ),
           ],
         );
@@ -304,7 +339,11 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
           children: [
             const Text(
               "STEP 1",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black54,
+              ),
             ),
             const SizedBox(height: 16),
             Image.asset(
@@ -330,7 +369,11 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
             const Text(
               "거북목 교정 센서인 터틀훅을 착용해 주세요!\n자세가 무너질 때, 실시간 알림을 보낼드릴게요",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.black87,
+                height: 1.4,
+              ),
             ),
           ],
         );
@@ -340,20 +383,36 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
           children: [
             const Text(
               "STEP 2",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black54,
+              ),
             ),
             const SizedBox(height: 8),
             const Text(
               "원활한 서비스를 위해\n앱 권한을 허용해 주세요",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
             ),
             const SizedBox(height: 20),
-            _permissionItem(Icons.notifications_none, "알림", "터틀리로부터 소식을 받을 수 있습니다"),
+            _permissionItem(
+              Icons.notifications_none,
+              "알림",
+              "터틀리로부터 소식을 받을 수 있습니다",
+            ),
             const SizedBox(height: 12),
             _permissionItem(Icons.bluetooth, "블루투스", "터틀훅을 통해 고개 각도를 측정합니다"),
             const SizedBox(height: 12),
-            _permissionItem(Icons.camera_alt_outlined, "카메라", "매월 거북목 상태를 측정합니다"),
+            _permissionItem(
+              Icons.camera_alt_outlined,
+              "카메라",
+              "매월 거북목 상태를 측정합니다",
+            ),
           ],
         );
 
@@ -362,13 +421,21 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
           children: [
             const Text(
               "STEP 3",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black54,
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               "${widget.userName}님의 거북목 유형에 맞춰\n거북목 알림 난이도를 설정할 수 있어요",
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.black87,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: 16),
             Container(
@@ -380,9 +447,23 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
               ),
               child: const Column(
                 children: [
-                  Text("낮음 ➔ 여유로운 관리", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2E532B))),
+                  Text(
+                    "낮음 ➔ 여유로운 관리",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2E532B),
+                    ),
+                  ),
                   SizedBox(height: 6),
-                  Text("높음 ➔ 완벽한 관리", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2E532B))),
+                  Text(
+                    "높음 ➔ 완벽한 관리",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2E532B),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -394,19 +475,31 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
           children: [
             const Text(
               "STEP 4",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black54,
+              ),
             ),
             const SizedBox(height: 16),
             const Text(
               "거북목 알림 난이도를 설정하기 위해\n한 달에 한 번, 월간 거북목 측정을 해야 해요",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.black87, height: 1.4),
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.black87,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: 20),
             const Text(
               "[월간 측정하러 가기 >] 버튼을 눌러 주세요!",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2E532B)),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2E532B),
+              ),
             ),
           ],
         );
@@ -425,8 +518,18 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
-              Text(desc, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              Text(
+                desc,
+                style: const TextStyle(fontSize: 11, color: Colors.black54),
+              ),
             ],
           ),
         ),
