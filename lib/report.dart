@@ -8,7 +8,7 @@ import 'style.dart';
 import 'monthly_report.dart';
 import 'daily_report_storage.dart';
 import 'posture_api_service.dart';
-import 'report_onboarding_dialog.dart'; // ★ 리포트 온보딩 다이얼로그 연동
+import 'report_onboarding_dialog.dart';
 
 class ReportView extends StatefulWidget {
   const ReportView({super.key});
@@ -37,16 +37,15 @@ class _ReportViewState extends State<ReportView> {
   List<String> _postureHistory = [];
   bool    _isLoadingReport = false;
 
-  // CVA 그래프 제어용 변수
-  int _selectedInterval = 1; // 기본 1분
+  // CVA 그래프 제어용 변수 (1분, 5분, 10분)
+  int _selectedInterval = 1; 
   List<Map<String, dynamic>> _processedGraphData = [];
   Map<String, dynamic>? _selectedPoint;
 
-  // ★ 사용자 개별 설정값 ★
-  double _myBaseCva = 52.0;    // 월간 측정에서 나온 개인 기준 각도
-  String _selectedLevel = 'normal'; // 난이도 ('easy', 'normal', 'hard')
+  // 사용자 개별 설정값
+  double _myBaseCva = 52.0; 
+  String _selectedLevel = 'normal'; 
 
-  // 이탈 각도 기준 산출 함수
   Map<String, double> getThresholds(String level, double baseCva) {
     double cautionOffset;
     if (level == 'hard') {
@@ -58,8 +57,8 @@ class _ReportViewState extends State<ReportView> {
     }
 
     return {
-      'cautionY': baseCva - cautionOffset, // 주의 임계 각도
-      'warningY': baseCva - 15.0,         // 경고 임계 각도 (공통 15도)
+      'cautionY': baseCva - cautionOffset,
+      'warningY': baseCva - 15.0,
     };
   }
 
@@ -81,7 +80,6 @@ class _ReportViewState extends State<ReportView> {
       }
     });
 
-    // ★ 화면 렌더링 완료 후 리포트 최초 1회 온보딩 팝업 노출 ★
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ReportOnboardingDialog.checkAndShow(
         context,
@@ -171,7 +169,6 @@ class _ReportViewState extends State<ReportView> {
     if (mounted) setState(() { _isLoadingReport = false; });
   }
 
-  // ★ [핵심] 실제 시간 기반 간격 정제 및 측정 중단 점선 판별 로직
   void _processGraphData() {
     if (_cvaHistory.isEmpty || _timeHistory.isEmpty) {
       setState(() {
@@ -195,6 +192,12 @@ class _ReportViewState extends State<ReportView> {
       return null;
     }
 
+    double clampAngle(double angle) {
+      if (angle < 30.0) return 25.0;
+      if (angle > 70.0) return 75.0;
+      return angle;
+    }
+
     int i = 0;
     while (i < _cvaHistory.length) {
       String startTimeStr = _timeHistory[i];
@@ -205,19 +208,13 @@ class _ReportViewState extends State<ReportView> {
         continue;
       }
 
-      // 이전 지점과의 시간 차이가 (간격 * 1.8배) 이상으로 벌어졌을 때만 측정 중단 공백으로 오인 없이 판별
-      if (temp.isNotEmpty && temp.last['isGap'] != true) {
+      bool hasGap = false;
+      if (temp.isNotEmpty) {
         DateTime? prevTime = parseTime(temp.last['time']);
         if (prevTime != null) {
           int diffMinutes = startTime.difference(prevTime).inMinutes;
           if (diffMinutes > (intervalMin * 1.8).round()) {
-            temp.add({
-              'avgCva': temp.last['avgCva'],
-              'warningCount': 0,
-              'cautionCount': 0,
-              'time': startTimeStr,
-              'isGap': true, // 회색 점선을 유도하는 플래그
-            });
+            hasGap = true;
           }
         }
       }
@@ -228,7 +225,7 @@ class _ReportViewState extends State<ReportView> {
       while (i < _cvaHistory.length) {
         DateTime? currTime = parseTime(_timeHistory[i]);
         if (currTime != null && currTime.difference(startTime).inMinutes >= intervalMin) {
-          break; // 설정한 시간 단위(1분, 10분, 30분, 1시간) 경과 시 묶음 종료
+          break;
         }
 
         chunkCva.add(_cvaHistory[i]);
@@ -236,18 +233,28 @@ class _ReportViewState extends State<ReportView> {
         i++;
       }
 
+      if (i >= _cvaHistory.length && chunkCva.isNotEmpty && intervalMin > 1) {
+        DateTime? lastChunkTime = parseTime(_timeHistory.last);
+        if (lastChunkTime != null && lastChunkTime.difference(startTime).inMinutes < (intervalMin - 1)) {
+          break;
+        }
+      }
+
       if (chunkCva.isNotEmpty) {
         double sum = chunkCva.reduce((a, b) => a + b);
-        double avg = sum / chunkCva.length;
+        double rawAvg = sum / chunkCva.length;
+        double clampedAvg = clampAngle(rawAvg);
+
         int wCount = chunkPosture.where((p) => p == "warning").length;
         int cCount = chunkPosture.where((p) => p == "caution").length;
 
         temp.add({
-          'avgCva': avg,
+          'avgCva': clampedAvg,
+          'realAvgCva': rawAvg,
           'warningCount': wCount,
           'cautionCount': cCount,
           'time': startTimeStr,
-          'isGap': false,
+          'isStartAfterGap': hasGap,
         });
       }
     }
@@ -259,7 +266,6 @@ class _ReportViewState extends State<ReportView> {
   }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
-    // 미래 날짜 클릭 차단
     if (selectedDay.isAfter(DateTime.now())) return;
 
     setState(() {
@@ -398,7 +404,7 @@ class _ReportViewState extends State<ReportView> {
           TableCalendar(
             locale: 'ko_KR',
             firstDay: DateTime.utc(2024, 1, 1),
-            lastDay: DateTime.now(), // 오늘로 고정하여 미래 제한
+            lastDay: DateTime.now(),
             focusedDay: _focusedDay.isAfter(DateTime.now()) ? DateTime.now() : _focusedDay,
             calendarFormat: CalendarFormat.week, headerVisible: false,
             onCalendarCreated: (controller) => _calendarPageController = controller,
@@ -552,11 +558,12 @@ class _ReportViewState extends State<ReportView> {
           const Text("그래프 위 측정 지점을 눌러 나의 상태를 확인해 보세요", style: TextStyle(fontSize: 12, color: Colors.grey)),
           const SizedBox(height: 12),
 
+          // 1분 / 5분 / 10분 선택 버튼
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [1, 10, 30, 60].map((interval) {
+            children: [1, 5, 10].map((interval) {
               bool isSelected = _selectedInterval == interval;
-              String label = interval == 60 ? "1시간" : "$interval분";
+              String label = "$interval분";
               return GestureDetector(
                 onTap: () {
                   setState(() {
@@ -565,7 +572,7 @@ class _ReportViewState extends State<ReportView> {
                   });
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                   decoration: BoxDecoration(
                     color: isSelected ? const Color(0xFFF1F8E9) : Colors.transparent,
                     borderRadius: BorderRadius.circular(20),
@@ -576,7 +583,7 @@ class _ReportViewState extends State<ReportView> {
                   child: Text(
                     label,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                       color: isSelected ? const Color(0xFF33691E) : Colors.grey,
                     ),
@@ -614,43 +621,64 @@ class _ReportViewState extends State<ReportView> {
                 ),
                 const SizedBox(height: 8),
 
+                // [핵심 변경] 좌측 고정 Y축 레이블 + 우측 가로 스크롤 그래프 영역
                 SizedBox(
                   height: screenHeight * 0.25,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width: math.max(
-                        MediaQuery.of(context).size.width - 48 - 24,
-                        _processedGraphData.length * 50.0,
-                      ),
-                      child: GestureDetector(
-                        onTapDown: (TapDownDetails details) {
-                          if (_processedGraphData.isEmpty) return;
-                          double tapX = details.localPosition.dx;
-                          double chartW = math.max(
-                            MediaQuery.of(context).size.width - 48 - 24,
-                            _processedGraphData.length * 50.0,
-                          ) - 36 - 16;
-
-                          double ratio = ((tapX - 36) / chartW).clamp(0.0, 1.0);
-                          int clickedIdx = (ratio * (_processedGraphData.length - 1)).round();
-                          if (_processedGraphData[clickedIdx]['isGap'] != true) {
-                            setState(() {
-                              _selectedPoint = _processedGraphData[clickedIdx];
-                            });
-                          }
-                        },
+                  child: Row(
+                    children: [
+                      // 1. 좌측 고정 Y축 눈금 및 텍스트 레이블 (폭 36 고정)
+                      SizedBox(
+                        width: 36,
+                        height: screenHeight * 0.25,
                         child: CustomPaint(
-                          size: Size.infinite,
-                          painter: CorrectedCvaChartPainter(
-                            data: _processedGraphData,
-                            selectedPoint: _selectedPoint,
-                            myBaseCva: _myBaseCva,
-                            selectedLevel: _selectedLevel,
-                          ),
+                          painter: _FixedYAxisPainter(),
                         ),
                       ),
-                    ),
+                      // 2. 우측 스크롤 가능한 데이터 차트 영역
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            double availableWidth = constraints.maxWidth;
+                            double itemSpacing = 50.0;
+                            double calculatedWidth = math.max(
+                              availableWidth,
+                              _processedGraphData.length * itemSpacing,
+                            );
+
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: SizedBox(
+                                width: calculatedWidth,
+                                height: screenHeight * 0.25,
+                                child: GestureDetector(
+                                  onTapDown: (TapDownDetails details) {
+                                    if (_processedGraphData.isEmpty) return;
+                                    double tapX = details.localPosition.dx;
+                                    const double padR = 16.0;
+                                    double chartW = calculatedWidth - padR;
+
+                                    double ratio = (tapX / chartW).clamp(0.0, 1.0);
+                                    int clickedIdx = (ratio * (_processedGraphData.length - 1)).round();
+                                    setState(() {
+                                      _selectedPoint = _processedGraphData[clickedIdx];
+                                    });
+                                  },
+                                  child: CustomPaint(
+                                    size: Size(calculatedWidth, screenHeight * 0.25),
+                                    painter: CorrectedCvaChartPainter(
+                                      data: _processedGraphData,
+                                      selectedPoint: _selectedPoint,
+                                      myBaseCva: _myBaseCva,
+                                      selectedLevel: _selectedLevel,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -671,7 +699,8 @@ class _ReportViewState extends State<ReportView> {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   Text("시간: ${_selectedPoint!['time']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  Text("평균: ${(_selectedPoint!['avgCva'] as double).toStringAsFixed(1)}°", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF33691E))),
+                  Text("평균: ${((_selectedPoint!['realAvgCva'] ?? _selectedPoint!['avgCva']) as double).toStringAsFixed(1)}°", 
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF33691E))),
                   Text("경고: ${_selectedPoint!['warningCount']}회", style: const TextStyle(fontSize: 12, color: Color(0xFFE24B4A))),
                   Text("주의: ${_selectedPoint!['cautionCount']}회", style: const TextStyle(fontSize: 12, color: Color(0xFFFF9800))),
                 ],
@@ -751,7 +780,47 @@ class _ReportViewState extends State<ReportView> {
 }
 
 // ------------------------------------------------------------------
-// CVA 그래프 CustomPainter
+// 1. 좌측 고정 Y축 Painter (가로 스크롤 시에도 항상 고정)
+// ------------------------------------------------------------------
+class _FixedYAxisPainter extends CustomPainter {
+  final double minY = 25.0;
+  final double maxY = 75.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const double padT = 12, padB = 32;
+    final double chartH = size.height - padT - padB;
+
+    double toY(double v) {
+      double clampedV = v.clamp(minY, maxY);
+      return padT + (1 - (clampedV - minY) / (maxY - minY)) * chartH;
+    }
+
+    // Y축 각도 텍스트 렌더링 (<30°, >70°도 모두 동일한 회색 적용)
+    for (double v in [25.0, 30.0, 40.0, 50.0, 60.0, 70.0, 75.0]) {
+      String labelText = "${v.toInt()}°";
+      if (v == 25.0) labelText = "<30°";
+      if (v == 75.0) labelText = ">70°";
+
+      final tp = TextPainter(
+        text: TextSpan(
+          text: labelText,
+          style: const TextStyle(color: Colors.grey, fontSize: 8, fontWeight: FontWeight.w500),
+        ),
+        textAlign: TextAlign.right,
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: size.width - 4);
+
+      tp.paint(canvas, Offset(size.width - tp.width - 4, toY(v) - 5));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ------------------------------------------------------------------
+// 2. 우측 스크롤 꺾은선 차트 CustomPainter
 // ------------------------------------------------------------------
 class CorrectedCvaChartPainter extends CustomPainter {
   final List<Map<String, dynamic>> data;
@@ -786,18 +855,19 @@ class CorrectedCvaChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (data.isEmpty) return;
 
-    const double padL = 36, padR = 16, padT = 12, padB = 32;
+    // 좌측은 고정 Y축에 연결되므로 padL = 0
+    const double padL = 0.0, padR = 16.0, padT = 12.0, padB = 32.0;
     final double chartW = size.width - padL - padR;
     final double chartH = size.height - padT - padB;
 
-    const double minVal = 30.0;
-    const double maxVal = 70.0;
+    const double minY = 25.0;
+    const double maxY = 75.0;
 
     double toX(int i) => padL + (i * chartW / math.max(data.length - 1, 1));
     
     double toY(double v) {
-      double clampedV = v.clamp(minVal, maxVal);
-      return padT + (1 - (clampedV - minVal) / (maxVal - minVal)) * chartH;
+      double clampedV = v.clamp(minY, maxY);
+      return padT + (1 - (clampedV - minY) / (maxY - minY)) * chartH;
     }
 
     final thresholds = getThresholds(selectedLevel, myBaseCva);
@@ -806,8 +876,9 @@ class CorrectedCvaChartPainter extends CustomPainter {
 
     final paintZone = Paint()..style = PaintingStyle.fill;
     
+    // 배경 구간 영역
     canvas.drawRect(
-      Rect.fromLTRB(padL, toY(maxVal), padL + chartW, toY(cautionY)),
+      Rect.fromLTRB(padL, toY(maxY), padL + chartW, toY(cautionY)),
       paintZone..color = const Color(0xFFC8E6C9).withOpacity(0.4),
     );
     canvas.drawRect(
@@ -815,26 +886,24 @@ class CorrectedCvaChartPainter extends CustomPainter {
       paintZone..color = const Color(0xFFFFE0B2).withOpacity(0.5),
     );
     canvas.drawRect(
-      Rect.fromLTRB(padL, toY(warningY), padL + chartW, toY(minVal)),
+      Rect.fromLTRB(padL, toY(warningY), padL + chartW, toY(minY)),
       paintZone..color = const Color(0xFFFFCDD2).withOpacity(0.5),
     );
 
+    // 가로 격자 가이드선
     final gridPaint = Paint()..color = Colors.grey.withOpacity(0.2)..strokeWidth = 0.5;
-    for (double v in [30.0, 40.0, 50.0, 60.0, 70.0]) {
+    for (double v in [25.0, 30.0, 40.0, 50.0, 60.0, 70.0, 75.0]) {
       canvas.drawLine(Offset(padL, toY(v)), Offset(padL + chartW, toY(v)), gridPaint);
-      final tp = TextPainter(
-        text: TextSpan(text: "${v.toInt()}°", style: const TextStyle(color: Colors.grey, fontSize: 9)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset(4, toY(v) - 5));
     }
 
+    // 정상 가이드선 (53도)
     final normalGuideLinePaint = Paint()
       ..color = Colors.grey.shade400
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
     canvas.drawLine(Offset(padL, toY(53.0)), Offset(padL + chartW, toY(53.0)), normalGuideLinePaint);
 
+    // 나의 기준 가이드 점선
     final myBaseGuideLinePaint = Paint()
       ..color = Colors.blueAccent
       ..strokeWidth = 1.5
@@ -859,47 +928,36 @@ class CorrectedCvaChartPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     final verticalDashPaint = Paint()
-      ..color = Colors.grey.shade400
-      ..strokeWidth = 1.2
+      ..color = Colors.grey.shade500
+      ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
 
-    // 선 그리기 (isGap 인 지점은 선 대신 회색 세로 점선 출력)
+    // 점과 점 사이 연결선 및 측정 재개 세로 점선
     for (int i = 0; i < data.length - 1; i++) {
       double x1 = toX(i);
       double y1 = toY((data[i]['avgCva'] as double));
       double x2 = toX(i + 1);
       double y2 = toY((data[i + 1]['avgCva'] as double));
 
-      bool isNextGap = data[i + 1]['isGap'] == true;
-      bool isCurrGap = data[i]['isGap'] == true;
-
-      if (isNextGap) {
-        // 실제 측정 중단 공백 지점에만 회색 세로 점선 출력
+      if (data[i + 1]['isStartAfterGap'] == true) {
+        double midX = (x1 + x2) / 2;
         double currY = padT;
         while (currY < padT + chartH) {
-          canvas.drawLine(Offset(x2, currY), Offset(x2, math.min(currY + 4, padT + chartH)), verticalDashPaint);
+          canvas.drawLine(Offset(midX, currY), Offset(midX, math.min(currY + 4, padT + chartH)), verticalDashPaint);
           currY += 7;
         }
-      } else if (!isCurrGap) {
-        // 정상 연속 구간에서는 선을 이어줌
-        canvas.drawLine(Offset(x1, y1), Offset(x2, y2), linePaint);
       }
+
+      canvas.drawLine(Offset(x1, y1), Offset(x2, y2), linePaint);
     }
 
-    // 각 포인트점 및 X축 시간 텍스트 출력
+    // 각 포인트점 및 X축 시간 텍스트 출력 -> [수정] 모든 점 색상을 기본 초록색(0xFF33691E)으로 일치
     for (int i = 0; i < data.length; i++) {
-      if (data[i]['isGap'] == true) continue; // 공백용 지점은 점/텍스트 생략
-
       double x = toX(i);
-      double rawCva = (data[i]['avgCva'] as double);
-      double y = toY(rawCva);
+      double plottedCva = (data[i]['avgCva'] as double);
+      double y = toY(plottedCva);
 
-      Color pointColor = const Color(0xFF33691E);
-      if (rawCva < minVal) {
-        pointColor = Colors.redAccent;
-      } else if (rawCva > maxVal) {
-        pointColor = Colors.orangeAccent;
-      }
+      const Color pointColor = Color(0xFF33691E);
 
       canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = pointColor);
       canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.0);
@@ -914,14 +972,14 @@ class CorrectedCvaChartPainter extends CustomPainter {
       }
     }
 
-    if (selectedPoint != null && selectedPoint!['isGap'] != true) {
+    // 선택된 점 하이라이트
+    if (selectedPoint != null) {
       int selIdx = data.indexOf(selectedPoint!);
       if (selIdx != -1) {
         double selX = toX(selIdx);
         double selY = toY((selectedPoint!['avgCva'] as double));
 
         canvas.drawLine(Offset(selX, padT), Offset(selX, padT + chartH), Paint()..color = const Color(0xFF33691E).withOpacity(0.4)..strokeWidth = 1);
-
         canvas.drawCircle(Offset(selX, selY), 6, Paint()..color = const Color(0xFF33691E));
         canvas.drawCircle(Offset(selX, selY), 6, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2);
       }
