@@ -41,6 +41,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
   int? _batteryPercent;
   bool _hasSentBatteryNotification = false;
 
+  bool _isNavigatingToVision = false;
+
   List<double> cvaHistory = [];
   List<String> timeHistory = [];
   List<String> postureHistory = [];
@@ -86,12 +88,17 @@ class _HomeViewContentState extends State<HomeViewContent> {
       setState(() {});
 
       if (!ready) {
+        if (_isNavigatingToVision) {
+          debugPrint("⏸️ 월간 화면 이동 중 - 홈 BLE 자동 재연결 스킵");
+          return;
+        }
+
         if (isMonitoring) {
           _showDisconnectDialog();
         }
 
         await Future.delayed(const Duration(seconds: 3));
-        if (mounted && !_ble.isDeviceReady) {
+        if (mounted && !_ble.isDeviceReady && !_isNavigatingToVision) {
           debugPrint("🔄 BLE 기기 자동 재연결 시도...");
           _ble.init();
         }
@@ -120,9 +127,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
     });
   }
 
-  // ------------------------------------------------------------------
-  // ★ 월간 측정 유효성 검증 API (/api/monthly/list)
-  // ------------------------------------------------------------------
   Future<Map<String, dynamic>> _checkMonthlyMeasurementValid() async {
     try {
       final token = await _storage.read(key: 'accessToken');
@@ -143,33 +147,27 @@ class _HomeViewContentState extends State<HomeViewContent> {
         final List<dynamic> list = jsonResponse['result'] ?? [];
 
         final validReports = list
-            .where(
-              (item) =>
-                  item['data_status'] == 'AVAILABLE' &&
-                  item['measured_at'] != null,
-            )
+            .where((item) => item['measuredAt'] != null)
             .toList();
 
-        // 1. 월간 측정 기록이 없는 경우
         if (validReports.isEmpty) {
           return {'isValid': false, 'reason': 'NO_MEASUREMENT'};
         }
 
         validReports.sort(
           (a, b) => DateTime.parse(
-            b['measured_at'],
-          ).compareTo(DateTime.parse(a['measured_at'])),
+            b['measuredAt'],
+          ).compareTo(DateTime.parse(a['measuredAt'])),
         );
 
         final DateTime lastMeasuredAt = DateTime.parse(
-          validReports.first['measured_at'],
+          validReports.first['measuredAt'],
         );
         final DateTime expireDate = lastMeasuredAt.add(
           const Duration(days: 30),
         );
         final DateTime now = DateTime.now();
 
-        // 2. 측정 후 30일이 초과된 경우
         if (now.isAfter(expireDate)) {
           int passedDays = now.difference(lastMeasuredAt).inDays;
           return {
@@ -188,9 +186,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
     return {'isValid': false, 'reason': 'ERROR'};
   }
 
-  // ------------------------------------------------------------------
-  // ★ 월간 측정 요구 안내 다이얼로그 (TColor.buttonGreen 적용)
-  // ------------------------------------------------------------------
   void _showMonthlyRequiredDialog(String message) {
     showDialog(
       context: context,
@@ -266,8 +261,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                         height: 48,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                TColor.buttonGreen, // ★ 메인 버튼과 일치하는 초록색
+                            backgroundColor: TColor.buttonGreen,
                             elevation: 0,
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             shape: RoundedRectangleBorder(
@@ -276,6 +270,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                           ),
                           onPressed: () async {
                             Navigator.of(dialogContext).pop();
+                            _isNavigatingToVision = true;
 
                             try {
                               await _ble.stopNotify();
@@ -290,6 +285,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                                 builder: (_) => const VisionPage(),
                               ),
                             ).then((_) {
+                              _isNavigatingToVision = false;
                               if (mounted) _ble.init();
                             });
                           },
@@ -351,7 +347,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
             borderRadius: BorderRadius.circular(24),
           ),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
@@ -359,30 +355,16 @@ class _HomeViewContentState extends State<HomeViewContent> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new,
-                      size: 20,
-                      color: Colors.black,
-                    ),
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                  ),
-                ),
-                const SizedBox(height: 24),
                 const Text(
                   "자세 교정을 종료하시겠습니까?",
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 17,
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
                 Row(
                   children: [
                     Expanded(
@@ -497,7 +479,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                     ),
                     onPressed: () {
                       Navigator.of(dialogContext).pop();
-                      stopMonitoring();
+                      forceStopMonitoring();
                     },
                     child: const Text(
                       "확인",
@@ -517,9 +499,47 @@ class _HomeViewContentState extends State<HomeViewContent> {
     );
   }
 
-  // ------------------------------------------------------------------
-  // ★ 일일 측정 시작 시 C값 유효기간(30일) 검증
-  // ------------------------------------------------------------------
+  void forceStopMonitoring() {
+    monitorTimer?.cancel();
+    dailyApiTimer?.cancel();
+
+    try {
+      _ble.stopNotify();
+    } catch (_) {}
+
+    setState(() {
+      isMonitoring = false;
+      isCalibrating = false;
+      isBadPosture = false;
+      monitoringSeconds = 0;
+      calibrationTimer = 3;
+      postureResult = 'normal'; // ✅ 기본 거북이로 초기화
+      _worstPostureInMinute = 'normal';
+      _prevPostureResult = 'normal';
+      lastAccX = 0.0;
+      lastAccY = 0.0;
+      lastAccZ = 0.0;
+      lastEstimatedCva = 0.0;
+      cvaHistory.clear();
+      timeHistory.clear();
+      postureHistory.clear();
+      accXHistory.clear();
+      accYHistory.clear();
+      accZHistory.clear();
+      rawTimeHistory.clear();
+      cvaRawHistory.clear();
+      postureRawHistory.clear();
+      cvaSum = 0.0;
+      cvaCount = 0;
+      warningCount = 0;
+      cautionCount = 0;
+      normalDuration = 0;
+      totalDuration = 0;
+    });
+
+    _showSnackBar("연결이 끊겨 측정이 종료되었습니다.");
+  }
+
   Future<void> startCalibration() async {
     final checkResult = await _checkMonthlyMeasurementValid();
 
@@ -562,6 +582,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       isCalibrating = true;
       calibrationTimer = 3;
       isBadPosture = false;
+      postureResult = 'normal'; // ✅ 캘리브레이션 시작 시 기본 거북이 유지
     });
 
     monitorTimer?.cancel();
@@ -581,6 +602,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       isCalibrating = false;
       isMonitoring = true;
       monitoringSeconds = 0;
+      postureResult = 'normal';
       _prevPostureResult = 'normal';
     });
 
@@ -598,7 +620,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
         level: _level,
       );
 
-      if (!isMonitoring) return;
+      // ✅ 종료된 상태에서 늦게 도착한 API 응답 무시 (거북이 상태 덮어쓰기 방지)
+      if (!isMonitoring || !mounted) return;
 
       final newPostureResult = result["postureResult"] as String;
       final estimatedCva = result["estimatedCva"] as double;
@@ -707,14 +730,16 @@ class _HomeViewContentState extends State<HomeViewContent> {
   }
 
   Future<void> stopMonitoring() async {
+    // 1. 타이머 즉시 정지
     monitorTimer?.cancel();
     dailyApiTimer?.cancel();
 
+    // 2. 화면 상태를 즉시 '기본 거북이' 및 모니터링 종료로 리셋
     setState(() {
       isMonitoring = false;
       isCalibrating = false;
       isBadPosture = false;
-      postureResult = 'normal';
+      postureResult = 'normal'; // ✅ 첫 화면 기본 거북이로 확실하게 고정
       _worstPostureInMinute = 'normal';
       _prevPostureResult = 'normal';
     });
@@ -726,6 +751,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       } catch (_) {}
     }
 
+    // 3. 기록 저장 처리
     if (cvaHistory.isNotEmpty) {
       final today = DateTime.now();
       final dateKey =
@@ -803,6 +829,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       lastAccY = 0.0;
       lastAccZ = 0.0;
       lastEstimatedCva = 0.0;
+      postureResult = 'normal'; // ✅ 데이터 저장 후에도 기본 거북이 유지
       cvaHistory.clear();
       timeHistory.clear();
       postureHistory.clear();
@@ -825,6 +852,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
   void dispose() {
     monitorTimer?.cancel();
     dailyApiTimer?.cancel();
+
+    _ble.onDeviceReadyChanged = null;
+    _ble.onBatteryChanged = null;
+
     _ble.dispose();
     super.dispose();
   }
@@ -860,6 +891,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
               ),
               GestureDetector(
                 onTap: () async {
+                  _isNavigatingToVision = true;
+
                   try {
                     await _ble.stopNotify();
                     await _ble.disconnect();
@@ -873,6 +906,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                     context,
                     MaterialPageRoute(builder: (_) => const VisionPage()),
                   ).then((_) {
+                    _isNavigatingToVision = false;
                     if (mounted) {
                       _ble.init();
                     }
@@ -1026,11 +1060,12 @@ class _HomeViewContentState extends State<HomeViewContent> {
                       ],
                     )
                   : Image.asset(
-                      postureResult == "warning"
+                      // ✅ 측정 중이 아닐 때는 무조건 기본 거북이 표시
+                      (!isMonitoring || postureResult == "normal")
+                          ? 'assets/normal_turtle.png'
+                          : postureResult == "warning"
                           ? 'assets/fire_turtle.png'
-                          : postureResult == "caution"
-                          ? 'assets/surprised_turtle.png'
-                          : 'assets/normal_turtle.png',
+                          : 'assets/surprised_turtle.png',
                       width: 280,
                       errorBuilder: (_, __, ___) =>
                           Image.asset('assets/normal_turtle.png', width: 280),

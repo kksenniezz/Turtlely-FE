@@ -72,7 +72,7 @@ class MediaPipeService {
 
         final rollAngleRad = math.atan2(event.x, event.y);
         if (rollAngleRad.abs() > 0.17) {
-          debugPrint("기기가 옆으로 기울었어요! 화면을 똑바로 세워주세요");
+          //debugPrint("기기가 옆으로 기울었어요! 화면을 똑바로 세워주세요");
         }
       });
 

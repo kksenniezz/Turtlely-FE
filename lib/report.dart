@@ -559,33 +559,37 @@ class _ReportViewState extends State<ReportView> {
           const SizedBox(height: 12),
 
           // 1분 / 5분 / 10분 선택 버튼
+          // 1분 / 5분 / 10분 선택 버튼 (왼쪽 정렬)
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.start, // ✅ start로 변경
             children: [1, 5, 10].map((interval) {
               bool isSelected = _selectedInterval == interval;
               String label = "$interval분";
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedInterval = interval;
-                    _processGraphData();
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFFF1F8E9) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isSelected ? const Color(0xFFC8E6C9) : const Color(0xFFE0E0E0),
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0), // ✅ 버튼 간 간격 8px
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedInterval = interval;
+                      _processGraphData();
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFF1F8E9) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected ? const Color(0xFFC8E6C9) : const Color(0xFFE0E0E0),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? const Color(0xFF33691E) : Colors.grey,
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected ? const Color(0xFF33691E) : Colors.grey,
+                      ),
                     ),
                   ),
                 ),
