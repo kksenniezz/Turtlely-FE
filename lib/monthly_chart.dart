@@ -19,10 +19,25 @@ class MonthlyChartWidget extends StatelessWidget {
     return _buildChartFrame("CVA / CRA 각도 변화 그래프");
   }
 
-  Widget _buildChartFrame(String title) {
-    final reversedCva = cvaData.reversed.toList();
-    final reversedCra = craData.reversed.toList();
-    final reversedMonths = months.reversed.toList();
+  Widget _buildChartFrame(String title, {int? selectedMonth}) {
+    int startIndex = 0;
+    if (selectedMonth != null) {
+      final targetMonthStr = "$selectedMonth월";
+      final foundIdx = months.indexOf(targetMonthStr);
+      if (foundIdx != -1) {
+        startIndex = foundIdx;
+      }
+    }
+
+    final filteredMonths = months.sublist(startIndex);
+    final filteredCva = cvaData.sublist(startIndex);
+    final filteredCra = craData.sublist(startIndex);
+
+    final sliceCount = filteredMonths.length > 6 ? 6 : filteredMonths.length;
+    final finalMonths = filteredMonths.sublist(0, sliceCount).reversed.toList();
+    final reversedCva = filteredCva.sublist(0, sliceCount).reversed.toList();
+    final reversedCra = filteredCra.sublist(0, sliceCount).reversed.toList();
+
     final validIndices = List.generate(
       reversedCva.length,
       (i) => (reversedCva[i] != -1 && reversedCra[i] != -1) ? i : -1,
@@ -51,7 +66,7 @@ class MonthlyChartWidget extends StatelessWidget {
         _buildSingleChartBox(
           "CVA",
           reversedCva,
-          reversedMonths,
+          finalMonths,
           50.0,
           48.7,
           TColor.buttonGreen,
@@ -61,7 +76,7 @@ class MonthlyChartWidget extends StatelessWidget {
         _buildSingleChartBox(
           "CRA",
           reversedCra,
-          reversedMonths,
+          finalMonths,
           145.0,
           145.0,
           TColor.buttonGreen,
