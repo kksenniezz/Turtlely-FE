@@ -559,6 +559,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           cvaData: cvaHistory,
           craData: craHistory,
           months: months,
+          currentMonth: "$_selectedMonth월",
         ),
         const SizedBox(height: 32),
         Stack(
