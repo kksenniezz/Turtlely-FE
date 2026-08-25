@@ -6,12 +6,14 @@ class MonthlyChartWidget extends StatelessWidget {
   final List<double> cvaData;
   final List<double> craData;
   final List<String> months;
+  final String? currentMonth;
 
   const MonthlyChartWidget({
     super.key,
     required this.cvaData,
     required this.craData,
     required this.months,
+    this.currentMonth,
   });
 
   @override
@@ -19,29 +21,33 @@ class MonthlyChartWidget extends StatelessWidget {
     return _buildChartFrame("CVA / CRA 각도 변화 그래프");
   }
 
-  Widget _buildChartFrame(String title, {int? selectedMonth}) {
+  Widget _buildChartFrame(String title) {
     int startIndex = 0;
-    if (selectedMonth != null) {
-      final targetMonthStr = "$selectedMonth월";
-      final foundIdx = months.indexOf(targetMonthStr);
-      if (foundIdx != -1) {
-        startIndex = foundIdx;
+    if (currentMonth != null && currentMonth!.isNotEmpty) {
+      final targetIdx = months.indexOf(currentMonth!);
+      if (targetIdx != -1) {
+        startIndex = targetIdx;
       }
     }
 
-    final filteredMonths = months.sublist(startIndex);
-    final filteredCva = cvaData.sublist(startIndex);
-    final filteredCra = craData.sublist(startIndex);
+    final slicedCva = cvaData.sublist(startIndex);
+    final slicedCra = craData.sublist(startIndex);
+    final slicedMonths = months.sublist(startIndex);
 
-    final sliceCount = filteredMonths.length > 6 ? 6 : filteredMonths.length;
-    final finalMonths = filteredMonths.sublist(0, sliceCount).reversed.toList();
-    final reversedCva = filteredCva.sublist(0, sliceCount).reversed.toList();
-    final reversedCra = filteredCra.sublist(0, sliceCount).reversed.toList();
+    final count = slicedMonths.length > 6 ? 6 : slicedMonths.length;
+    final limitedCva = slicedCva.sublist(0, count);
+    final limitedCra = slicedCra.sublist(0, count);
+    final limitedMonths = slicedMonths.sublist(0, count);
+
+    final reversedCva = limitedCva.reversed.toList();
+    final reversedCra = limitedCra.reversed.toList();
+    final reversedMonths = limitedMonths.reversed.toList();
 
     final validIndices = List.generate(
       reversedCva.length,
       (i) => (reversedCva[i] != -1 && reversedCra[i] != -1) ? i : -1,
     )..removeWhere((e) => e == -1);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -66,7 +72,7 @@ class MonthlyChartWidget extends StatelessWidget {
         _buildSingleChartBox(
           "CVA",
           reversedCva,
-          finalMonths,
+          reversedMonths,
           50.0,
           48.7,
           TColor.buttonGreen,
@@ -76,7 +82,7 @@ class MonthlyChartWidget extends StatelessWidget {
         _buildSingleChartBox(
           "CRA",
           reversedCra,
-          finalMonths,
+          reversedMonths,
           145.0,
           145.0,
           TColor.buttonGreen,
