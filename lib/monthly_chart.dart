@@ -20,9 +20,12 @@ class MonthlyChartWidget extends StatelessWidget {
   }
 
   Widget _buildChartFrame(String title) {
+    final reversedCva = cvaData.reversed.toList();
+    final reversedCra = craData.reversed.toList();
+    final reversedMonths = months.reversed.toList();
     final validIndices = List.generate(
-      cvaData.length,
-      (i) => (cvaData[i] != -1 && craData[i] != -1) ? i : -1,
+      reversedCva.length,
+      (i) => (reversedCva[i] != -1 && reversedCra[i] != -1) ? i : -1,
     )..removeWhere((e) => e == -1);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -47,7 +50,8 @@ class MonthlyChartWidget extends StatelessWidget {
         const SizedBox(height: 16),
         _buildSingleChartBox(
           "CVA",
-          cvaData,
+          reversedCva,
+          reversedMonths,
           50.0,
           48.7,
           TColor.buttonGreen,
@@ -56,7 +60,8 @@ class MonthlyChartWidget extends StatelessWidget {
         const SizedBox(height: 16),
         _buildSingleChartBox(
           "CRA",
-          craData,
+          reversedCra,
+          reversedMonths,
           145.0,
           145.0,
           TColor.buttonGreen,
@@ -93,6 +98,7 @@ class MonthlyChartWidget extends StatelessWidget {
   Widget _buildSingleChartBox(
     String label,
     List<double> data,
+    List<String> chartMonths,
     double chartCenter,
     double standardAngle,
     Color color,
@@ -156,7 +162,7 @@ class MonthlyChartWidget extends StatelessWidget {
                   minY: minBound,
                   maxY: maxBound,
                   minX: 0,
-                  maxX: (data.length - 1).toDouble(),
+                  maxX: (data.length > 6 ? data.length - 1 : 5).toDouble(),
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: true,
@@ -189,12 +195,12 @@ class MonthlyChartWidget extends StatelessWidget {
                         getTitlesWidget: (val, meta) {
                           final index = val.toInt();
                           if (index < 0 ||
-                              index >= months.length ||
+                              index >= chartMonths.length ||
                               index >= data.length) {
                             return const SizedBox();
                           }
                           return Text(
-                            months[index],
+                            chartMonths[index],
                             style: const TextStyle(
                               fontSize: 9,
                               color: Colors.grey,
