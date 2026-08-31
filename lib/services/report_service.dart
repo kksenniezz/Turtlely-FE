@@ -30,6 +30,91 @@ class MonthlyListItem {
   }
 }
 
+class WeeklyStat {
+  final int week;
+  final String weekLabel;
+  final double averageCva;
+  final int normalRatio;
+  final int cautionRatio;
+  final int warningRatio;
+  final bool hasData;
+
+  WeeklyStat({
+    required this.week,
+    required this.weekLabel,
+    required this.averageCva,
+    required this.normalRatio,
+    required this.cautionRatio,
+    required this.warningRatio,
+    required this.hasData,
+  });
+
+  factory WeeklyStat.fromJson(Map<String, dynamic> json) {
+    return WeeklyStat(
+      week: json['week'] ?? 0,
+      weekLabel: json['weekLabel'] ?? '',
+      averageCva: (json['averageCva'] as num?)?.toDouble() ?? 0.0,
+      normalRatio: json['normalRatio'] ?? 0,
+      cautionRatio: json['cautionRatio'] ?? 0,
+      warningRatio: json['warningRatio'] ?? 0,
+      hasData: json['hasData'] ?? false,
+    );
+  }
+}
+
+class MonthlyComparison {
+  final int normalRatioDiff;
+  final int cautionRatioDiff;
+  final int warningRatioDiff;
+  final double cvaDiff;
+
+  MonthlyComparison({
+    required this.normalRatioDiff,
+    required this.cautionRatioDiff,
+    required this.warningRatioDiff,
+    required this.cvaDiff,
+  });
+
+  factory MonthlyComparison.fromJson(Map<String, dynamic> json) {
+    return MonthlyComparison(
+      normalRatioDiff: json['normalRatioDiff'] ?? 0,
+      cautionRatioDiff: json['cautionRatioDiff'] ?? 0,
+      warningRatioDiff: json['warningRatioDiff'] ?? 0,
+      cvaDiff: (json['cvaDiff'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
+class MonthlyStatsData {
+  final int year;
+  final int month;
+  final List<WeeklyStat> weeklyStats;
+  final MonthlyComparison? monthlyComparison;
+
+  MonthlyStatsData({
+    required this.year,
+    required this.month,
+    required this.weeklyStats,
+    required this.monthlyComparison,
+  });
+
+  factory MonthlyStatsData.fromJson(Map<String, dynamic> json) {
+    final result = json['result'] as Map<String, dynamic>? ?? {};
+    return MonthlyStatsData(
+      year: result['year'] ?? DateTime.now().year,
+      month: result['month'] ?? DateTime.now().month,
+      weeklyStats:
+          (result['weeklyStats'] as List?)
+              ?.map((e) => WeeklyStat.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      monthlyComparison: result['monthlyComparison'] != null
+          ? MonthlyComparison.fromJson(result['monthlyComparison'])
+          : null,
+    );
+  }
+}
+
 // 백엔드 DB 구조 및 연동 명세 데이터 모델
 class ReportData {
   final String message;
@@ -249,6 +334,41 @@ class ReportService {
     } catch (e) {
       print("[registerMonthlyAlarm 오류] $e");
       return false;
+    }
+  }
+
+  // 4. 주차별 일일 자세 상태 및 지난달 비교 조회
+  Future<MonthlyStatsData?> fetchMonthlyStats({int? year, int? month}) async {
+    try {
+      final accessToken = await _storage.read(key: 'accessToken');
+      String query = '';
+      if (year != null && month != null) {
+        query = '?year=$year&month=$month';
+      }
+
+      // ⚠️ 만약 백엔드의 실제 주소 엔드포인트가 다르다면 이 URL을 수정해주세요 (예: /api/monthly/analysis 등)
+      final url = Uri.parse('$_baseUrl/api/monthly/daily-summary$query');
+      print("🚀 [Monthly Stats 요청]: $url");
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print("🚀 [Monthly Stats 응답 코드]: ${response.statusCode}");
+      print("🚀 [Monthly Stats 응답 본문]: ${utf8.decode(response.bodyBytes)}");
+
+      if (response.statusCode == 200) {
+        final decoded = json.decode(utf8.decode(response.bodyBytes));
+        return MonthlyStatsData.fromJson(decoded);
+      }
+      return null;
+    } catch (e) {
+      print("[fetchMonthlyStats 에러]: $e");
+      return null;
     }
   }
 }

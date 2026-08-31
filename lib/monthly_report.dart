@@ -19,6 +19,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   late int _selectedYear;
   late int _selectedMonth;
   ReportData? _currentReport;
+  MonthlyStatsData? _monthlyStats;
 
   bool _isLoading = false;
   bool _isTooltipVisible = false;
@@ -71,9 +72,16 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
       // 3. 리포트 호출 (가상데이터면 fetch를 건너뜀)
       if (!_selectedItem!.isVirtual && _selectedItem!.monthlyId > 0) {
-        await _fetchReport(_selectedItem!.monthlyId);
+        await _fetchReport(
+          _selectedItem!.monthlyId,
+          _selectedItem!.year,
+          _selectedItem!.month,
+        );
       } else {
-        setState(() => _currentReport = null);
+        setState(() {
+          _currentReport = null;
+          _monthlyStats = null;
+        });
       }
     } catch (e) {
       setState(() => _networkErrorMessage = e.toString());
@@ -82,19 +90,30 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
     }
   }
 
-  Future<void> _fetchReport(int monthlyId) async {
+  Future<void> _fetchReport(int monthlyId, int year, int month) async {
     if (monthlyId == -999) {
-      setState(() => _currentReport = null);
+      setState(() {
+        _currentReport = null;
+        _monthlyStats = null;
+      });
       return;
     }
     setState(() => _isLoading = true);
     try {
+      // 1. 기존 월간 리포트 상세 조회
       final data = await _reportService.fetchMonthlyReport(
         monthlyId: monthlyId,
       );
 
+      // 2. 주차별/비교 통계 조회 (선택한 year, month 전달)
+      final statsData = await _reportService.fetchMonthlyStats(
+        year: year,
+        month: month,
+      );
+
       setState(() {
         _currentReport = data;
+        _monthlyStats = statsData;
       });
     } catch (e) {
       setState(() {
@@ -111,9 +130,10 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
       _selectedYear = item.year;
       _selectedMonth = item.month;
       _currentReport = null;
+      _monthlyStats = null;
     });
     if (!item.isVirtual) {
-      _fetchReport(item.monthlyId);
+      _fetchReport(item.monthlyId, item.year, item.month);
     }
   }
 
@@ -177,8 +197,11 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                     isResultAlarmSet: _currentReport?.reportAlarm ?? false,
 
                     networkErrorMessage: _networkErrorMessage,
-                    onReportDataChanged: () =>
-                        _fetchReport(_selectedItem?.monthlyId ?? 0),
+                    onReportDataChanged: () => _fetchReport(
+                      _selectedItem?.monthlyId ?? 0,
+                      _selectedYear,
+                      _selectedMonth,
+                    ),
                     buildReportResultView: _buildReportResultView,
                   ),
           ),
@@ -528,10 +551,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         RichText(
           textAlign: TextAlign.center,
           text: TextSpan(
-            style: TText.caption.copyWith(
-              fontFamily: 'Pretendard',
-              color: Colors.black,
-            ),
+            style: TText.caption.copyWith(color: Colors.black),
             children: [
               TextSpan(text: "$userNickname님의 "),
               TextSpan(
@@ -562,6 +582,12 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           currentMonth: "$_selectedMonth월",
         ),
         const SizedBox(height: 32),
+        if (_monthlyStats != null) ...[
+          _buildWeeklyStatsSection(_monthlyStats!),
+          const SizedBox(height: 32),
+          _buildMonthlyComparisonSection(_monthlyStats!.monthlyComparison),
+          const SizedBox(height: 32),
+        ],
         Stack(
           alignment: Alignment.topRight,
           clipBehavior: Clip.none,
@@ -700,6 +726,301 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                 ),
               ),
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeeklyStatsSection(MonthlyStatsData statsData) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '주차별 일일 자세 상태',
+          style: TextStyle(
+            color: TColor.black,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          '각 주차의 전체 측정 시간을 100%로 환산했어요',
+          style: TextStyle(
+            color: TColor.gray,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: TColor.buttonGreen, width: 1),
+          ),
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildLegend(const Color(0xFF628B6D), '정상'),
+                    const SizedBox(width: 10),
+                    _buildLegend(const Color(0xFFEACF80), '주의'),
+                    const SizedBox(width: 10),
+                    _buildLegend(const Color(0xFFE48582), '경고'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...statsData.weeklyStats.map((stat) => _buildWeekRow(stat)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegend(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(1),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(color: Color(0xFF818181), fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeekRow(WeeklyStat stat) {
+    print(
+      "📊 [${stat.weekLabel}] 정상:${stat.normalRatio} / 주의:${stat.cautionRatio} / 경고:${stat.warningRatio} => 총합: ${stat.normalRatio + stat.cautionRatio + stat.warningRatio}%",
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 28,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              stat.weekLabel.isNotEmpty ? stat.weekLabel : "${stat.week}주차",
+              style: const TextStyle(
+                color: TColor.black,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    height: 28,
+                    color: const Color(0xFFD9D9D9),
+                    child: stat.hasData
+                        ? LayoutBuilder(
+                            builder: (context, constraints) {
+                              final totalW = constraints.maxWidth;
+                              return Row(
+                                children: [
+                                  if (stat.normalRatio > 0)
+                                    _buildBarSegment(
+                                      width: totalW * (stat.normalRatio / 100),
+                                      color: const Color(0xFF618B6D),
+                                      ratio: stat.normalRatio,
+                                      textColor: Colors.white,
+                                    ),
+                                  if (stat.cautionRatio > 0)
+                                    _buildBarSegment(
+                                      width: totalW * (stat.cautionRatio / 100),
+                                      color: const Color(0xFFEACF80),
+                                      ratio: stat.cautionRatio,
+                                      textColor: const Color(0xFF1E1E1E),
+                                    ),
+                                  if (stat.warningRatio > 0)
+                                    _buildBarSegment(
+                                      width: totalW * (stat.warningRatio / 100),
+                                      color: const Color(0xFFE48582),
+                                      ratio: stat.warningRatio,
+                                      textColor: Colors.white,
+                                    ),
+                                ],
+                              );
+                            },
+                          )
+                        : const Center(
+                            child: Text(
+                              '측정 기록 없음',
+                              style: TextStyle(
+                                color: Color(0xFF818181),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+                if (stat.hasData) ...[
+                  const SizedBox(height: 2),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      '평균 CVA ${stat.averageCva.toStringAsFixed(1)}°',
+                      style: const TextStyle(
+                        color: Color(0xFF818181),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBarSegment({
+    required double width,
+    required Color color,
+    required int ratio,
+    required Color textColor,
+  }) {
+    final bool showText = width >= 20;
+
+    return Container(
+      width: width,
+      height: 28,
+      color: color,
+      alignment: Alignment.center,
+      child: showText
+          ? Text(
+              "$ratio%",
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildMonthlyComparisonSection(MonthlyComparison? comparison) {
+    if (comparison == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '지난 달 일일 측정 비교',
+          style: TextStyle(
+            color: Color(0xFF1E1E1E),
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: TColor.buttonGreen, width: 1),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildDiffItem(
+                '정상 자세',
+                comparison.normalRatioDiff,
+                isPercentage: true,
+              ),
+              _buildDiffItem(
+                '주의 자세',
+                comparison.cautionRatioDiff,
+                isPercentage: true,
+              ),
+              _buildDiffItem(
+                '경고 자세',
+                comparison.warningRatioDiff,
+                isPercentage: true,
+              ),
+              _buildDiffItem(
+                '평균 일일 CVA',
+                comparison.cvaDiff,
+                isPercentage: false,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDiffItem(String label, num diff, {required bool isPercentage}) {
+    final String sign = diff > 0 ? "+" : "";
+    final String unit = isPercentage ? "%p" : "°";
+    final String formattedValue = isPercentage
+        ? "$sign$diff$unit"
+        : "$sign${(diff as double).toStringAsFixed(1)}$unit";
+    final String subText = diff == 0
+        ? "변동 없음"
+        : diff > 0
+        ? "지난 달 대비 증가"
+        : "지난 달 대비 감소";
+
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF1E1E1E),
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          formattedValue,
+          style: const TextStyle(
+            color: TColor.darkGreen,
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subText,
+          style: const TextStyle(
+            color: Color(0xFF818181),
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],

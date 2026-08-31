@@ -52,12 +52,6 @@ class MediaPipeService {
       StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get poseStream => _poseStreamController.stream;
 
-  String _generateTimestamp() {
-    final now = DateTime.now();
-    String pad(int value) => value.toString().padLeft(2, '0');
-    return "${now.year}-${pad(now.month)}-${pad(now.day)} ${pad(now.hour)}:${pad(now.minute)}:${pad(now.second)}";
-  }
-
   Future<void> initializeCamera() async {
     if (cameraController != null) {
       await cameraController!.dispose();
