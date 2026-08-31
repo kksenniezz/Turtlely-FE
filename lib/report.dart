@@ -31,11 +31,23 @@ class _ReportViewState extends State<ReportView> {
   int?    _selectedScore;
   double  _avgCva         = 0.0;
   int     _warningCount   = 0;
+  // ✅ 추가: 그래프 아래에 "총 측정 시간"으로 보여줄 값. Hive의 duration
+  //    필드(초 단위, 여러 세션 다 합친 정확한 총 측정 시간)를 그대로 사용.
+  //    서버 응답 덮어쓰기 블록에도 포함 안 되어 있어서 항상 로컬 값 그대로 유지됨.
+  int     _totalDurationSeconds = 0;
   int     _cautionCount   = 0;
   List<double> _cvaHistory     = [];
   List<String> _timeHistory    = [];
   List<String> _postureHistory = [];
+  // ✅ 추가: home.dart에서 저장한 세션 경계 마커. _cvaHistory/_timeHistory와 1:1 대응.
+  //    과거에 저장된 데이터(이 필드가 없던 시절)는 로드 시 빈 리스트가 되며,
+  //    그 경우 _processGraphData()가 자동으로 기존 시간차 기반 로직으로 폴백한다.
+  List<bool> _sessionStartHistory = [];
   bool    _isLoadingReport = false;
+
+  // 🧪 테스트용: true면 서버 리포트로 덮어쓰지 않고 Hive(더미 데이터 포함)
+  //    값만 그대로 사용함. 더미 데이터로 테스트 끝나면 반드시 false로 되돌릴 것.
+  static const bool _kDebugIgnoreServerReport = false;
 
   // CVA 그래프 제어용 변수 (1분, 5분, 10분)
   int _selectedInterval = 1; 
@@ -145,13 +157,23 @@ class _ReportViewState extends State<ReportView> {
         _cvaHistory     = List<double>.from(localData['cvaHistory'] ?? []);
         _timeHistory    = List<String>.from(localData['timeHistory'] ?? []);
         _postureHistory = List<String>.from(localData['postureHistory'] ?? []);
+        // ✅ 추가: 세션 경계 마커 로드 (없으면 빈 리스트 → 자동 폴백)
+        _sessionStartHistory = List<bool>.from(localData['sessionStartHistory'] ?? []);
         _avgCva         = (localData['avgCva'] ?? 0.0).toDouble();
         _warningCount   = localData['warningCount'] ?? 0;
         _cautionCount   = localData['cautionCount'] ?? 0;
+        // ✅ 추가: 총 측정 시간(초) 로드
+        _totalDurationSeconds = (localData['duration'] ?? 0) as int;
+        // ✅ 추가: 서버 리포트가 없는 날짜(예: 더미 데이터)를 위한 로컬 폴백 점수.
+        //    서버 응답이 오면 아래 블록에서 그대로 덮어써서 실제 서비스는
+        //    기존과 동일하게 서버 값이 최우선으로 유지됨.
+        _selectedScore  = localData['postureScore'] as int?;
       });
     }
 
-    if (dailyId != null) {
+    // 🧪 _kDebugIgnoreServerReport가 true면 서버 조회 자체를 건너뛰어서
+    //    더미로 넣은 Hive 데이터(평균/횟수/점수/그래프)가 전부 그대로 유지됨.
+    if (!_kDebugIgnoreServerReport && dailyId != null) {
       final api = ApiService();
       final serverData = await api.getDailyReport(dailyId);
       if (serverData != null && mounted) {
@@ -198,6 +220,14 @@ class _ReportViewState extends State<ReportView> {
       return angle;
     }
 
+    // ✅ i번째 포인트가 "새 측정 세션의 시작점"인지 확인하는 헬퍼.
+    //    _sessionStartHistory가 없거나(과거 데이터) 길이가 안 맞으면 항상 false를 반환해서
+    //    기존 시간차 기반 gap 로직으로 자연스럽게 폴백한다.
+    bool isSessionStart(int idx) {
+      if (idx < 0 || idx >= _sessionStartHistory.length) return false;
+      return _sessionStartHistory[idx];
+    }
+
     int i = 0;
     while (i < _cvaHistory.length) {
       String startTimeStr = _timeHistory[i];
@@ -210,33 +240,66 @@ class _ReportViewState extends State<ReportView> {
 
       bool hasGap = false;
       if (temp.isNotEmpty) {
-        DateTime? prevTime = parseTime(temp.last['time']);
-        if (prevTime != null) {
-          int diffMinutes = startTime.difference(prevTime).inMinutes;
-          if (diffMinutes > (intervalMin * 1.8).round()) {
-            hasGap = true;
+        // ✅ 세션 경계 마커가 있으면(=측정을 껐다가 다시 켠 지점) 무조건 gap으로 표시.
+        //    시간이 우연히 가까워도(예: 8분 재고 잠깐 뒤 13분 잼) 절대 이어진 것으로 보지 않음.
+        if (i > 0 && isSessionStart(i)) {
+          hasGap = true;
+        } else {
+          // ✅ 세션 마커가 없는(과거) 데이터는 기존처럼 "직전 버킷에 실제로 포함된
+          //    마지막 시각"을 기준으로 시간차를 계산 (버킷 시작 시각이 아님 — 기존 버그 수정)
+          DateTime? prevEndTime = temp.last['endTime'] as DateTime?;
+          if (prevEndTime != null) {
+            int diffMinutes = startTime.difference(prevEndTime).inMinutes;
+            if (diffMinutes > (intervalMin * 1.8).round()) {
+              hasGap = true;
+            }
           }
         }
       }
 
       List<double> chunkCva = [];
       List<String> chunkPosture = [];
+      DateTime lastIncludedTime = startTime;
+      // ✅ 이 버킷이 "인터벌을 다 채우지 못하고" 끊긴 이유가
+      //    (a) 세션 경계를 만나서, 또는 (b) 하루 데이터가 거기서 끝나서
+      //    인지 표시. 둘 다 "미완성 조각"으로 동일하게 취급하기 위함
+      //    (하루 중간에 있든 끝에 있든 위치와 무관하게 일관된 처리).
+      bool endedIncomplete = false;
 
       while (i < _cvaHistory.length) {
+        // 이미 이 버킷에 데이터가 있는 상태에서 새 세션의 시작점을 만나면
+        // 시간 간격(intervalMin)을 다 채웠는지와 무관하게 무조건 버킷을 끊는다.
+        // 이게 없으면 "8분 재고 끊었다가 13분 잼"처럼 서로 다른 세션이
+        // 시간상 가깝다는 이유만으로 하나의 "5분/10분" 포인트로 뭉개짐.
+        if (chunkCva.isNotEmpty && isSessionStart(i)) {
+          endedIncomplete = true;
+          break;
+        }
+
         DateTime? currTime = parseTime(_timeHistory[i]);
         if (currTime != null && currTime.difference(startTime).inMinutes >= intervalMin) {
-          break;
+          break; // ✅ 인터벌을 정상적으로 다 채워서 끝남 (완성된 구간)
         }
 
         chunkCva.add(_cvaHistory[i]);
         if (i < _postureHistory.length) chunkPosture.add(_postureHistory[i]);
+        if (currTime != null) lastIncludedTime = currTime;
         i++;
       }
 
-      if (i >= _cvaHistory.length && chunkCva.isNotEmpty && intervalMin > 1) {
-        DateTime? lastChunkTime = parseTime(_timeHistory.last);
-        if (lastChunkTime != null && lastChunkTime.difference(startTime).inMinutes < (intervalMin - 1)) {
-          break;
+      if (i >= _cvaHistory.length && chunkCva.isNotEmpty) {
+        // 하루 데이터의 끝에 도달해서 끊긴 경우도 "미완성"으로 동일 취급
+        endedIncomplete = true;
+      }
+
+      // ✅ 5분/10분 모드에서 인터벌을 다 채우지 못하고 끊긴 조각은
+      //    하루 중간이든 끝이든 위치와 무관하게 항상 버린다.
+      //    (예: 8분 세션 뒤 13분 세션 → 8분 중 못 채운 뒷부분 3분도,
+      //     13분 중 못 채운 마지막 3분도 둘 다 동일하게 버려짐)
+      if (intervalMin > 1 && endedIncomplete && chunkCva.isNotEmpty) {
+        double actualSpan = lastIncludedTime.difference(startTime).inMinutes.toDouble();
+        if (actualSpan < (intervalMin - 1)) {
+          continue; 
         }
       }
 
@@ -255,6 +318,8 @@ class _ReportViewState extends State<ReportView> {
           'cautionCount': cCount,
           'time': startTimeStr,
           'isStartAfterGap': hasGap,
+          // ✅ 다음 버킷의 gap 판정을 위해 "이 버킷에 실제로 포함된 마지막 시각"을 저장
+          'endTime': lastIncludedTime,
         });
       }
     }
@@ -266,19 +331,24 @@ class _ReportViewState extends State<ReportView> {
   }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
-    if (selectedDay.isAfter(DateTime.now())) return;
+    DateTime now = DateTime.now();
+    DateTime endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    if (selectedDay.isAfter(endOfToday)) return;
 
     setState(() {
       _selectedDay    = selectedDay;
-      _focusedDay     = focusedDay.isAfter(DateTime.now()) ? DateTime.now() : focusedDay;
+      _focusedDay     = focusedDay.isAfter(endOfToday) ? now : focusedDay;
       _viewIndex      = 0;
       _selectedScore  = null;
       _avgCva         = 0.0;
       _cvaHistory     = [];
       _postureHistory = [];
       _timeHistory    = [];
+      _sessionStartHistory = []; // ✅ 날짜 바뀔 때 같이 초기화
       _warningCount   = 0;
       _cautionCount   = 0;
+      _totalDurationSeconds = 0; // ✅ 날짜 바뀔 때 같이 초기화
       _processedGraphData = [];
       _selectedPoint  = null;
     });
@@ -306,9 +376,9 @@ class _ReportViewState extends State<ReportView> {
       return;
     }
 
-    final List<double> accXHistory       = List<double>.from(data['accXHistory']       ?? []);
-    final List<double> accYHistory       = List<double>.from(data['accYHistory']       ?? []);
-    final List<double> accZHistory       = List<double>.from(data['accZHistory']       ?? []);
+    final List<double> accXHistory        = List<double>.from(data['accXHistory']       ?? []);
+    final List<double> accYHistory        = List<double>.from(data['accYHistory']       ?? []);
+    final List<double> accZHistory        = List<double>.from(data['accZHistory']       ?? []);
     final List<String> rawTimeHistory    = List<String>.from(data['rawTimeHistory']    ?? []);
     final List<double> cvaRawHistory     = List<double>.from(data['cvaRawHistory']     ?? []);
     final List<String> postureRawHistory = List<String>.from(data['postureRawHistory'] ?? []);
@@ -381,6 +451,9 @@ class _ReportViewState extends State<ReportView> {
   }
 
   Widget _buildWeeklyView() {
+    DateTime now = DateTime.now();
+    DateTime endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -404,13 +477,14 @@ class _ReportViewState extends State<ReportView> {
           TableCalendar(
             locale: 'ko_KR',
             firstDay: DateTime.utc(2024, 1, 1),
-            lastDay: DateTime.now(),
-            focusedDay: _focusedDay.isAfter(DateTime.now()) ? DateTime.now() : _focusedDay,
-            calendarFormat: CalendarFormat.week, headerVisible: false,
+            lastDay: endOfToday,
+            focusedDay: _focusedDay.isAfter(endOfToday) ? now : _focusedDay,
+            calendarFormat: CalendarFormat.week, 
+            headerVisible: false,
             onCalendarCreated: (controller) => _calendarPageController = controller,
             selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
             onDaySelected: _onDaySelected,
-            onPageChanged: (focusedDay) => setState(() => _focusedDay = focusedDay.isAfter(DateTime.now()) ? DateTime.now() : focusedDay),
+            onPageChanged: (focusedDay) => setState(() => _focusedDay = focusedDay.isAfter(endOfToday) ? now : focusedDay),
             calendarBuilders: _customBuilders(),
           ),
           const Divider(thickness: 1, color: Color(0xFFEEEEEE), height: 40),
@@ -559,37 +633,33 @@ class _ReportViewState extends State<ReportView> {
           const SizedBox(height: 12),
 
           // 1분 / 5분 / 10분 선택 버튼
-          // 1분 / 5분 / 10분 선택 버튼 (왼쪽 정렬)
           Row(
-            mainAxisAlignment: MainAxisAlignment.start, // ✅ start로 변경
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [1, 5, 10].map((interval) {
               bool isSelected = _selectedInterval == interval;
               String label = "$interval분";
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0), // ✅ 버튼 간 간격 8px
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedInterval = interval;
-                      _processGraphData();
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFFF1F8E9) : Colors.transparent,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: isSelected ? const Color(0xFFC8E6C9) : const Color(0xFFE0E0E0),
-                      ),
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedInterval = interval;
+                    _processGraphData();
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFFF1F8E9) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFFC8E6C9) : const Color(0xFFE0E0E0),
                     ),
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected ? const Color(0xFF33691E) : Colors.grey,
-                      ),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? const Color(0xFF33691E) : Colors.grey,
                     ),
                   ),
                 ),
@@ -625,50 +695,62 @@ class _ReportViewState extends State<ReportView> {
                 ),
                 const SizedBox(height: 8),
 
-                // [핵심 변경] 좌측 고정 Y축 레이블 + 우측 가로 스크롤 그래프 영역
+                // 좌측 고정 Y축 레이블 + 우측 가로 스크롤 그래프 영역
                 SizedBox(
                   height: screenHeight * 0.25,
                   child: Row(
                     children: [
-                      // 1. 좌측 고정 Y축 눈금 및 텍스트 레이블 (폭 36 고정)
                       SizedBox(
-                        width: 36,
+                        width: 28,
                         height: screenHeight * 0.25,
                         child: CustomPaint(
                           painter: _FixedYAxisPainter(),
                         ),
                       ),
-                      // 2. 우측 스크롤 가능한 데이터 차트 영역
                       Expanded(
                         child: LayoutBuilder(
                           builder: (context, constraints) {
                             double availableWidth = constraints.maxWidth;
-                            double itemSpacing = 50.0;
-                            double calculatedWidth = math.max(
+                            double itemSpacing = 65.0;
+                            
+                            // 좌우 패딩(40px)을 감안한 총 너비 계산
+                            double requiredWidth = math.max(
                               availableWidth,
-                              _processedGraphData.length * itemSpacing,
+                              (_processedGraphData.length - 1) * itemSpacing + 40.0,
                             );
 
+                            // ✅ key를 _selectedInterval에 연결해서, 1분↔5분↔10분
+                            //    전환할 때마다 Flutter가 이 스크롤 위젯을 완전히
+                            //    새 것으로 취급하게 함. key가 없으면 인터벌이
+                            //    바뀌어 그래프 폭(requiredWidth)이 확 줄어들 때
+                            //    기존 스크롤 offset(예: 1분 모드에서 오른쪽 끝까지
+                            //    스크롤해둔 위치)을 그대로 유지하려다가 새로 줄어든
+                            //    범위 안으로 강제 clamp되어, 항상 "맨 뒤"만 보이는
+                            //    문제가 있었음. key를 바꾸면 매번 offset 0(맨 앞)부터
+                            //    시작해서 1분/5분/10분 전부 동일하게 앞에서부터 보임.
                             return SingleChildScrollView(
+                              key: ValueKey(_selectedInterval),
                               scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
                               child: SizedBox(
-                                width: calculatedWidth,
+                                width: requiredWidth,
                                 height: screenHeight * 0.25,
                                 child: GestureDetector(
                                   onTapDown: (TapDownDetails details) {
                                     if (_processedGraphData.isEmpty) return;
                                     double tapX = details.localPosition.dx;
-                                    const double padR = 16.0;
-                                    double chartW = calculatedWidth - padR;
+                                    const double padL = 20.0;
+                                    const double padR = 20.0;
+                                    double chartW = requiredWidth - padL - padR;
 
-                                    double ratio = (tapX / chartW).clamp(0.0, 1.0);
+                                    double ratio = ((tapX - padL) / chartW).clamp(0.0, 1.0);
                                     int clickedIdx = (ratio * (_processedGraphData.length - 1)).round();
                                     setState(() {
                                       _selectedPoint = _processedGraphData[clickedIdx];
                                     });
                                   },
                                   child: CustomPaint(
-                                    size: Size(calculatedWidth, screenHeight * 0.25),
+                                    size: Size(requiredWidth, screenHeight * 0.25),
                                     painter: CorrectedCvaChartPainter(
                                       data: _processedGraphData,
                                       selectedPoint: _selectedPoint,
@@ -682,8 +764,35 @@ class _ReportViewState extends State<ReportView> {
                           },
                         ),
                       ),
+                      // ✅ 왼쪽 Y축 칸(28px)은 숫자가 채워져 있어서 "덜 비어" 보이지만,
+                      //    오른쪽은 완전히 빈 공간이라 같은 폭이어도 더 커 보임.
+                      //    그래서 왼쪽보다 작게(10px) 줄여서 시각적으로 균형을 맞춤.
+                      const SizedBox(width: 10),
                     ],
                   ),
+                ),
+
+                // ✅ 총 측정 시간을 그래프 카드 "안쪽"에, 위 그래프 Row와 동일한
+                //    좌우 여백 구조로 맞춰서 배치. 위 그래프와의 간격도 좁힘.
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    const SizedBox(width: 28), // 위 그래프 Row의 Y축 칸과 동일한 왼쪽 여백
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          "총 측정 시간: ${_formatDuration(_totalDurationSeconds)}",
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10), // 위 그래프 Row의 오른쪽 여백과 동일
+                  ],
                 ),
               ],
             ),
@@ -718,6 +827,18 @@ class _ReportViewState extends State<ReportView> {
     );
   }
 
+  // ✅ 추가: 초 단위 총 측정 시간을 "N시간 M분" / "N분" 형태로 변환.
+  //    1시간 미만이면 "N분"만, 1시간 이상이면 "N시간 M분"으로 표시.
+  //    (분 단위가 0이면 "N시간"만 표시해서 "1시간 0분" 같은 어색한 표기 방지)
+  String _formatDuration(int totalSeconds) {
+    if (totalSeconds <= 0) return "0분";
+    final int hours = totalSeconds ~/ 3600;
+    final int minutes = (totalSeconds % 3600) ~/ 60;
+    if (hours <= 0) return "$minutes분";
+    if (minutes <= 0) return "$hours시간";
+    return "$hours시간 $minutes분";
+  }
+
   Widget _buildEmptyContent() {
     return Padding(padding: const EdgeInsets.only(top: 80), child: Center(child: Column(children: [const Icon(Icons.assignment_late_outlined, size: 64, color: Colors.grey), const SizedBox(height: 16), Text("${_selectedDay?.month}월 ${_selectedDay?.day}일\n기록이 없습니다.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontSize: 16))])));
   }
@@ -739,8 +860,8 @@ class _ReportViewState extends State<ReportView> {
             itemBuilder: (context, index) {
               final DateTime monthToShow = DateTime(DateTime.now().year, DateTime.now().month - index);
               final DateTime lastAllowedDay = (monthToShow.year == DateTime.now().year && monthToShow.month == DateTime.now().month)
-                  ? DateTime.now()
-                  : DateTime(monthToShow.year, monthToShow.month + 1, 0);
+                  ? DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59, 59)
+                  : DateTime(monthToShow.year, monthToShow.month + 1, 0, 23, 59, 59);
 
               return Container(
                 padding: const EdgeInsets.only(bottom: 20), 
@@ -784,7 +905,7 @@ class _ReportViewState extends State<ReportView> {
 }
 
 // ------------------------------------------------------------------
-// 1. 좌측 고정 Y축 Painter (가로 스크롤 시에도 항상 고정)
+// 1. 좌측 고정 Y축 Painter
 // ------------------------------------------------------------------
 class _FixedYAxisPainter extends CustomPainter {
   final double minY = 25.0;
@@ -800,7 +921,6 @@ class _FixedYAxisPainter extends CustomPainter {
       return padT + (1 - (clampedV - minY) / (maxY - minY)) * chartH;
     }
 
-    // Y축 각도 텍스트 렌더링 (<30°, >70°도 모두 동일한 회색 적용)
     for (double v in [25.0, 30.0, 40.0, 50.0, 60.0, 70.0, 75.0]) {
       String labelText = "${v.toInt()}°";
       if (v == 25.0) labelText = "<30°";
@@ -824,7 +944,7 @@ class _FixedYAxisPainter extends CustomPainter {
 }
 
 // ------------------------------------------------------------------
-// 2. 우측 스크롤 꺾은선 차트 CustomPainter
+// 2. 우측 스크롤 꺾은선 차트 CustomPainter (좌우 여백 20.0 적용)
 // ------------------------------------------------------------------
 class CorrectedCvaChartPainter extends CustomPainter {
   final List<Map<String, dynamic>> data;
@@ -859,8 +979,8 @@ class CorrectedCvaChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (data.isEmpty) return;
 
-    // 좌측은 고정 Y축에 연결되므로 padL = 0
-    const double padL = 0.0, padR = 16.0, padT = 12.0, padB = 32.0;
+    // ✅ 좌우 20px씩 여백을 두어 첫/끝 점과 시간이 잘리지 않음
+    const double padL = 20.0, padR = 20.0, padT = 12.0, padB = 32.0;
     final double chartW = size.width - padL - padR;
     final double chartH = size.height - padT - padB;
 
@@ -882,22 +1002,22 @@ class CorrectedCvaChartPainter extends CustomPainter {
     
     // 배경 구간 영역
     canvas.drawRect(
-      Rect.fromLTRB(padL, toY(maxY), padL + chartW, toY(cautionY)),
+      Rect.fromLTRB(0, toY(maxY), size.width, toY(cautionY)),
       paintZone..color = const Color(0xFFC8E6C9).withOpacity(0.4),
     );
     canvas.drawRect(
-      Rect.fromLTRB(padL, toY(cautionY), padL + chartW, toY(warningY)),
+      Rect.fromLTRB(0, toY(cautionY), size.width, toY(warningY)),
       paintZone..color = const Color(0xFFFFE0B2).withOpacity(0.5),
     );
     canvas.drawRect(
-      Rect.fromLTRB(padL, toY(warningY), padL + chartW, toY(minY)),
+      Rect.fromLTRB(0, toY(warningY), size.width, toY(minY)),
       paintZone..color = const Color(0xFFFFCDD2).withOpacity(0.5),
     );
 
     // 가로 격자 가이드선
     final gridPaint = Paint()..color = Colors.grey.withOpacity(0.2)..strokeWidth = 0.5;
     for (double v in [25.0, 30.0, 40.0, 50.0, 60.0, 70.0, 75.0]) {
-      canvas.drawLine(Offset(padL, toY(v)), Offset(padL + chartW, toY(v)), gridPaint);
+      canvas.drawLine(Offset(0, toY(v)), Offset(size.width, toY(v)), gridPaint);
     }
 
     // 정상 가이드선 (53도)
@@ -905,7 +1025,7 @@ class CorrectedCvaChartPainter extends CustomPainter {
       ..color = Colors.grey.shade400
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
-    canvas.drawLine(Offset(padL, toY(53.0)), Offset(padL + chartW, toY(53.0)), normalGuideLinePaint);
+    canvas.drawLine(Offset(0, toY(53.0)), Offset(size.width, toY(53.0)), normalGuideLinePaint);
 
     // 나의 기준 가이드 점선
     final myBaseGuideLinePaint = Paint()
@@ -914,12 +1034,12 @@ class CorrectedCvaChartPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     double dashW = 4, dashS = 3;
-    double currentX = padL;
+    double currentX = 0;
     double targetY = toY(myBaseCva);
-    while (currentX < padL + chartW) {
+    while (currentX < size.width) {
       canvas.drawLine(
         Offset(currentX, targetY),
-        Offset(math.min(currentX + dashW, padL + chartW), targetY),
+        Offset(math.min(currentX + dashW, size.width), targetY),
         myBaseGuideLinePaint,
       );
       currentX += dashW + dashS;
@@ -936,7 +1056,7 @@ class CorrectedCvaChartPainter extends CustomPainter {
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
 
-    // 점과 점 사이 연결선 및 측정 재개 세로 점선
+    // 점과 점 사이 연결선
     for (int i = 0; i < data.length - 1; i++) {
       double x1 = toX(i);
       double y1 = toY((data[i]['avgCva'] as double));
@@ -955,7 +1075,7 @@ class CorrectedCvaChartPainter extends CustomPainter {
       canvas.drawLine(Offset(x1, y1), Offset(x2, y2), linePaint);
     }
 
-    // 각 포인트점 및 X축 시간 텍스트 출력 -> [수정] 모든 점 색상을 기본 초록색(0xFF33691E)으로 일치
+    // 각 포인트점 및 X축 시간 텍스트 출력
     for (int i = 0; i < data.length; i++) {
       double x = toX(i);
       double plottedCva = (data[i]['avgCva'] as double);

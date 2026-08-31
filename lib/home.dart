@@ -47,6 +47,12 @@ class _HomeViewContentState extends State<HomeViewContent> {
   List<String> timeHistory = [];
   List<String> postureHistory = [];
 
+  // ✅ 추가: cvaHistory/timeHistory/postureHistory와 1:1로 대응되는 세션 경계 마커.
+  //    startMonitoring()이 호출될 때(=측정을 새로 시작할 때)의 첫 포인트만 true.
+  //    끊어서 여러 번 측정해도 리포트 그래프에서 서로 다른 세션이 하나로
+  //    뭉개지지 않도록 하기 위함 (report_view.dart의 _processGraphData 참고).
+  List<bool> sessionStartHistory = [];
+
   List<double> accXHistory = [];
   List<double> accYHistory = [];
   List<double> accZHistory = [];
@@ -160,9 +166,19 @@ class _HomeViewContentState extends State<HomeViewContent> {
           ).compareTo(DateTime.parse(a['measuredAt'])),
         );
 
-        final DateTime lastMeasuredAt = DateTime.parse(
-          validReports.first['measuredAt'],
-        );
+        // final DateTime lastMeasuredAt = DateTime.parse(
+        //   validReports.first['measuredAt'],
+        // );
+
+        final latestReport = validReports.first;
+        final DateTime lastMeasuredAt = DateTime.parse(latestReport['measuredAt']);
+
+        // 💡 [핵심 추가] 최신 monthlyId를 스토리지에 자동으로 저장!
+        if (latestReport['monthlyId'] != null || latestReport['monthly_id'] != null) {
+          final latestId = (latestReport['monthlyId'] ?? latestReport['monthly_id']).toString();
+          await _storage.write(key: 'monthlyId', value: latestId);
+          debugPrint("💾 최신 monthlyId 자동 동기화 완료: $latestId");
+        }
         final DateTime expireDate = lastMeasuredAt.add(
           const Duration(days: 30),
         );
@@ -523,6 +539,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       cvaHistory.clear();
       timeHistory.clear();
       postureHistory.clear();
+      sessionStartHistory.clear(); // ✅ 저장 안 하고 버리는 경로이므로 같이 비워줌
       accXHistory.clear();
       accYHistory.clear();
       accZHistory.clear();
@@ -540,7 +557,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
     _showSnackBar("연결이 끊겨 측정이 종료되었습니다.");
   }
 
-  Future<void> startCalibration() async {
+Future<void> startCalibration() async {
     final checkResult = await _checkMonthlyMeasurementValid();
 
     if (!checkResult['isValid']) {
@@ -582,19 +599,46 @@ class _HomeViewContentState extends State<HomeViewContent> {
       isCalibrating = true;
       calibrationTimer = 3;
       isBadPosture = false;
-      postureResult = 'normal'; // ✅ 캘리브레이션 시작 시 기본 거북이 유지
+      postureResult = 'normal';
     });
 
-    monitorTimer?.cancel();
-    monitorTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (calibrationTimer > 1) {
-        setState(() => calibrationTimer--);
-      } else {
-        timer.cancel();
-      }
-    });
-
+    // 1. 센서 데이터 수신 시작
     await _ble.startNotify(parseSensorData);
+
+    // 2. 명확한 3초 카운트다운 진행 (비동기 지연)
+    for (int i = 3; i > 0; i--) {
+      if (!mounted || !isCalibrating) return;
+      setState(() => calibrationTimer = i);
+      await Future.delayed(const Duration(seconds: 1));
+    }
+
+    if (!mounted || !isCalibrating) return;
+
+    // 3. 수집된 센서값 평균 계산
+    double avgX = calibAccXList.isNotEmpty
+        ? calibAccXList.reduce((a, b) => a + b) / calibAccXList.length
+        : lastAccX;
+    double avgY = calibAccYList.isNotEmpty
+        ? calibAccYList.reduce((a, b) => a + b) / calibAccYList.length
+        : lastAccY;
+    double avgZ = calibAccZList.isNotEmpty
+        ? calibAccZList.reduce((a, b) => a + b) / calibAccZList.length
+        : lastAccZ;
+
+    debugPrint("📡 [캘리브레이션 API 전송 시작] X=$avgX, Y=$avgY, Z=$avgZ (수집 개수: ${calibAccXList.length})");
+
+    // 4. 백엔드 영점 조절 API 호출 완료를 '확실히 기다림(await)'
+    try {
+      final res = await _api.sendCalibration(avgX, avgY, avgZ);
+      debugPrint("📡 [캘리브레이션 API 완료 결과]: $res");
+    } catch (e) {
+      debugPrint("❌ 캘리브레이션 호출 에러: $e");
+    }
+
+    // 5. 캘리브레이션이 완전히 끝난 후 실시간 모니터링 시작
+    if (mounted) {
+      startMonitoring();
+    }
   }
 
   Future<void> startMonitoring() async {
@@ -682,6 +726,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
         postureRawHistory.add(newPostureResult);
 
         if (now.second == 0 || cvaHistory.isEmpty) {
+          // ✅ cvaHistory가 비어있는 상태에서 첫 포인트를 추가하는 시점 = 이번 측정 세션의 시작점.
+          //    cvaHistory는 stopMonitoring()이 끝날 때마다 항상 clear()되므로,
+          //    "지금 이 세션에서 처음 넣는 포인트인가"를 cvaHistory.isEmpty로 정확히 판별할 수 있음.
+          sessionStartHistory.add(cvaHistory.isEmpty);
           cvaHistory.add(estimatedCva);
           timeHistory.add(timeStr);
           postureHistory.add(_worstPostureInMinute);
@@ -691,28 +739,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
     });
   }
 
-  void parseSensorData(String data) {
+void parseSensorData(String data) {
     final cleanData = data.trim();
-    if (cleanData.isEmpty) return;
-
-    if (cleanData.startsWith("CALIB_DONE")) {
-      final parts = cleanData.replaceFirst("CALIB_DONE:", "").split(',');
-      if (parts.length >= 3) {
-        final avgX = double.tryParse(parts[0]) ?? 0.0;
-        final avgY = double.tryParse(parts[1]) ?? 0.0;
-        final avgZ = double.tryParse(parts[2]) ?? 0.0;
-        _api.sendCalibration(avgX, avgY, avgZ);
-      }
-      startMonitoring();
-      return;
-    }
-
-    if (cleanData == "NO_POSE_CALIB") {
-      _showSnackBar("자세 교정 시작 버튼을 눌러주세요");
-      return;
-    }
-
-    if (cleanData == "WAIT") return;
+    if (cleanData.isEmpty || cleanData == "WAIT") return;
 
     final parts = cleanData.split(',');
     if (parts.length < 3) return;
@@ -721,6 +750,13 @@ class _HomeViewContentState extends State<HomeViewContent> {
     final accY = double.tryParse(parts[1]);
     final accZ = double.tryParse(parts[2]);
     if (accX == null) return;
+
+    // 💡 캘리브레이션 진행 중일 때 센서값 누적 수집
+    if (isCalibrating) {
+      calibAccXList.add(accX);
+      calibAccYList.add(accY ?? 0.0);
+      calibAccZList.add(accZ ?? 0.0);
+    }
 
     setState(() {
       lastAccX = accX;
@@ -775,6 +811,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
       final prevPostureHistory = List<String>.from(
         existingData?['postureHistory'] ?? [],
       );
+      // ✅ 추가: 이전에 저장된 세션 경계 마커도 함께 불러와서 이어붙임
+      final prevSessionStartHistory = List<bool>.from(
+        existingData?['sessionStartHistory'] ?? [],
+      );
       final prevAccXHistory = List<double>.from(
         existingData?['accXHistory'] ?? [],
       );
@@ -794,10 +834,17 @@ class _HomeViewContentState extends State<HomeViewContent> {
         existingData?['postureRawHistory'] ?? [],
       );
 
-      final prevCvaCount = prevCvaHistory.length;
-      final mergedAvgCva = (prevCvaCount + cvaCount) > 0
-          ? (prevAvgCva * prevCvaCount + avgCva * cvaCount) /
-                (prevCvaCount + cvaCount)
+      // ✅ 수정: 이전엔 prevCvaHistory.length(분당 1개, "분" 단위)를
+      //    이번 세션의 cvaCount(매초 증가, "초" 단위)와 그대로 더해
+      //    가중평균을 냈음 — 단위가 60배 어긋나 있어서, 다시 측정할 때마다
+      //    이전 평균의 가중치가 사실상 무의미해지는(=새 세션 평균으로
+      //    쏠리는) 문제가 있었음.
+      //    duration 필드는 이미 "초" 단위로 정확히 누적 저장되고 있으므로
+      //    (totalDuration도 cvaCount와 동일한 타이밍에 매초 증가),
+      //    이걸 그대로 가중치로 쓰면 단위가 맞아떨어져 정확한 가중평균이 됨.
+      final mergedAvgCva = (prevDuration + totalDuration) > 0
+          ? (prevAvgCva * prevDuration + avgCva * totalDuration) /
+                (prevDuration + totalDuration)
           : avgCva;
 
       await DailyReportStorage.saveHistory(
@@ -816,6 +863,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
         rawTimeHistory: [...prevRawTimeHistory, ...rawTimeHistory],
         cvaRawHistory: [...prevCvaRawHistory, ...cvaRawHistory],
         postureRawHistory: [...prevPostureRawHistory, ...postureRawHistory],
+        // ✅ 추가: 세션 경계 마커도 다른 배열들과 동일하게 이어붙여서 저장
+        sessionStartHistory: [...prevSessionStartHistory, ...sessionStartHistory],
       );
       debugPrint("✅ Hive 저장 완료: $dateKey");
     }
@@ -833,6 +882,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       cvaHistory.clear();
       timeHistory.clear();
       postureHistory.clear();
+      sessionStartHistory.clear(); // ✅ 다음 세션을 위해 비워줌 (이미 저장은 끝난 상태)
       accXHistory.clear();
       accYHistory.clear();
       accZHistory.clear();
