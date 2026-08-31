@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'guide.dart';
 import 'collection.dart';
 import 'posture_api_service.dart';
 import 'exercise_onboarding_dialog.dart';
+import 'exercise_report_view.dart'; // ✅ 추가: 운동 리포트 화면
 
 // ★ 온보딩 스팟라이트 위치 자동 추적용 GlobalKey ★
 final GlobalKey exerciseBookmarkKey = GlobalKey();
@@ -113,9 +113,11 @@ class _ExerciseViewState extends State<ExerciseView> {
         height: 60,
         child: FloatingActionButton(
           onPressed: () {
+            // ✅ 변경: 카메라 기반 운동 가이드(GuideView) 대신
+            //    "운동 리포트"(월별 이용 통계 + 추천 영상) 화면으로 이동
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const GuideView()),
+              MaterialPageRoute(builder: (context) => const ExerciseReportView()),
             );
           },
           backgroundColor: const Color(0xFFE8F1DE),
@@ -123,8 +125,10 @@ class _ExerciseViewState extends State<ExerciseView> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
+          // ✅ 변경: 스트레칭 사람 아이콘(accessibility_new) 대신
+          //    다른 화면들과 통일된 "리포트(문서)" 아이콘으로 교체
           child: const Icon(
-            Icons.accessibility_new,
+            Icons.description,
             color: Color(0xFF3B5524),
             size: 30,
           ),
