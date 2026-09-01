@@ -139,15 +139,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
   @override
   Widget build(BuildContext context) {
-    print("🔍 _monthlyList 전체 개수: ${_monthlyList.length}");
-    if (_monthlyList.isNotEmpty) {
-      print(
-        "🔍 _monthlyList.first.measuredAt: ${_monthlyList.first.measuredAt}",
-      );
-      print("🔍 _monthlyList.first 전체 내용: ${_monthlyList.first}");
-    } else {
-      print("🔍 _monthlyList가 비어있습니다.");
-    }
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -184,11 +175,8 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                           .toList();
 
                       if (realItems.isNotEmpty) {
-                        print("찾은 진짜 측정일: ${realItems.first.measuredAt}");
                         return realItems.first.measuredAt;
                       }
-
-                      print("진짜 측정 기록이 없음 (null 전달)");
                       return null;
                     }(),
 
@@ -807,9 +795,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
   }
 
   Widget _buildWeekRow(WeeklyStat stat) {
-    print(
-      "📊 [${stat.weekLabel}] 정상:${stat.normalRatio} / 주의:${stat.cautionRatio} / 경고:${stat.warningRatio} => 총합: ${stat.normalRatio + stat.cautionRatio + stat.warningRatio}%",
-    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -849,7 +834,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                                       width: totalW * (stat.normalRatio / 100),
                                       color: const Color(0xFF618B6D),
                                       ratio: stat.normalRatio,
-                                      textColor: Colors.white,
+                                      textColor: const Color(0xFF1E1E1E),
                                     ),
                                   if (stat.cautionRatio > 0)
                                     _buildBarSegment(
@@ -863,7 +848,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
                                       width: totalW * (stat.warningRatio / 100),
                                       color: const Color(0xFFE48582),
                                       ratio: stat.warningRatio,
-                                      textColor: Colors.white,
+                                      textColor: const Color(0xFF1E1E1E),
                                     ),
                                 ],
                               );
