@@ -39,6 +39,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
   String _prevPostureResult = 'normal';
   int? _batteryPercent;
+  bool _isCharging = false;
   bool _hasSentBatteryNotification = false;
 
   bool _isNavigatingToVision = false;
@@ -47,10 +48,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
   List<String> timeHistory = [];
   List<String> postureHistory = [];
 
-  // ✅ 추가: cvaHistory/timeHistory/postureHistory와 1:1로 대응되는 세션 경계 마커.
-  //    startMonitoring()이 호출될 때(=측정을 새로 시작할 때)의 첫 포인트만 true.
-  //    끊어서 여러 번 측정해도 리포트 그래프에서 서로 다른 세션이 하나로
-  //    뭉개지지 않도록 하기 위함 (report_view.dart의 _processGraphData 참고).
   List<bool> sessionStartHistory = [];
 
   List<double> accXHistory = [];
@@ -113,8 +110,18 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
     _ble.onBatteryChanged = (batt) {
       if (!mounted) return;
-      setState(() => _batteryPercent = batt);
-      _checkBatteryLevelAndNotify(batt);
+      setState(() {
+        if (batt > 100) {
+          _isCharging = true;
+          _batteryPercent = batt - 100;
+        } else {
+          _isCharging = false;
+          _batteryPercent = batt;
+        }
+      });
+      if (!_isCharging) {
+        _checkBatteryLevelAndNotify(_batteryPercent!);
+      }
     };
 
     _storage.read(key: 'accessToken').then((token) {
@@ -166,14 +173,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
           ).compareTo(DateTime.parse(a['measuredAt'])),
         );
 
-        // final DateTime lastMeasuredAt = DateTime.parse(
-        //   validReports.first['measuredAt'],
-        // );
-
         final latestReport = validReports.first;
         final DateTime lastMeasuredAt = DateTime.parse(latestReport['measuredAt']);
 
-        // 💡 [핵심 추가] 최신 monthlyId를 스토리지에 자동으로 저장!
         if (latestReport['monthlyId'] != null || latestReport['monthly_id'] != null) {
           final latestId = (latestReport['monthlyId'] ?? latestReport['monthly_id']).toString();
           await _storage.write(key: 'monthlyId', value: latestId);
@@ -529,7 +531,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       isBadPosture = false;
       monitoringSeconds = 0;
       calibrationTimer = 3;
-      postureResult = 'normal'; // ✅ 기본 거북이로 초기화
+      postureResult = 'normal';
       _worstPostureInMinute = 'normal';
       _prevPostureResult = 'normal';
       lastAccX = 0.0;
@@ -539,7 +541,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       cvaHistory.clear();
       timeHistory.clear();
       postureHistory.clear();
-      sessionStartHistory.clear(); // ✅ 저장 안 하고 버리는 경로이므로 같이 비워줌
+      sessionStartHistory.clear();
       accXHistory.clear();
       accYHistory.clear();
       accZHistory.clear();
@@ -557,7 +559,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
     _showSnackBar("연결이 끊겨 측정이 종료되었습니다.");
   }
 
-Future<void> startCalibration() async {
+  Future<void> startCalibration() async {
     final checkResult = await _checkMonthlyMeasurementValid();
 
     if (!checkResult['isValid']) {
@@ -602,10 +604,8 @@ Future<void> startCalibration() async {
       postureResult = 'normal';
     });
 
-    // 1. 센서 데이터 수신 시작
     await _ble.startNotify(parseSensorData);
 
-    // 2. 명확한 3초 카운트다운 진행 (비동기 지연)
     for (int i = 3; i > 0; i--) {
       if (!mounted || !isCalibrating) return;
       setState(() => calibrationTimer = i);
@@ -614,7 +614,6 @@ Future<void> startCalibration() async {
 
     if (!mounted || !isCalibrating) return;
 
-    // 3. 수집된 센서값 평균 계산
     double avgX = calibAccXList.isNotEmpty
         ? calibAccXList.reduce((a, b) => a + b) / calibAccXList.length
         : lastAccX;
@@ -627,7 +626,6 @@ Future<void> startCalibration() async {
 
     debugPrint("📡 [캘리브레이션 API 전송 시작] X=$avgX, Y=$avgY, Z=$avgZ (수집 개수: ${calibAccXList.length})");
 
-    // 4. 백엔드 영점 조절 API 호출 완료를 '확실히 기다림(await)'
     try {
       final res = await _api.sendCalibration(avgX, avgY, avgZ);
       debugPrint("📡 [캘리브레이션 API 완료 결과]: $res");
@@ -635,7 +633,6 @@ Future<void> startCalibration() async {
       debugPrint("❌ 캘리브레이션 호출 에러: $e");
     }
 
-    // 5. 캘리브레이션이 완전히 끝난 후 실시간 모니터링 시작
     if (mounted) {
       startMonitoring();
     }
@@ -664,7 +661,6 @@ Future<void> startCalibration() async {
         level: _level,
       );
 
-      // ✅ 종료된 상태에서 늦게 도착한 API 응답 무시 (거북이 상태 덮어쓰기 방지)
       if (!isMonitoring || !mounted) return;
 
       final newPostureResult = result["postureResult"] as String;
@@ -726,9 +722,6 @@ Future<void> startCalibration() async {
         postureRawHistory.add(newPostureResult);
 
         if (now.second == 0 || cvaHistory.isEmpty) {
-          // ✅ cvaHistory가 비어있는 상태에서 첫 포인트를 추가하는 시점 = 이번 측정 세션의 시작점.
-          //    cvaHistory는 stopMonitoring()이 끝날 때마다 항상 clear()되므로,
-          //    "지금 이 세션에서 처음 넣는 포인트인가"를 cvaHistory.isEmpty로 정확히 판별할 수 있음.
           sessionStartHistory.add(cvaHistory.isEmpty);
           cvaHistory.add(estimatedCva);
           timeHistory.add(timeStr);
@@ -739,7 +732,7 @@ Future<void> startCalibration() async {
     });
   }
 
-void parseSensorData(String data) {
+  void parseSensorData(String data) {
     final cleanData = data.trim();
     if (cleanData.isEmpty || cleanData == "WAIT") return;
 
@@ -751,7 +744,6 @@ void parseSensorData(String data) {
     final accZ = double.tryParse(parts[2]);
     if (accX == null) return;
 
-    // 💡 캘리브레이션 진행 중일 때 센서값 누적 수집
     if (isCalibrating) {
       calibAccXList.add(accX);
       calibAccYList.add(accY ?? 0.0);
@@ -766,16 +758,14 @@ void parseSensorData(String data) {
   }
 
   Future<void> stopMonitoring() async {
-    // 1. 타이머 즉시 정지
     monitorTimer?.cancel();
     dailyApiTimer?.cancel();
 
-    // 2. 화면 상태를 즉시 '기본 거북이' 및 모니터링 종료로 리셋
     setState(() {
       isMonitoring = false;
       isCalibrating = false;
       isBadPosture = false;
-      postureResult = 'normal'; // ✅ 첫 화면 기본 거북이로 확실하게 고정
+      postureResult = 'normal';
       _worstPostureInMinute = 'normal';
       _prevPostureResult = 'normal';
     });
@@ -787,7 +777,6 @@ void parseSensorData(String data) {
       } catch (_) {}
     }
 
-    // 3. 기록 저장 처리
     if (cvaHistory.isNotEmpty) {
       final today = DateTime.now();
       final dateKey =
@@ -811,7 +800,6 @@ void parseSensorData(String data) {
       final prevPostureHistory = List<String>.from(
         existingData?['postureHistory'] ?? [],
       );
-      // ✅ 추가: 이전에 저장된 세션 경계 마커도 함께 불러와서 이어붙임
       final prevSessionStartHistory = List<bool>.from(
         existingData?['sessionStartHistory'] ?? [],
       );
@@ -834,17 +822,9 @@ void parseSensorData(String data) {
         existingData?['postureRawHistory'] ?? [],
       );
 
-      // ✅ 수정: 이전엔 prevCvaHistory.length(분당 1개, "분" 단위)를
-      //    이번 세션의 cvaCount(매초 증가, "초" 단위)와 그대로 더해
-      //    가중평균을 냈음 — 단위가 60배 어긋나 있어서, 다시 측정할 때마다
-      //    이전 평균의 가중치가 사실상 무의미해지는(=새 세션 평균으로
-      //    쏠리는) 문제가 있었음.
-      //    duration 필드는 이미 "초" 단위로 정확히 누적 저장되고 있으므로
-      //    (totalDuration도 cvaCount와 동일한 타이밍에 매초 증가),
-      //    이걸 그대로 가중치로 쓰면 단위가 맞아떨어져 정확한 가중평균이 됨.
       final mergedAvgCva = (prevDuration + totalDuration) > 0
           ? (prevAvgCva * prevDuration + avgCva * totalDuration) /
-                (prevDuration + totalDuration)
+              (prevDuration + totalDuration)
           : avgCva;
 
       await DailyReportStorage.saveHistory(
@@ -863,7 +843,6 @@ void parseSensorData(String data) {
         rawTimeHistory: [...prevRawTimeHistory, ...rawTimeHistory],
         cvaRawHistory: [...prevCvaRawHistory, ...cvaRawHistory],
         postureRawHistory: [...prevPostureRawHistory, ...postureRawHistory],
-        // ✅ 추가: 세션 경계 마커도 다른 배열들과 동일하게 이어붙여서 저장
         sessionStartHistory: [...prevSessionStartHistory, ...sessionStartHistory],
       );
       debugPrint("✅ Hive 저장 완료: $dateKey");
@@ -878,11 +857,11 @@ void parseSensorData(String data) {
       lastAccY = 0.0;
       lastAccZ = 0.0;
       lastEstimatedCva = 0.0;
-      postureResult = 'normal'; // ✅ 데이터 저장 후에도 기본 거북이 유지
+      postureResult = 'normal';
       cvaHistory.clear();
       timeHistory.clear();
       postureHistory.clear();
-      sessionStartHistory.clear(); // ✅ 다음 세션을 위해 비워줌 (이미 저장은 끝난 상태)
+      sessionStartHistory.clear();
       accXHistory.clear();
       accYHistory.clear();
       accZHistory.clear();
@@ -1006,25 +985,38 @@ void parseSensorData(String data) {
                   ),
                   Row(
                     children: [
+                      // ── [수정] 충전 시 번개가 박힌 단일 아이콘 + 간격 축소로 오버플로우 방지
                       if (_ble.isDeviceReady && _batteryPercent != null) ...[
                         Icon(
-                          (_batteryPercent! >= 75)
-                              ? Icons.battery_full
-                              : (_batteryPercent! >= 50)
-                              ? Icons.battery_5_bar
-                              : (_batteryPercent! >= 25)
-                              ? Icons.battery_3_bar
-                              : (_batteryPercent! >= 10)
-                              ? Icons.battery_1_bar
-                              : Icons.battery_alert,
-                          color: (_batteryPercent! <= 20)
-                              ? Colors.red
-                              : TColor.gray,
+                          _isCharging
+                              ? Icons.battery_charging_full
+                              : (_batteryPercent! >= 90)
+                                  ? Icons.battery_full
+                                  : (_batteryPercent! >= 75)
+                                      ? Icons.battery_6_bar
+                                      : (_batteryPercent! >= 50)
+                                          ? Icons.battery_5_bar
+                                          : (_batteryPercent! >= 25)
+                                              ? Icons.battery_3_bar
+                                              : (_batteryPercent! >= 10)
+                                                  ? Icons.battery_1_bar
+                                                  : Icons.battery_alert,
+                          color: _isCharging
+                              ? TColor.buttonGreen
+                              : (_batteryPercent! <= 20)
+                                  ? Colors.red
+                                  : TColor.gray,
                           size: 20,
                         ),
                         const SizedBox(width: 4),
-                        Text("$_batteryPercent%", style: TText.caption),
-                        const SizedBox(width: 8),
+                        Text(
+                          "$_batteryPercent%",
+                          style: TText.caption.copyWith(
+                            color: _isCharging ? TColor.darkGreen : null,
+                            fontWeight: _isCharging ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
                       ],
                       Icon(
                         _ble.isDeviceReady
@@ -1056,9 +1048,9 @@ void parseSensorData(String data) {
                   return GestureDetector(
                     onTap: () => setState(() => selectedDifficulty = level),
                     child: Container(
-                      margin: const EdgeInsets.only(left: 8),
+                      margin: const EdgeInsets.only(left: 6),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
+                        horizontal: 12,
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
@@ -1110,7 +1102,6 @@ void parseSensorData(String data) {
                       ],
                     )
                   : Image.asset(
-                      // ✅ 측정 중이 아닐 때는 무조건 기본 거북이 표시
                       (!isMonitoring || postureResult == "normal")
                           ? 'assets/normal_turtle.png'
                           : postureResult == "warning"

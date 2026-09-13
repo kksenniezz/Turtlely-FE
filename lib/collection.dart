@@ -179,7 +179,7 @@ class _CollectionViewState extends State<CollectionView> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text(
-          "저장한 영상",
+          "북마크한 영상",
           style: TextStyle(
             color: Color(0xFF1E1E1E),
             fontSize: 20,
@@ -212,7 +212,7 @@ class _CollectionViewState extends State<CollectionView> {
                       children: [
                         const SizedBox(height: 24),
                         const Text(
-                          'EXERCISE ZONE에서 저장한 영상이에요!',
+                          'EXERCISE ZONE에서 북마크한 영상이에요!',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Color(0xFF818181),
