@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';                          // ★ 추가
+import 'dart:math' as math;                         // ★ 추가
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:audioplayers/audioplayers.dart';    // ★ 추가
 
 import 'style.dart';
 import 'vision.dart';
@@ -42,8 +45,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
   bool _isCharging = false;
   bool _hasSentBatteryNotification = false;
 
-  bool _isNavigatingToVision = false;
-
   List<double> cvaHistory = [];
   List<String> timeHistory = [];
   List<String> postureHistory = [];
@@ -73,6 +74,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
   final BleService _ble = BleService();
   final ApiService _api = ApiService();
   final _storage = const FlutterSecureStorage();
+  final AudioPlayer _audioPlayer = AudioPlayer();   // ★ 추가
+
+  bool isPreCalibrating = false;    
 
   Timer? monitorTimer;
   Timer? dailyApiTimer;
@@ -91,17 +95,12 @@ class _HomeViewContentState extends State<HomeViewContent> {
       setState(() {});
 
       if (!ready) {
-        if (_isNavigatingToVision) {
-          debugPrint("⏸️ 월간 화면 이동 중 - 홈 BLE 자동 재연결 스킵");
-          return;
-        }
-
         if (isMonitoring) {
           _showDisconnectDialog();
         }
 
         await Future.delayed(const Duration(seconds: 3));
-        if (mounted && !_ble.isDeviceReady && !_isNavigatingToVision) {
+        if (mounted && !_ble.isDeviceReady) {
           debugPrint("🔄 BLE 기기 자동 재연결 시도...");
           _ble.init();
         }
@@ -288,14 +287,6 @@ class _HomeViewContentState extends State<HomeViewContent> {
                           ),
                           onPressed: () async {
                             Navigator.of(dialogContext).pop();
-                            _isNavigatingToVision = true;
-
-                            try {
-                              await _ble.stopNotify();
-                              await _ble.disconnect();
-                            } catch (_) {}
-
-                            if (!mounted) return;
 
                             Navigator.push(
                               context,
@@ -303,8 +294,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                                 builder: (_) => const VisionPage(),
                               ),
                             ).then((_) {
-                              _isNavigatingToVision = false;
-                              if (mounted) _ble.init();
+                              if (mounted) _ble.startNotify(parseSensorData);
                             });
                           },
                           child: const FittedBox(
@@ -561,6 +551,45 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
   Future<void> startCalibration() async {
     final checkResult = await _checkMonthlyMeasurementValid();
+    Uint8List _generateBeepSound({int freq = 440, int durationMs = 150}) {
+      int sampleRate = 22050;
+      int numSamples = (sampleRate * durationMs / 1000).toInt();
+      int dataSize = numSamples * 2;
+      Uint8List bytes = Uint8List(44 + dataSize);
+      ByteData bd = ByteData.sublistView(bytes);
+
+      bd.setUint32(0, 0x52494646, Endian.big);
+      bd.setUint32(4, 36 + dataSize, Endian.little);
+      bd.setUint32(8, 0x57415645, Endian.big);
+      bd.setUint32(12, 0x666d7420, Endian.big);
+      bd.setUint32(16, 16, Endian.little);
+      bd.setUint16(20, 1, Endian.little);
+      bd.setUint16(22, 1, Endian.little);
+      bd.setUint32(24, sampleRate, Endian.little);
+      bd.setUint32(28, sampleRate * 2, Endian.little);
+      bd.setUint16(32, 2, Endian.little);
+      bd.setUint16(34, 16, Endian.little);
+      bd.setUint32(36, 0x64617461, Endian.big);
+      bd.setUint32(40, dataSize, Endian.little);
+
+      for (int i = 0; i < numSamples; i++) {
+        double t = i / sampleRate;
+        double sample = math.sin(2 * math.pi * freq * t);
+        int sampleInt = (sample * 32767).toInt();
+        bd.setInt16(44 + i * 2, sampleInt, Endian.little);
+      }
+      return bytes;
+    }
+
+    Future<void> _playBeepSound() async {
+      try {
+        final bytes = _generateBeepSound(freq: 440, durationMs: 150);
+        await _audioPlayer.stop();
+        await _audioPlayer.play(BytesSource(bytes), volume: 1.0);
+      } catch (e) {
+        debugPrint("사운드 재생 에러: $e");
+      }
+    }
 
     if (!checkResult['isValid']) {
       if (mounted) {
@@ -579,25 +608,30 @@ class _HomeViewContentState extends State<HomeViewContent> {
       return;
     }
 
-    if (!_ble.isDeviceReady || _ble.targetCharacteristic == null) {
-      _showSnackBar("기기가 연결되지 않았어요. 전원을 확인해 주세요.");
-      return;
-    }
+    setState(() {
+      isPreCalibrating = true;
+    });
+
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted || !isPreCalibrating) return;
 
     try {
       await _ble.sendCommand("CALIB_START");
     } catch (e) {
       if (mounted) {
+        setState(() => isPreCalibrating = false);
         _showSnackBar("기기와 연결할 수 없어요. 전원이 켜져 있는지 확인해 주세요.");
       }
       return;
     }
+        if (!mounted || !isPreCalibrating) return;   // ★ 이 줄 추가
 
     calibAccXList.clear();
     calibAccYList.clear();
     calibAccZList.clear();
 
     setState(() {
+      isPreCalibrating = false;
       isCalibrating = true;
       calibrationTimer = 3;
       isBadPosture = false;
@@ -609,6 +643,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
     for (int i = 3; i > 0; i--) {
       if (!mounted || !isCalibrating) return;
       setState(() => calibrationTimer = i);
+      _playBeepSound();
       await Future.delayed(const Duration(seconds: 1));
     }
 
@@ -637,6 +672,21 @@ class _HomeViewContentState extends State<HomeViewContent> {
       startMonitoring();
     }
   }
+  Future<void> cancelCalibration() async {
+  setState(() {
+    isPreCalibrating = false;
+    isCalibrating = false;
+    calibrationTimer = 3;
+  });
+
+  if (_ble.isDeviceReady) {
+    try {
+      await _ble.sendCommand("STOP");
+    } catch (_) {}
+  }
+
+  _showSnackBar("자세 교정이 취소되었습니다.");
+}
 
   Future<void> startMonitoring() async {
     setState(() {
@@ -729,6 +779,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
           _worstPostureInMinute = 'normal';
         }
       });
+      if (now.second == 0) {
+        _flushDailyDataToStorage();   // ★ 이 줄 추가: 1분마다 리포트에 자동 반영
+      }
     });
   }
 
@@ -757,7 +810,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
     });
   }
 
-  Future<void> stopMonitoring() async {
+    Future<void> stopMonitoring() async {
     monitorTimer?.cancel();
     dailyApiTimer?.cancel();
 
@@ -777,76 +830,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       } catch (_) {}
     }
 
-    if (cvaHistory.isNotEmpty) {
-      final today = DateTime.now();
-      final dateKey =
-          "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
-      final avgCva = cvaCount > 0 ? cvaSum / cvaCount : 0.0;
-
-      final existingData = await DailyReportStorage.loadHistory(dateKey);
-
-      final prevWarningCount = existingData?['warningCount'] ?? 0;
-      final prevCautionCount = existingData?['cautionCount'] ?? 0;
-      final prevNormalDuration = existingData?['normalDuration'] ?? 0;
-      final prevDuration = existingData?['duration'] ?? 0;
-      final prevAvgCva = (existingData?['avgCva'] ?? 0.0).toDouble();
-
-      final prevCvaHistory = List<double>.from(
-        existingData?['cvaHistory'] ?? [],
-      );
-      final prevTimeHistory = List<String>.from(
-        existingData?['timeHistory'] ?? [],
-      );
-      final prevPostureHistory = List<String>.from(
-        existingData?['postureHistory'] ?? [],
-      );
-      final prevSessionStartHistory = List<bool>.from(
-        existingData?['sessionStartHistory'] ?? [],
-      );
-      final prevAccXHistory = List<double>.from(
-        existingData?['accXHistory'] ?? [],
-      );
-      final prevAccYHistory = List<double>.from(
-        existingData?['accYHistory'] ?? [],
-      );
-      final prevAccZHistory = List<double>.from(
-        existingData?['accZHistory'] ?? [],
-      );
-      final prevRawTimeHistory = List<String>.from(
-        existingData?['rawTimeHistory'] ?? [],
-      );
-      final prevCvaRawHistory = List<double>.from(
-        existingData?['cvaRawHistory'] ?? [],
-      );
-      final prevPostureRawHistory = List<String>.from(
-        existingData?['postureRawHistory'] ?? [],
-      );
-
-      final mergedAvgCva = (prevDuration + totalDuration) > 0
-          ? (prevAvgCva * prevDuration + avgCva * totalDuration) /
-              (prevDuration + totalDuration)
-          : avgCva;
-
-      await DailyReportStorage.saveHistory(
-        date: dateKey,
-        cvaHistory: [...prevCvaHistory, ...cvaHistory],
-        timeHistory: [...prevTimeHistory, ...timeHistory],
-        postureHistory: [...prevPostureHistory, ...postureHistory],
-        avgCva: mergedAvgCva,
-        warningCount: prevWarningCount + warningCount,
-        cautionCount: prevCautionCount + cautionCount,
-        duration: prevDuration + totalDuration,
-        normalDuration: prevNormalDuration + normalDuration,
-        accXHistory: [...prevAccXHistory, ...accXHistory],
-        accYHistory: [...prevAccYHistory, ...accYHistory],
-        accZHistory: [...prevAccZHistory, ...accZHistory],
-        rawTimeHistory: [...prevRawTimeHistory, ...rawTimeHistory],
-        cvaRawHistory: [...prevCvaRawHistory, ...cvaRawHistory],
-        postureRawHistory: [...prevPostureRawHistory, ...postureRawHistory],
-        sessionStartHistory: [...prevSessionStartHistory, ...sessionStartHistory],
-      );
-      debugPrint("✅ Hive 저장 완료: $dateKey");
-    }
+    await _flushDailyDataToStorage();   // ← 830~898번째 줄 큰 블록 대신 이 한 줄
 
     _showSnackBar("측정 결과가 저장되었어요");
 
@@ -858,25 +842,78 @@ class _HomeViewContentState extends State<HomeViewContent> {
       lastAccZ = 0.0;
       lastEstimatedCva = 0.0;
       postureResult = 'normal';
-      cvaHistory.clear();
-      timeHistory.clear();
-      postureHistory.clear();
-      sessionStartHistory.clear();
-      accXHistory.clear();
-      accYHistory.clear();
-      accZHistory.clear();
-      rawTimeHistory.clear();
-      cvaRawHistory.clear();
-      postureRawHistory.clear();
-      cvaSum = 0.0;
-      cvaCount = 0;
-      warningCount = 0;
-      cautionCount = 0;
-      normalDuration = 0;
-      totalDuration = 0;
     });
   }
+Future<void> _flushDailyDataToStorage() async {
+  if (cvaHistory.isEmpty) return;
 
+  final today = DateTime.now();
+  final dateKey =
+      "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
+  final avgCva = cvaCount > 0 ? cvaSum / cvaCount : 0.0;
+
+  final existingData = await DailyReportStorage.loadHistory(dateKey);
+
+  final prevWarningCount = existingData?['warningCount'] ?? 0;
+  final prevCautionCount = existingData?['cautionCount'] ?? 0;
+  final prevNormalDuration = existingData?['normalDuration'] ?? 0;
+  final prevDuration = existingData?['duration'] ?? 0;
+  final prevAvgCva = (existingData?['avgCva'] ?? 0.0).toDouble();
+
+  final prevCvaHistory = List<double>.from(existingData?['cvaHistory'] ?? []);
+  final prevTimeHistory = List<String>.from(existingData?['timeHistory'] ?? []);
+  final prevPostureHistory = List<String>.from(existingData?['postureHistory'] ?? []);
+  final prevSessionStartHistory = List<bool>.from(existingData?['sessionStartHistory'] ?? []);
+  final prevAccXHistory = List<double>.from(existingData?['accXHistory'] ?? []);
+  final prevAccYHistory = List<double>.from(existingData?['accYHistory'] ?? []);
+  final prevAccZHistory = List<double>.from(existingData?['accZHistory'] ?? []);
+  final prevRawTimeHistory = List<String>.from(existingData?['rawTimeHistory'] ?? []);
+  final prevCvaRawHistory = List<double>.from(existingData?['cvaRawHistory'] ?? []);
+  final prevPostureRawHistory = List<String>.from(existingData?['postureRawHistory'] ?? []);
+
+  final mergedAvgCva = (prevDuration + totalDuration) > 0
+      ? (prevAvgCva * prevDuration + avgCva * totalDuration) / (prevDuration + totalDuration)
+      : avgCva;
+
+  await DailyReportStorage.saveHistory(
+    date: dateKey,
+    cvaHistory: [...prevCvaHistory, ...cvaHistory],
+    timeHistory: [...prevTimeHistory, ...timeHistory],
+    postureHistory: [...prevPostureHistory, ...postureHistory],
+    avgCva: mergedAvgCva,
+    warningCount: prevWarningCount + warningCount,
+    cautionCount: prevCautionCount + cautionCount,
+    duration: prevDuration + totalDuration,
+    normalDuration: prevNormalDuration + normalDuration,
+    accXHistory: [...prevAccXHistory, ...accXHistory],
+    accYHistory: [...prevAccYHistory, ...accYHistory],
+    accZHistory: [...prevAccZHistory, ...accZHistory],
+    rawTimeHistory: [...prevRawTimeHistory, ...rawTimeHistory],
+    cvaRawHistory: [...prevCvaRawHistory, ...cvaRawHistory],
+    postureRawHistory: [...prevPostureRawHistory, ...postureRawHistory],
+    sessionStartHistory: [...prevSessionStartHistory, ...sessionStartHistory],
+  );
+
+  debugPrint("✅ Hive 중간 저장 완료: $dateKey");
+
+  // 저장한 만큼 로컬 버퍼 비우기 (다음 저장 때 중복 안 되게)
+  cvaHistory.clear();
+  timeHistory.clear();
+  postureHistory.clear();
+  sessionStartHistory.clear();
+  accXHistory.clear();
+  accYHistory.clear();
+  accZHistory.clear();
+  rawTimeHistory.clear();
+  cvaRawHistory.clear();
+  postureRawHistory.clear();
+  cvaSum = 0.0;
+  cvaCount = 0;
+  warningCount = 0;
+  cautionCount = 0;
+  normalDuration = 0;
+  totalDuration = 0;
+}
   @override
   void dispose() {
     monitorTimer?.cancel();
@@ -884,8 +921,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
 
     _ble.onDeviceReadyChanged = null;
     _ble.onBatteryChanged = null;
+    _audioPlayer.dispose();
 
-    _ble.dispose();
     super.dispose();
   }
 
@@ -919,26 +956,12 @@ class _HomeViewContentState extends State<HomeViewContent> {
                 ),
               ),
               GestureDetector(
-                onTap: () async {
-                  _isNavigatingToVision = true;
-
-                  try {
-                    await _ble.stopNotify();
-                    await _ble.disconnect();
-                  } catch (e) {
-                    debugPrint("BLE 해제 중 예외 발생 (무시하고 화면 이동): $e");
-                  }
-
-                  if (!mounted) return;
-
+                onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const VisionPage()),
                   ).then((_) {
-                    _isNavigatingToVision = false;
-                    if (mounted) {
-                      _ble.init();
-                    }
+                    if (mounted) _ble.startNotify(parseSensorData);
                   });
                 },
                 child: Container(
@@ -1073,53 +1096,79 @@ class _HomeViewContentState extends State<HomeViewContent> {
             ],
           ),
           const SizedBox(height: 40),
-          Expanded(
-            child: Center(
-              child: isCalibrating
-                  ? Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        SizedBox(
-                          width: 200,
-                          height: 200,
-                          child: CircularProgressIndicator(
-                            value: 1 - (calibrationTimer / 3),
-                            color: TColor.buttonGreen,
-                            strokeWidth: 8,
-                          ),
-                        ),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              "$calibrationTimer",
-                              style: TText.logo.copyWith(fontSize: 48),
-                            ),
-                            const SizedBox(height: 8),
-                            Text("평소 자세 유지해주세요", style: TText.caption),
-                          ],
-                        ),
-                      ],
-                    )
-                  : Image.asset(
-                      (!isMonitoring || postureResult == "normal")
-                          ? 'assets/normal_turtle.png'
-                          : postureResult == "warning"
-                          ? 'assets/fire_turtle.png'
-                          : 'assets/surprised_turtle.png',
-                      width: 280,
-                      errorBuilder: (_, __, ___) =>
-                          Image.asset('assets/normal_turtle.png', width: 280),
+                    Expanded(
+                      child: Center(
+                        child: isPreCalibrating
+                            ? FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Image.asset('assets/normal_turtle.png', width: 200),
+                                    const SizedBox(height: 24),
+                                    const Text(
+                                      "지금부터 3초간 캘리브레이션이\n진행됩니다. 앞을 봐주세요.",
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              )
+
+                            : isCalibrating
+                                ? Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      SizedBox(
+                                        width: 200,
+                                        height: 200,
+                                        child: CircularProgressIndicator(
+                                          value: 1 - (calibrationTimer / 3),
+                                          color: TColor.buttonGreen,
+                                          strokeWidth: 8,
+                                        ),
+                                      ),
+                                      Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            "$calibrationTimer",
+                                            style: TText.logo.copyWith(fontSize: 48),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text("평소 자세 유지해주세요", style: TText.caption),
+                                        ],
+                                      ),
+                                    ],
+                                  )
+                                : Image.asset(
+                                    (!isMonitoring || postureResult == "normal")
+                                        ? 'assets/normal_turtle.png'
+                                        : postureResult == "warning"
+                                        ? 'assets/fire_turtle.png'
+                                        : 'assets/surprised_turtle.png',
+                                    width: 280,
+                                    errorBuilder: (_, __, ___) =>
+                                        Image.asset('assets/normal_turtle.png', width: 280),
+                                  ),
+                      ),
                     ),
-            ),
-          ),
-          Text("거북목 교정을 하는 동안 터틀훅을 꼭 착용해 주세요", style: TText.caption),
-          const SizedBox(height: 16),
+          if (!isPreCalibrating)
+            Text("거북목 교정을 하는 동안 터틀훅을 꼭 착용해 주세요", style: TText.caption),
+            const SizedBox(height: 16),
           ElevatedButton(
             style: T_MainButtonStyle,
-            onPressed: isMonitoring ? _showStopConfirmDialog : startCalibration,
+            onPressed: isMonitoring
+                ? _showStopConfirmDialog
+                : (isPreCalibrating || isCalibrating)
+                    ? cancelCalibration
+                    : startCalibration,
             child: Text(
-              isMonitoring ? "자세 교정 종료하기" : "자세 교정 시작하기",
+              isMonitoring
+                  ? "자세 교정 종료하기"
+                  : (isPreCalibrating || isCalibrating)
+                      ? "종료하기"
+                      : "자세 교정 시작하기",
               style: TText.button,
             ),
           ),

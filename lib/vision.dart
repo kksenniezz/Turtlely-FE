@@ -7,7 +7,7 @@ import 'style.dart';
 import 'main.dart';
 import 'services/mediapipe_service.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'services/monthly_ble_service.dart';
+import 'ble_service.dart';
 import 'services/report_service.dart';
 
 class VisionPage extends StatefulWidget {
@@ -25,8 +25,8 @@ class _VisionPageState extends State<VisionPage> {
   Timer? _dotTimer;
 
   final MediaPipeService _mediaPipeService = MediaPipeService();
-  final MonthlyBleService _monthlyBle = MonthlyBleService();
   final ReportService _reportService = ReportService();
+  final BleService _ble = BleService();   
 
   bool _bleReady = false;
   bool isCheckingEligibility = true;
@@ -170,15 +170,29 @@ class _VisionPageState extends State<VisionPage> {
 
   // 서비스의 카메라를 깨우고 좌표 스트림을 구독합니다.
   Future<void> _bootUp() async {
-    _monthlyBle.onAccelUpdated = (x, y, z) {
-      _mediaPipeService.updateHwAccel(x, y, z);
-      debugPrint("📡 accel 전달: $x, $y, $z");
+    _bleReady = _ble.isDeviceReady;   // 이미 연결되어 있을 수 있으니 초기값 반영
+
+    _ble.onDeviceReadyChanged = (ready) {
+      if (!mounted) return;
+      setState(() => _bleReady = ready);
     };
-    // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기
+
+    _ble.startNotify((data) {          // _monthlyBle.onAccelUpdated 대신
+      if (!mounted) return;
+      final parts = data.trim().split(',');
+      if (parts.length < 3) return;
+      final x = double.tryParse(parts[0]);
+      final y = double.tryParse(parts[1]);
+      final z = double.tryParse(parts[2]);
+      if (x == null) return;
+      _mediaPipeService.updateHwAccel(x, y ?? 0.0, z ?? 0.0);
+      debugPrint("📡 accel 전달: $x, $y, $z");
+    });
+
+    // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기 (기존 코드 그대로)
     _mediaPipeService.poseStream.listen((poses) {
       if (!mounted) return;
       setState(() {
-        // 미디어파이프가 찾은 실시간 좌표를 화면 변수에 매핑
         eyePoint = poses['eye'] ?? Offset.zero;
         earPoint = poses['ear'] ?? Offset.zero;
         c7Point = poses['c7'] ?? Offset.zero;
@@ -186,22 +200,16 @@ class _VisionPageState extends State<VisionPage> {
       });
     });
 
-    _monthlyBle.onDeviceReadyChanged = (ready) {
-      if (!mounted) return;
-      setState(() => _bleReady = ready);
-    };
-
     await _mediaPipeService.initializeCamera();
     if (!mounted) return;
     setState(() {});
   }
-
   @override
   void dispose() {
     _dotTimer?.cancel();
     _audioPlayer.dispose();
     _mediaPipeService.dispose();
-    _monthlyBle.dispose();
+    _ble.onDeviceReadyChanged = null; 
     super.dispose();
   }
 
@@ -215,9 +223,9 @@ class _VisionPageState extends State<VisionPage> {
     });
 
     // setState 후에 체크해야 step이 1이 된 상태로 확인 가능
-    if (step == 1) {
-      debugPrint("🔍 월간 BLE 스캔 시작!");
-      _monthlyBle.init();
+    if (step == 1 && !_ble.isDeviceReady) {   // ★ 이미 연결돼있으면 재스캔 안 함
+      debugPrint("🔍 BLE 스캔 시작!");
+      _ble.init();                             // ★ _monthlyBle → _ble
     }
   }
 
@@ -227,7 +235,7 @@ class _VisionPageState extends State<VisionPage> {
       loadingDots = "";
     }); // 측정 시작 단계로 이동
 
-    _monthlyBle.sendCommand("MONTHLY_START");
+    _ble.sendCommand("MONTHLY_START");
 
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
 
@@ -257,7 +265,7 @@ class _VisionPageState extends State<VisionPage> {
 
       if (count == 4) {
         timer.cancel();
-        await _monthlyBle.sendCommand("STOP");
+        await _ble.sendCommand("STOP");
         debugPrint(
           "📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}",
         );

@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class BleService {
+  //싱글톤 추가
+  static final BleService _instance = BleService._internal();
+  factory BleService() => _instance;
+  BleService._internal();
   // Service 및 Characteristic UUID 설정
   static const String SERVICE_UUID   = "12345678-1234-1234-1234-123456789012";
   static const String CHAR_UUID      = "87654321-4321-4321-4321-210987654321";
@@ -31,6 +35,11 @@ class BleService {
 
   /// BLE 서비스 초기화 및 기기 스캔 시작
   Future<void> init() async {
+    //재스캔 방지 추가 
+    if (_isDeviceReady) {
+      onDeviceReadyChanged?.call(true);
+      return;
+    }
     if (_isConnecting || _isScanning) {
       debugPrint("⚠️ 이미 스캔 또는 연결 시도 중입니다.");
       return;

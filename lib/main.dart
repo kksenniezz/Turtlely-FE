@@ -380,7 +380,10 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
                   const SizedBox(width: 8),
                 ],
               ),
-        body: _pages[_selectedIndex],
+        body: IndexedStack(
+          index: _selectedIndex,
+          children: _pages,
+        ),
         bottomNavigationBar: Container(
           height: 80,
           decoration: const BoxDecoration(
