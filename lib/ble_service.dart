@@ -3,15 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class BleService {
-  //싱글톤 추가
   static final BleService _instance = BleService._internal();
   factory BleService() => _instance;
   BleService._internal();
-  // Service 및 Characteristic UUID 설정
+
   static const String SERVICE_UUID   = "12345678-1234-1234-1234-123456789012";
   static const String CHAR_UUID      = "87654321-4321-4321-4321-210987654321";
   static const String CMD_CHAR_UUID  = "11111111-1111-1111-1111-111111111111";
-  static const String BATT_CHAR_UUID = "2a19"; // 16진수 소문자
+  static const String BATT_CHAR_UUID = "2a19";
 
   BluetoothDevice?         _connectedDevice;
   BluetoothCharacteristic? targetCharacteristic;
@@ -28,14 +27,13 @@ class BleService {
   StreamSubscription<List<int>>?                _notifySubscription;
   StreamSubscription<List<int>>?                _battNotifySubscription;
 
-  Timer? _pingTimer; // ★ 실시간 전원 상태 빠른 감시 타이머 ★
+  Timer? _pingTimer;
 
   bool _isConnecting = false;
   bool _isScanning   = false;
 
-  /// BLE 서비스 초기화 및 기기 스캔 시작
+  /// BLE 스캔 시작
   Future<void> init() async {
-    //재스캔 방지 추가 
     if (_isDeviceReady) {
       onDeviceReadyChanged?.call(true);
       return;
@@ -63,7 +61,7 @@ class BleService {
           if ((deviceName.contains("Turtlely") || advertisesService) && !_isConnecting) {
             _isConnecting = true;
             debugPrint("🎯 타겟 기기 발견: $deviceName (${r.device.remoteId})");
-            
+
             await FlutterBluePlus.stopScan();
             _isScanning = false;
             await _connectToDevice(r.device);
@@ -72,7 +70,16 @@ class BleService {
         }
       });
 
-      FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+
+      // 스캔이 끝날 때까지 기다렸다가, 못 찾았으면 플래그 풀기
+      await FlutterBluePlus.isScanning.where((s) => s == false).first;
+      if (!_isConnecting && !_isDeviceReady) {
+        _isScanning = false;
+        _scanSubscription?.cancel();
+        _scanSubscription = null;
+        debugPrint("⚠️ 스캔 종료: 기기를 찾지 못했습니다.");
+      }
     } catch (e) {
       _isScanning   = false;
       _isConnecting = false;
@@ -102,11 +109,16 @@ class BleService {
       await _discoverServices(device);
     } catch (e) {
       _isConnecting = false;
+      _isScanning   = false;
       debugPrint("❌ 기기 연결 실패: $e");
+      // 2초 뒤 한 번 더 시도
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!_isDeviceReady) init();
+      });
     }
   }
 
-  /// 서비스 및 특성(Characteristic) 탐색
+  /// 서비스 및 특성 탐색
   Future<void> _discoverServices(BluetoothDevice device) async {
     try {
       List<BluetoothService> services = await device.discoverServices();
@@ -149,11 +161,16 @@ class BleService {
             _isConnecting  = false;
             onDeviceReadyChanged?.call(true);
             debugPrint("✅ 모든 특성 준비 완료!");
-
-            // ★ 1초 주기 실시간 연결 상태 모니터링 시작 ★
             _startPingMonitor();
           }
         }
+      }
+
+      // 필요한 특성을 못 찾았으면 플래그 풀고 정리
+      if (!_isDeviceReady) {
+        debugPrint("❌ 필요한 서비스/특성을 찾지 못했습니다.");
+        _isConnecting = false;
+        await disconnect();
       }
     } catch (e) {
       _isConnecting = false;
@@ -161,18 +178,23 @@ class BleService {
     }
   }
 
-  /// ★ 1초 간격으로 신호 상태를 체크하여 전원 끄짐을 초고속 감지 ★
+  /// 1초마다 연결 확인 (3번 연속 실패해야 끊김으로 판단)
   void _startPingMonitor() {
     _pingTimer?.cancel();
+    int failCount = 0;
     _pingTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (_connectedDevice != null && _isDeviceReady) {
         try {
           await _connectedDevice!.readRssi();
+          failCount = 0;
         } catch (e) {
-          debugPrint("⚡ 실시간 전원 꺼짐 감지! (1초 내 Ping 실패)");
-          _pingTimer?.cancel();
-          _handleDisconnected();
-          disconnect();
+          failCount++;
+          debugPrint("⚠️ Ping 실패 $failCount/3");
+          if (failCount >= 3) {
+            debugPrint("⚡ 전원 꺼짐 감지!");
+            timer.cancel();
+            await disconnect();
+          }
         }
       } else {
         timer.cancel();
@@ -180,7 +202,7 @@ class BleService {
     });
   }
 
-  /// 데이터 수신(Notify) 시작
+  /// 데이터 수신 시작
   Future<void> startNotify(Function(String) onData) async {
     if (targetCharacteristic == null) return;
     try {
@@ -197,7 +219,7 @@ class BleService {
     }
   }
 
-  /// 데이터 수신(Notify) 중지
+  /// 데이터 수신 중지
   Future<void> stopNotify() async {
     if (targetCharacteristic == null) return;
     try {
@@ -222,26 +244,24 @@ class BleService {
       debugPrint("📤 명령 전송 성공: $command");
     } catch (e) {
       debugPrint("❌ 명령 전송 실패 (전원 꺼짐 감지): $e");
-
-      _handleDisconnected();
-      disconnect();
-
+      await disconnect();
       throw Exception("기기와 통신할 수 없습니다. 전원을 확인해 주세요.");
     }
   }
 
   /// 내부 연결 해제 상태 처리
   void _handleDisconnected() {
+    final wasReady = _isDeviceReady;
     _pingTimer?.cancel();
     _isDeviceReady = false;
     _isConnecting  = false;
     _isScanning    = false;
     targetCharacteristic = null;
     _cmdCharacteristic   = null;
-    onDeviceReadyChanged?.call(false);
+    if (wasReady) onDeviceReadyChanged?.call(false);
   }
 
-  /// 블루투스 연결 해제 및 리소스 정리
+  /// 연결 해제 및 리소스 정리
   Future<void> disconnect() async {
     try {
       _pingTimer?.cancel();

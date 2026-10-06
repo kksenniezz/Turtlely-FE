@@ -4,13 +4,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'exercise_saved_videos.dart';
+import 'exercise_watched_videos.dart';
 
-// 운동 존 화면(exercise.dart)의 오른쪽 하단 버튼을 통해 진입하는
-// "운동 리포트" 화면. GET /api/exercise/history/monthly(year, month)를 호출해서
-// - 이번 달 이용 기록(시청 횟수/시청한 영상/저장한 영상)
-// - 가장 많이 본 영상
-// - 다음 달 추천 영상(비슷한 영상 / 새로운 영상)
-// 을 표시한다.
 class ExerciseReportView extends StatefulWidget {
   const ExerciseReportView({super.key});
 
@@ -341,8 +337,7 @@ class _ExerciseReportViewState extends State<ExerciseReportView> {
     );
   }
 
-  // "이번 달 이용 기록" 카드 (흰 배경 + 초록 테두리, 점선 리더 스타일)
-  Widget _buildUsageSummaryCard() {
+    Widget _buildUsageSummaryCard() {
     final totalWatch = _usageSummary['total_watch_count'] ?? 0;
     final watchedCount = _usageSummary['watched_video_count'] ?? 0;
     final savedCount = _usageSummary['saved_video_count'] ?? 0;
@@ -359,37 +354,60 @@ class _ExerciseReportViewState extends State<ExerciseReportView> {
         children: [
           _buildDottedRow("영상 시청 횟수", "$totalWatch회"),
           const SizedBox(height: 10),
-          _buildDottedRow("시청한 영상", "$watchedCount개"),
+                   _buildDottedRow(
+            "시청한 영상",
+            "$watchedCount개",
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ExerciseWatchedVideosView(month: _selectedMonth),
+              ),
+            ),
+          ),
           const SizedBox(height: 10),
-          // ✅ 변경: "저장한 영상" → "북마크한 영상"
-          _buildDottedRow("북마크한 영상", "$savedCount개"),
+          // ✅ 누르면 북마크한 영상 목록 페이지로 이동 (선택한 달 기준)
+          _buildDottedRow(
+            "북마크한 영상",
+            "$savedCount개",
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ExerciseSavedVideosView(month: _selectedMonth),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildDottedRow(String label, String value) {
-    return Row(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 14, color: Colors.black87)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            "·" * 60,
-            maxLines: 1,
-            overflow: TextOverflow.clip,
-            style: const TextStyle(color: Color(0xFFBFC7BB), letterSpacing: 1),
+    Widget _buildDottedRow(String label, String value, {VoidCallback? onTap}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              "·" * 60,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: const TextStyle(color: Color(0xFFBFC7BB), letterSpacing: 1),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _primaryGreen),
-        ),
-      ],
+          const SizedBox(width: 8),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _primaryGreen),
+          ),
+          if (onTap != null)
+            const Icon(Icons.chevron_right, size: 18, color: _primaryGreen),
+        ],
+      ),
     );
   }
-
   // "가장 많이 본 영상" 카드 (흰 배경 + 초록 테두리)
   Widget _buildMostWatchedCard(Map<String, dynamic> video) {
     final thumbnailUrl = video['thumbnail_url'] as String? ?? '';

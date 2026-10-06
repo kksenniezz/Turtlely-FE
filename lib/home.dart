@@ -87,9 +87,28 @@ class _HomeViewContentState extends State<HomeViewContent> {
       ? 'hard'
       : 'normal';
 
-  @override
+    @override
   void initState() {
     super.initState();
+    _registerBleCallbacks();
+
+    _storage.read(key: 'accessToken').then((token) {
+      debugPrint("🔑 accessToken: $token");
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      HomeOnboardingDialog.checkAndShow(
+        context,
+        userName: "사용자",
+        onComplete: () {
+          debugPrint("홈 온보딩 완료!");
+          _ble.init();
+        },
+      );
+    });
+  }
+
+  void _registerBleCallbacks() {
     _ble.onDeviceReadyChanged = (ready) async {
       if (!mounted) return;
       setState(() {});
@@ -122,21 +141,16 @@ class _HomeViewContentState extends State<HomeViewContent> {
         _checkBatteryLevelAndNotify(_batteryPercent!);
       }
     };
+  }
 
-    _storage.read(key: 'accessToken').then((token) {
-      debugPrint("🔑 accessToken: $token");
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      HomeOnboardingDialog.checkAndShow(
-        context,
-        userName: "사용자",
-        onComplete: () {
-          debugPrint("홈 온보딩 완료!");
-          _ble.init();
-        },
-      );
-    });
+  void _onReturnFromVision() {
+    if (!mounted) return;
+    _registerBleCallbacks();
+    if (_ble.isDeviceReady) {
+      _ble.startNotify(parseSensorData);
+    } else {
+      _ble.init();
+    }
   }
 
   Future<Map<String, dynamic>> _checkMonthlyMeasurementValid() async {
@@ -293,9 +307,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
                               MaterialPageRoute(
                                 builder: (_) => const VisionPage(),
                               ),
-                            ).then((_) {
-                              if (mounted) _ble.startNotify(parseSensorData);
-                            });
+                            ).then((_) => _onReturnFromVision());
                           },
                           child: const FittedBox(
                             fit: BoxFit.scaleDown,
@@ -957,12 +969,14 @@ Future<void> _flushDailyDataToStorage() async {
               ),
               GestureDetector(
                 onTap: () {
+                  if (isMonitoring || isPreCalibrating || isCalibrating) {
+                    _showSnackBar("일일 측정 중에는 월간 측정을 할 수 없어요. 먼저 종료해 주세요.");
+                    return;
+                  }
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const VisionPage()),
-                  ).then((_) {
-                    if (mounted) _ble.startNotify(parseSensorData);
-                  });
+                  ).then((_) => _onReturnFromVision());
                 },
                 child: Container(
                   key: monthlyBtnKey,
@@ -1106,10 +1120,10 @@ Future<void> _flushDailyDataToStorage() async {
                                   children: [
                                     Image.asset('assets/normal_turtle.png', width: 200),
                                     const SizedBox(height: 24),
-                                    const Text(
+                                    Text(
                                       "지금부터 3초간 캘리브레이션이\n진행됩니다. 앞을 봐주세요.",
                                       textAlign: TextAlign.center,
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      style: TText.caption.copyWith(fontSize: 16, fontWeight: FontWeight.bold),
                                     ),
                                   ],
                                 ),
