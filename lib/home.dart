@@ -76,7 +76,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
   final _storage = const FlutterSecureStorage();
   final AudioPlayer _audioPlayer = AudioPlayer();   // ★ 추가
 
-  bool isPreCalibrating = false;    
+  bool isPreCalibrating = false;
+  bool _isFirstPointOfSession = true;
+  DateTime _lastFlushAt = DateTime.now();
+  Future<void> _flushChain = Future.value();    
 
   Timer? monitorTimer;
   Timer? dailyApiTimer;
@@ -707,6 +710,8 @@ class _HomeViewContentState extends State<HomeViewContent> {
       monitoringSeconds = 0;
       postureResult = 'normal';
       _prevPostureResult = 'normal';
+      _isFirstPointOfSession = true;
+      _lastFlushAt = DateTime.now();
     });
 
     monitorTimer?.cancel();
@@ -783,16 +788,19 @@ class _HomeViewContentState extends State<HomeViewContent> {
         cvaRawHistory.add(estimatedCva);
         postureRawHistory.add(newPostureResult);
 
-        if (now.second == 0 || cvaHistory.isEmpty) {
-          sessionStartHistory.add(cvaHistory.isEmpty);
+        if (now.second == 0 || _isFirstPointOfSession) {
+          sessionStartHistory.add(_isFirstPointOfSession);
+          _isFirstPointOfSession = false;
           cvaHistory.add(estimatedCva);
           timeHistory.add(timeStr);
           postureHistory.add(_worstPostureInMinute);
           _worstPostureInMinute = 'normal';
         }
       });
-      if (now.second == 0) {
-        _flushDailyDataToStorage();   // ★ 이 줄 추가: 1분마다 리포트에 자동 반영
+      // 5초마다 리포트 저장소에 반영 (시연용 실시간 갱신)
+      if (now.difference(_lastFlushAt).inSeconds >= 5) {
+        _lastFlushAt = now;
+        _flushDailyDataToStorage();
       }
     });
   }
@@ -856,13 +864,58 @@ class _HomeViewContentState extends State<HomeViewContent> {
       postureResult = 'normal';
     });
   }
-Future<void> _flushDailyDataToStorage() async {
-  if (cvaHistory.isEmpty) return;
+Future<void> _flushDailyDataToStorage() {
+  _flushChain = _flushChain
+      .then((_) => _doFlush())
+      .catchError((e) {
+    debugPrint("❌ 리포트 저장 오류: $e");
+  });
+  return _flushChain;
+}
 
+Future<void> _doFlush() async {
+  if (rawTimeHistory.isEmpty) return;
+
+  // 1) 지금까지 쌓인 데이터를 복사해두고 버퍼를 즉시 비움
+  final sCva = List<double>.from(cvaHistory);
+  final sTime = List<String>.from(timeHistory);
+  final sPosture = List<String>.from(postureHistory);
+  final sSession = List<bool>.from(sessionStartHistory);
+  final sAccX = List<double>.from(accXHistory);
+  final sAccY = List<double>.from(accYHistory);
+  final sAccZ = List<double>.from(accZHistory);
+  final sRawTime = List<String>.from(rawTimeHistory);
+  final sCvaRaw = List<double>.from(cvaRawHistory);
+  final sPostureRaw = List<String>.from(postureRawHistory);
+  final sCvaSum = cvaSum;
+  final sCvaCount = cvaCount;
+  final sWarning = warningCount;
+  final sCaution = cautionCount;
+  final sNormal = normalDuration;
+  final sTotal = totalDuration;
+
+  cvaHistory.clear();
+  timeHistory.clear();
+  postureHistory.clear();
+  sessionStartHistory.clear();
+  accXHistory.clear();
+  accYHistory.clear();
+  accZHistory.clear();
+  rawTimeHistory.clear();
+  cvaRawHistory.clear();
+  postureRawHistory.clear();
+  cvaSum = 0.0;
+  cvaCount = 0;
+  warningCount = 0;
+  cautionCount = 0;
+  normalDuration = 0;
+  totalDuration = 0;
+
+  // 2) 저장소에 합쳐서 저장
   final today = DateTime.now();
   final dateKey =
       "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
-  final avgCva = cvaCount > 0 ? cvaSum / cvaCount : 0.0;
+  final avgCva = sCvaCount > 0 ? sCvaSum / sCvaCount : 0.0;
 
   final existingData = await DailyReportStorage.loadHistory(dateKey);
 
@@ -883,48 +936,30 @@ Future<void> _flushDailyDataToStorage() async {
   final prevCvaRawHistory = List<double>.from(existingData?['cvaRawHistory'] ?? []);
   final prevPostureRawHistory = List<String>.from(existingData?['postureRawHistory'] ?? []);
 
-  final mergedAvgCva = (prevDuration + totalDuration) > 0
-      ? (prevAvgCva * prevDuration + avgCva * totalDuration) / (prevDuration + totalDuration)
+  final mergedAvgCva = (prevDuration + sTotal) > 0
+      ? (prevAvgCva * prevDuration + avgCva * sTotal) / (prevDuration + sTotal)
       : avgCva;
 
   await DailyReportStorage.saveHistory(
     date: dateKey,
-    cvaHistory: [...prevCvaHistory, ...cvaHistory],
-    timeHistory: [...prevTimeHistory, ...timeHistory],
-    postureHistory: [...prevPostureHistory, ...postureHistory],
+    cvaHistory: [...prevCvaHistory, ...sCva],
+    timeHistory: [...prevTimeHistory, ...sTime],
+    postureHistory: [...prevPostureHistory, ...sPosture],
     avgCva: mergedAvgCva,
-    warningCount: prevWarningCount + warningCount,
-    cautionCount: prevCautionCount + cautionCount,
-    duration: prevDuration + totalDuration,
-    normalDuration: prevNormalDuration + normalDuration,
-    accXHistory: [...prevAccXHistory, ...accXHistory],
-    accYHistory: [...prevAccYHistory, ...accYHistory],
-    accZHistory: [...prevAccZHistory, ...accZHistory],
-    rawTimeHistory: [...prevRawTimeHistory, ...rawTimeHistory],
-    cvaRawHistory: [...prevCvaRawHistory, ...cvaRawHistory],
-    postureRawHistory: [...prevPostureRawHistory, ...postureRawHistory],
-    sessionStartHistory: [...prevSessionStartHistory, ...sessionStartHistory],
+    warningCount: prevWarningCount + sWarning,
+    cautionCount: prevCautionCount + sCaution,
+    duration: prevDuration + sTotal,
+    normalDuration: prevNormalDuration + sNormal,
+    accXHistory: [...prevAccXHistory, ...sAccX],
+    accYHistory: [...prevAccYHistory, ...sAccY],
+    accZHistory: [...prevAccZHistory, ...sAccZ],
+    rawTimeHistory: [...prevRawTimeHistory, ...sRawTime],
+    cvaRawHistory: [...prevCvaRawHistory, ...sCvaRaw],
+    postureRawHistory: [...prevPostureRawHistory, ...sPostureRaw],
+    sessionStartHistory: [...prevSessionStartHistory, ...sSession],
   );
 
   debugPrint("✅ Hive 중간 저장 완료: $dateKey");
-
-  // 저장한 만큼 로컬 버퍼 비우기 (다음 저장 때 중복 안 되게)
-  cvaHistory.clear();
-  timeHistory.clear();
-  postureHistory.clear();
-  sessionStartHistory.clear();
-  accXHistory.clear();
-  accYHistory.clear();
-  accZHistory.clear();
-  rawTimeHistory.clear();
-  cvaRawHistory.clear();
-  postureRawHistory.clear();
-  cvaSum = 0.0;
-  cvaCount = 0;
-  warningCount = 0;
-  cautionCount = 0;
-  normalDuration = 0;
-  totalDuration = 0;
 }
   @override
   void dispose() {

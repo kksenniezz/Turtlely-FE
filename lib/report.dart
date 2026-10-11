@@ -9,6 +9,7 @@ import 'monthly_report.dart';
 import 'daily_report_storage.dart';
 import 'posture_api_service.dart';
 import 'report_onboarding_dialog.dart';
+import 'dart:async';
 
 class ReportView extends StatefulWidget {
   const ReportView({super.key});
@@ -43,14 +44,20 @@ class _ReportViewState extends State<ReportView> {
   //    과거에 저장된 데이터(이 필드가 없던 시절)는 로드 시 빈 리스트가 되며,
   //    그 경우 _processGraphData()가 자동으로 기존 시간차 기반 로직으로 폴백한다.
   List<bool> _sessionStartHistory = [];
+  List<String> _rawTimeHistory    = [];
+  List<double> _cvaRawHistory     = [];
+  List<String> _postureRawHistory = [];
+  Timer? _refreshTimer;
+
+  // 🎬 시연용: true면 그래프를 초 단위(1초/5초/10초)로 표시. 원래대로(분 단위)는 false
+  static const bool _kDemoSecondsMode = true;
   bool    _isLoadingReport = false;
 
   // 🧪 테스트용: true면 서버 리포트로 덮어쓰지 않고 Hive(더미 데이터 포함)
   //    값만 그대로 사용함. 더미 데이터로 테스트 끝나면 반드시 false로 되돌릴 것.
   static const bool _kDebugIgnoreServerReport = false;
 
-  // CVA 그래프 제어용 변수 (1분, 5분, 10분)
-  int _selectedInterval = 1; 
+  int _selectedInterval = _kDemoSecondsMode ? 5 : 1;
   List<Map<String, dynamic>> _processedGraphData = [];
   Map<String, dynamic>? _selectedPoint;
 
@@ -78,6 +85,7 @@ class _ReportViewState extends State<ReportView> {
   void initState() {
     super.initState();
     _loadRecordedDays();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) => _refreshSilently());
     _scrollController.addListener(() {
       if (_viewIndex == 1 && _scrollController.hasClients) {
         double screenHeight = MediaQuery.of(context).size.height;
@@ -157,6 +165,9 @@ class _ReportViewState extends State<ReportView> {
         _cvaHistory     = List<double>.from(localData['cvaHistory'] ?? []);
         _timeHistory    = List<String>.from(localData['timeHistory'] ?? []);
         _postureHistory = List<String>.from(localData['postureHistory'] ?? []);
+        _rawTimeHistory    = List<String>.from(localData['rawTimeHistory'] ?? []);
+        _cvaRawHistory     = List<double>.from(localData['cvaRawHistory'] ?? []);
+        _postureRawHistory = List<String>.from(localData['postureRawHistory'] ?? []);
         // ✅ 추가: 세션 경계 마커 로드 (없으면 빈 리스트 → 자동 폴백)
         _sessionStartHistory = List<bool>.from(localData['sessionStartHistory'] ?? []);
         _avgCva         = (localData['avgCva'] ?? 0.0).toDouble();
@@ -192,6 +203,10 @@ class _ReportViewState extends State<ReportView> {
   }
 
   void _processGraphData() {
+    if (_kDemoSecondsMode) {
+      _processGraphDataSeconds();
+      return;
+    }
     if (_cvaHistory.isEmpty || _timeHistory.isEmpty) {
       setState(() {
         _processedGraphData = [];
@@ -329,6 +344,134 @@ class _ReportViewState extends State<ReportView> {
       _selectedPoint = null;
     });
   }
+    // 🎬 시연용: 초 단위 원본 데이터로 그래프 구성
+  void _processGraphDataSeconds() {
+    if (_cvaRawHistory.isEmpty || _rawTimeHistory.isEmpty) {
+      setState(() {
+        _processedGraphData = [];
+        _selectedPoint = null;
+      });
+      return;
+    }
+
+    final int intervalSec = _selectedInterval;
+    final int gapSec = math.max(5, intervalSec * 2);
+
+    DateTime? parseSec(String t) {
+      try {
+        final p = t.split(':');
+        if (p.length >= 3) {
+          final now = DateTime.now();
+          return DateTime(now.year, now.month, now.day,
+              int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    double clampAngle(double a) {
+      if (a < 30.0) return 25.0;
+      if (a > 70.0) return 75.0;
+      return a;
+    }
+
+    final int n = math.min(_rawTimeHistory.length, _cvaRawHistory.length);
+    final List<Map<String, dynamic>> temp = [];
+
+    int i = 0;
+    while (i < n) {
+      final String startTimeStr = _rawTimeHistory[i];
+      final DateTime? startTime = parseSec(startTimeStr);
+      if (startTime == null) {
+        i++;
+        continue;
+      }
+
+      bool hasGap = false;
+      if (temp.isNotEmpty) {
+        final DateTime? prevEnd = temp.last['endTime'] as DateTime?;
+        if (prevEnd != null && startTime.difference(prevEnd).inSeconds > gapSec) {
+          hasGap = true;
+        }
+      }
+
+      final List<double> chunkCva = [];
+      final List<String> chunkPosture = [];
+      DateTime lastIncluded = startTime;
+
+      while (i < n) {
+        final DateTime? curr = parseSec(_rawTimeHistory[i]);
+        if (curr != null) {
+          if (chunkCva.isNotEmpty && curr.difference(startTime).inSeconds >= intervalSec) break;
+          if (chunkCva.isNotEmpty && curr.difference(lastIncluded).inSeconds > gapSec) break;
+          lastIncluded = curr;
+        }
+        chunkCva.add(_cvaRawHistory[i]);
+        if (i < _postureRawHistory.length) chunkPosture.add(_postureRawHistory[i]);
+        i++;
+      }
+
+      if (chunkCva.isNotEmpty) {
+        final double rawAvg = chunkCva.reduce((a, b) => a + b) / chunkCva.length;
+        temp.add({
+          'avgCva': clampAngle(rawAvg),
+          'realAvgCva': rawAvg,
+          'warningCount': chunkPosture.where((p) => p == "warning").length,
+          'cautionCount': chunkPosture.where((p) => p == "caution").length,
+          'time': startTimeStr,
+          'isStartAfterGap': hasGap,
+          'endTime': lastIncluded,
+        });
+      }
+    }
+
+    // 자동 갱신 때 사용자가 눌러둔 점이 풀리지 않게, 같은 시간의 점을 다시 선택
+    Map<String, dynamic>? keep;
+    if (_selectedPoint != null) {
+      for (final p in temp) {
+        if (p['time'] == _selectedPoint!['time']) {
+          keep = p;
+          break;
+        }
+      }
+    }
+
+    setState(() {
+      _processedGraphData = temp;
+      _selectedPoint = keep;
+    });
+  }
+
+  // 5초마다 오늘 데이터를 조용히 다시 읽어서 화면 갱신 (로딩 표시 없이)
+  Future<void> _refreshSilently() async {
+    if (!mounted || _viewIndex != 0 || _selectedDay == null) return;
+    if (!isSameDay(_selectedDay, DateTime.now())) return;
+
+    final d = _selectedDay!;
+    final dateKey =
+        "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
+    final localData = await DailyReportStorage.loadHistory(dateKey);
+    if (localData == null || !mounted) return;
+
+    setState(() {
+      if (!_hasRecord(d)) _recordedDays.add(DateTime(d.year, d.month, d.day));
+
+      _cvaHistory          = List<double>.from(localData['cvaHistory'] ?? []);
+      _timeHistory         = List<String>.from(localData['timeHistory'] ?? []);
+      _postureHistory      = List<String>.from(localData['postureHistory'] ?? []);
+      _sessionStartHistory = List<bool>.from(localData['sessionStartHistory'] ?? []);
+      _rawTimeHistory      = List<String>.from(localData['rawTimeHistory'] ?? []);
+      _cvaRawHistory       = List<double>.from(localData['cvaRawHistory'] ?? []);
+      _postureRawHistory   = List<String>.from(localData['postureRawHistory'] ?? []);
+      _avgCva              = (localData['avgCva'] ?? 0.0).toDouble();
+      _warningCount        = localData['warningCount'] ?? 0;
+      _cautionCount        = localData['cautionCount'] ?? 0;
+      _totalDurationSeconds = (localData['duration'] ?? 0) as int;
+      _selectedScore       = (localData['postureScore'] as int?) ?? _selectedScore;
+    });
+
+    _processGraphData();
+  }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) async {
     DateTime now = DateTime.now();
@@ -345,7 +488,10 @@ class _ReportViewState extends State<ReportView> {
       _cvaHistory     = [];
       _postureHistory = [];
       _timeHistory    = [];
-      _sessionStartHistory = []; // ✅ 날짜 바뀔 때 같이 초기화
+      _sessionStartHistory = []; 
+      _rawTimeHistory = [];
+      _cvaRawHistory = [];
+      _postureRawHistory = [];
       _warningCount   = 0;
       _cautionCount   = 0;
       _totalDurationSeconds = 0; // ✅ 날짜 바뀔 때 같이 초기화
@@ -420,7 +566,7 @@ class _ReportViewState extends State<ReportView> {
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
@@ -637,7 +783,7 @@ class _ReportViewState extends State<ReportView> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [1, 5, 10].map((interval) {
               bool isSelected = _selectedInterval == interval;
-              String label = "$interval분";
+              String label = _kDemoSecondsMode ? "$interval초" : "$interval분";
               return GestureDetector(
                 onTap: () {
                   setState(() {
@@ -831,12 +977,13 @@ class _ReportViewState extends State<ReportView> {
   //    1시간 미만이면 "N분"만, 1시간 이상이면 "N시간 M분"으로 표시.
   //    (분 단위가 0이면 "N시간"만 표시해서 "1시간 0분" 같은 어색한 표기 방지)
   String _formatDuration(int totalSeconds) {
-    if (totalSeconds <= 0) return "0분";
+    if (totalSeconds <= 0) return "0초";
     final int hours = totalSeconds ~/ 3600;
     final int minutes = (totalSeconds % 3600) ~/ 60;
-    if (hours <= 0) return "$minutes분";
-    if (minutes <= 0) return "$hours시간";
-    return "$hours시간 $minutes분";
+    final int seconds = totalSeconds % 60;
+    if (hours > 0) return minutes > 0 ? "$hours시간 $minutes분" : "$hours시간";
+    if (minutes > 0) return seconds > 0 ? "$minutes분 $seconds초" : "$minutes분";
+    return "$seconds초";
   }
 
   Widget _buildEmptyContent() {
