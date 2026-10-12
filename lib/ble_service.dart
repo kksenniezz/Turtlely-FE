@@ -7,12 +7,12 @@ class BleService {
   factory BleService() => _instance;
   BleService._internal();
 
-  static const String SERVICE_UUID   = "12345678-1234-1234-1234-123456789012";
-  static const String CHAR_UUID      = "87654321-4321-4321-4321-210987654321";
-  static const String CMD_CHAR_UUID  = "11111111-1111-1111-1111-111111111111";
+  static const String SERVICE_UUID = "12345678-1234-1234-1234-123456789012";
+  static const String CHAR_UUID = "87654321-4321-4321-4321-210987654321";
+  static const String CMD_CHAR_UUID = "11111111-1111-1111-1111-111111111111";
   static const String BATT_CHAR_UUID = "2a19";
 
-  BluetoothDevice?         _connectedDevice;
+  BluetoothDevice? _connectedDevice;
   BluetoothCharacteristic? targetCharacteristic;
   BluetoothCharacteristic? _cmdCharacteristic;
 
@@ -20,17 +20,17 @@ class BleService {
   bool get isDeviceReady => _isDeviceReady;
 
   Function(bool)? onDeviceReadyChanged;
-  Function(int)?  onBatteryChanged;
+  Function(int)? onBatteryChanged;
 
-  StreamSubscription<List<ScanResult>>?         _scanSubscription;
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
   StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
-  StreamSubscription<List<int>>?                _notifySubscription;
-  StreamSubscription<List<int>>?                _battNotifySubscription;
+  StreamSubscription<List<int>>? _notifySubscription;
+  StreamSubscription<List<int>>? _battNotifySubscription;
 
   Timer? _pingTimer;
 
   bool _isConnecting = false;
-  bool _isScanning   = false;
+  bool _isScanning = false;
 
   /// BLE 스캔 시작
   Future<void> init() async {
@@ -55,10 +55,12 @@ class BleService {
       _scanSubscription = FlutterBluePlus.scanResults.listen((results) async {
         for (ScanResult r in results) {
           final deviceName = r.device.platformName;
-          final advertisesService = r.advertisementData.serviceUuids
-              .any((u) => u.toString().toLowerCase() == SERVICE_UUID.toLowerCase());
+          final advertisesService = r.advertisementData.serviceUuids.any(
+            (u) => u.toString().toLowerCase() == SERVICE_UUID.toLowerCase(),
+          );
 
-          if ((deviceName.contains("Turtlely") || advertisesService) && !_isConnecting) {
+          if ((deviceName.contains("Turtlely") || advertisesService) &&
+              !_isConnecting) {
             _isConnecting = true;
             debugPrint("🎯 타겟 기기 발견: $deviceName (${r.device.remoteId})");
 
@@ -81,7 +83,7 @@ class BleService {
         debugPrint("⚠️ 스캔 종료: 기기를 찾지 못했습니다.");
       }
     } catch (e) {
-      _isScanning   = false;
+      _isScanning = false;
       _isConnecting = false;
       debugPrint("❌ BLE 스캔 오류: $e");
     }
@@ -109,7 +111,7 @@ class BleService {
       await _discoverServices(device);
     } catch (e) {
       _isConnecting = false;
-      _isScanning   = false;
+      _isScanning = false;
       debugPrint("❌ 기기 연결 실패: $e");
       // 2초 뒤 한 번 더 시도
       Future.delayed(const Duration(seconds: 2), () {
@@ -124,7 +126,8 @@ class BleService {
       List<BluetoothService> services = await device.discoverServices();
 
       for (BluetoothService service in services) {
-        if (service.uuid.toString().toLowerCase() == SERVICE_UUID.toLowerCase()) {
+        if (service.uuid.toString().toLowerCase() ==
+            SERVICE_UUID.toLowerCase()) {
           for (BluetoothCharacteristic c in service.characteristics) {
             final uuid = c.uuid.toString().toLowerCase();
 
@@ -145,7 +148,6 @@ class BleService {
                 _battNotifySubscription = c.value.listen((value) {
                   if (value.isNotEmpty) {
                     final battPercent = value[0];
-                    debugPrint("🔋 잔여 배터리: $battPercent%");
                     onBatteryChanged?.call(battPercent);
                   }
                 });
@@ -158,7 +160,7 @@ class BleService {
 
           if (targetCharacteristic != null && _cmdCharacteristic != null) {
             _isDeviceReady = true;
-            _isConnecting  = false;
+            _isConnecting = false;
             onDeviceReadyChanged?.call(true);
             debugPrint("✅ 모든 특성 준비 완료!");
             _startPingMonitor();
@@ -240,7 +242,10 @@ class BleService {
     }
 
     try {
-      await _cmdCharacteristic!.write(command.codeUnits, withoutResponse: false);
+      await _cmdCharacteristic!.write(
+        command.codeUnits,
+        withoutResponse: false,
+      );
       debugPrint("📤 명령 전송 성공: $command");
     } catch (e) {
       debugPrint("❌ 명령 전송 실패 (전원 꺼짐 감지): $e");
@@ -254,10 +259,10 @@ class BleService {
     final wasReady = _isDeviceReady;
     _pingTimer?.cancel();
     _isDeviceReady = false;
-    _isConnecting  = false;
-    _isScanning    = false;
+    _isConnecting = false;
+    _isScanning = false;
     targetCharacteristic = null;
-    _cmdCharacteristic   = null;
+    _cmdCharacteristic = null;
     if (wasReady) onDeviceReadyChanged?.call(false);
   }
 
@@ -270,9 +275,9 @@ class BleService {
       _notifySubscription?.cancel();
       _battNotifySubscription?.cancel();
 
-      _scanSubscription       = null;
+      _scanSubscription = null;
       _connectionSubscription = null;
-      _notifySubscription     = null;
+      _notifySubscription = null;
       _battNotifySubscription = null;
 
       if (_connectedDevice != null) {

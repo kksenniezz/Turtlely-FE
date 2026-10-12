@@ -3,12 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'style.dart';
 import 'main.dart';
 import 'services/mediapipe_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'ble_service.dart';
 import 'services/report_service.dart';
+import 'monthly_report.dart';
 
 class VisionPage extends StatefulWidget {
   const VisionPage({Key? key}) : super(key: key);
@@ -19,14 +21,14 @@ class VisionPage extends StatefulWidget {
 
 class _VisionPageState extends State<VisionPage> {
   int step =
-      0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 측정 완료, 6: 리포트 안내, 7: 종료 안내, 8: 예외 발생
+      0; // 0: 인사, 1: 터틀훅 연결, 2: 자세 안내, 3: 측정 안내, 4: 측정 중, 5: 데이터 전송 중, 6: 측정 완료, 7: 리포트 안내, 8: 종료 안내, 9: 예외 발생
   int? monthlyId;
   String loadingDots = "";
   Timer? _dotTimer;
 
   final MediaPipeService _mediaPipeService = MediaPipeService();
   final ReportService _reportService = ReportService();
-  final BleService _ble = BleService();   
+  final BleService _ble = BleService();
 
   bool _bleReady = false;
   bool isCheckingEligibility = true;
@@ -103,9 +105,12 @@ class _VisionPageState extends State<VisionPage> {
     }
   }
 
+  final FlutterTts _flutterTts = FlutterTts();
+
   @override
   void initState() {
     super.initState();
+    _initTts();
 
     _audioPlayer.setAudioContext(
       AudioContext(
@@ -123,6 +128,21 @@ class _VisionPageState extends State<VisionPage> {
 
     _checkMeasurementEligibility();
     _bootUp();
+  }
+
+  Future<void> _initTts() async {
+    await _flutterTts.setLanguage("ko-KR");
+    await _flutterTts.setSpeechRate(0.5);
+  }
+
+  // TTS 재생 헬퍼 함수
+  Future<void> _speak(String text) async {
+    try {
+      await _flutterTts.stop();
+      await _flutterTts.speak(text);
+    } catch (e) {
+      debugPrint("TTS 재생 에러: $e");
+    }
   }
 
   // 최근 측정일로부터 30일이 지났는지 확인
@@ -170,14 +190,15 @@ class _VisionPageState extends State<VisionPage> {
 
   // 서비스의 카메라를 깨우고 좌표 스트림을 구독합니다.
   Future<void> _bootUp() async {
-    _bleReady = _ble.isDeviceReady;   // 이미 연결되어 있을 수 있으니 초기값 반영
+    _bleReady = _ble.isDeviceReady; // 이미 연결되어 있을 수 있으니 초기값 반영
 
     _ble.onDeviceReadyChanged = (ready) {
       if (!mounted) return;
       setState(() => _bleReady = ready);
     };
 
-    _ble.startNotify((data) {          // _monthlyBle.onAccelUpdated 대신
+    _ble.startNotify((data) {
+      // _monthlyBle.onAccelUpdated 대신
       if (!mounted) return;
       final parts = data.trim().split(',');
       if (parts.length < 3) return;
@@ -204,12 +225,13 @@ class _VisionPageState extends State<VisionPage> {
     if (!mounted) return;
     setState(() {});
   }
+
   @override
   void dispose() {
     _dotTimer?.cancel();
     _audioPlayer.dispose();
     _mediaPipeService.dispose();
-    _ble.onDeviceReadyChanged = null; 
+    _ble.onDeviceReadyChanged = null;
     super.dispose();
   }
 
@@ -217,15 +239,16 @@ class _VisionPageState extends State<VisionPage> {
     setState(() {
       if (step == 3) {
         _startMeasurement();
-      } else if (step < 7) {
+      } else if (step < 8) {
         step++;
       }
     });
 
     // setState 후에 체크해야 step이 1이 된 상태로 확인 가능
-    if (step == 1 && !_ble.isDeviceReady) {   // ★ 이미 연결돼있으면 재스캔 안 함
+    if (step == 1 && !_ble.isDeviceReady) {
+      // ★ 이미 연결돼있으면 재스캔 안 함
       debugPrint("🔍 BLE 스캔 시작!");
-      _ble.init();                             // ★ _monthlyBle → _ble
+      _ble.init(); // ★ _monthlyBle → _ble
     }
   }
 
@@ -236,7 +259,6 @@ class _VisionPageState extends State<VisionPage> {
     }); // 측정 시작 단계로 이동
 
     _ble.sendCommand("MONTHLY_START");
-
     _mediaPipeService.coordinateBatch.clear(); // 이전 측정 데이터 초기화
 
     int count = 0;
@@ -244,13 +266,14 @@ class _VisionPageState extends State<VisionPage> {
     _dotTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       count++;
 
-      // [1초]: 1초 대기
-      if (count == 1) {
+      // [2초]: 2초 대기 후 측정 시작 안내 TTS
+      if (count == 2) {
+        await _speak("측정이 시작됩니다.");
         _mediaPipeService.start3SecondCapture();
       }
 
-      // [1-3초]: 띱- 비프음 재생
-      if (count >= 1 && count <= 3) {
+      // [4-6초(3초 카운트다운)]: 띱- 비프음 재생
+      if (count >= 4 && count <= 6) {
         _playBeepSound();
         setState(() {
           loadingDots = "." * (count % 4);
@@ -263,26 +286,45 @@ class _VisionPageState extends State<VisionPage> {
         return;
       }
 
-      if (count == 4) {
+      // [7초]: 측정 완료 후 데이터 전송
+      if (count == 7) {
         timer.cancel();
-        await _ble.sendCommand("STOP");
-        debugPrint(
-          "📦 coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}",
-        );
-        final response = await _mediaPipeService.sendBatchVisionData();
-        if (!mounted) return;
-        if (response["success"] == true) {
-          final result = response["result"];
-          setState(() {
+
+        _playSuccessSound();
+        await Future.delayed(const Duration(milliseconds: 1000));
+        await _speak("측정이 완료되었습니다.");
+
+        setState(() {
+          step = 5;
+        });
+
+        // 백그라운드 서버 전송
+        try {
+          await _ble.sendCommand("STOP");
+          debugPrint(
+            "coordinateBatch 크기: ${_mediaPipeService.coordinateBatch.length}",
+          );
+
+          final response = await _mediaPipeService.sendBatchVisionData();
+          if (!mounted) return;
+
+          if (response["success"] == true) {
+            final result = response["result"];
             if (result != null) {
-              monthlyId = result["monthly_id"];
+              setState(() {
+                monthlyId = result["monthly_id"];
+                step = 6;
+              });
+              _showMeasurementSuccessDialog(context);
             }
-            step = 5;
-          });
-          _playSuccessSound();
-        } else {
-          print("측정 실패: ${response["code"]} / ${response["message"]}");
-          setState(() => step = 8);
+          } else {
+            print("측정 실패: ${response["code"]} / ${response["message"]}");
+            setState(() => step = 9);
+            _playFailureSound();
+          }
+        } catch (e) {
+          print("서버 전송 중 예외 발생: $e");
+          setState(() => step = 9);
           _playFailureSound();
         }
       }
@@ -295,7 +337,7 @@ class _VisionPageState extends State<VisionPage> {
         return "안녕하세요 \n월간 측정에 \n오신 것을 환영합니다!";
       case 1:
         return _bleReady
-            ? "터틀훅이 연결되었어요!\n다음을 눌러주세요"
+            ? "터틀훅이 연결되었어요!\n터틀훅을 왼쪽 귀에 착용해 주세요"
             : "거북목 측정을 위해\n터틀훅을 연결해 주세요";
       case 2:
         return "머리, 목, 어깨가 \n전부 카메라에 나오도록 \n왼쪽을 바라봐 주세요";
@@ -304,13 +346,15 @@ class _VisionPageState extends State<VisionPage> {
       case 4:
         return "거북목 측정중 $loadingDots";
       case 5:
-        return "월간 측정이 \n완료되었습니다!";
+        return "데이터 전송 중입니다.\n잠시만 기다려 주세요.";
       case 6:
-        return "월간 측정 결과는 \n월간 리포트에서 확인해 주세요";
+        return "월간 측정이 \n완료되었습니다!";
       case 7:
-        return "종료 버튼을 누르면 \n월간 측정이 종료됩니다 \n다음 달에 다시 만나요!";
+        return "월간 측정 결과는 \n월간 리포트에서 확인해 주세요";
       case 8:
-        return "거북목 측정이 어렵습니다 \n다시 시도해 주세요";
+        return "종료 버튼을 누르면 \n월간 측정이 종료됩니다 \n다음 달에 다시 만나요!";
+      case 9:
+        return "데이터 전송이 실패했습니다. \n다시 시도해 주세요";
       default:
         return "";
     }
@@ -319,7 +363,7 @@ class _VisionPageState extends State<VisionPage> {
   bool _shouldShowButton() {
     if (step == 4) return false;
     if (step == 1 && !_bleReady) return false; // BLE 연결 전엔 버튼 숨김
-    if ([7, 8].contains(step)) return false;
+    if ([8, 9].contains(step)) return false;
     return true;
   }
 
@@ -376,10 +420,10 @@ class _VisionPageState extends State<VisionPage> {
           ),
         ),
         actions: [
-          if (step == 7 || step == 8) ...[
+          if (step == 8 || step == 9) ...[
             GestureDetector(
               onTap: () async {
-                if (step == 7) {
+                if (step == 8) {
                   Navigator.pop(context, true); // 측정 완료 후 pop시 true 전달
                 } else {
                   await _mediaPipeService.initializeCamera(); // 카메라 다시 초기화
@@ -389,7 +433,7 @@ class _VisionPageState extends State<VisionPage> {
               child: Container(
                 alignment: Alignment.center,
                 child: Text(
-                  step == 7 ? "종료" : "재시도",
+                  step == 8 ? "종료" : "재시도",
                   style: TextStyle(
                     color: TColor.darkGreen,
                     fontSize: 18,
@@ -914,6 +958,64 @@ void _showExitDialog(BuildContext context) {
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(
                         builder: (context) => TurtlelyMainPage(),
+                      ),
+                      (route) => false,
+                    );
+                  }),
+                ],
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+void _showMeasurementSuccessDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (context) => Center(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 336,
+          height: 224,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFAFAFA),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 50, left: 20, right: 20),
+                child: Text(
+                  '월간 리포트를 바로 확인하시겠습니까?\n\n확인 시 월간 리포트로 이동합니다',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _dialogButton("홈으로 가기", const Color(0xFFD9D9D9), () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (context) => const TurtlelyMainPage(),
+                      ),
+                      (route) => false,
+                    );
+                  }),
+                  _dialogButton("확인", const Color(0x7F235E26), () {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (context) => const MonthlyReportView(),
                       ),
                       (route) => false,
                     );

@@ -138,7 +138,6 @@ class MediaPipeService {
                   'ear': rightEar,
                   'c7': rightShoulder,
                 };
-                debugPrint("✅ 포즈 감지 | 배치크기: ${coordinateBatch.length}");
               }
             }
           }
@@ -287,8 +286,10 @@ class MediaPipeService {
     // "frames" 라는 Key로 감싸서 JSON 객체 생성
     final Map<String, dynamic> wrappedPayload = {"frames": requestPayload};
 
+    // 🔍 여기서 서버로 날아가는 진짜 전체 JSON 바디를 콘솔에 찍습니다!
+    final String finalJsonString = jsonEncode(wrappedPayload);
     debugPrint(
-      "📤 [백엔드 맞춤 요청 바디 샘플]: ${jsonEncode({"frames": requestPayload.take(1).toList()})}",
+      "📤 [서버로 보내는 진짜 최종 JSON 바디 (길이: ${finalJsonString.length})]: $finalJsonString",
     );
 
     try {
@@ -355,6 +356,7 @@ class MediaPipeService {
   Future<Map<String, dynamic>> _postRequest(String path, dynamic body) async {
     final url = Uri.parse('$baseUrl$path');
     final accessToken = await storage.read(key: 'accessToken');
+
     try {
       final response = await http.post(
         url,

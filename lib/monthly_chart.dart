@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'style.dart';
 
-class MonthlyChartWidget extends StatelessWidget {
+class MonthlyChartWidget extends StatefulWidget {
   final List<double> cvaData;
   final List<double> craData;
   final List<String> months;
@@ -17,22 +17,31 @@ class MonthlyChartWidget extends StatelessWidget {
   });
 
   @override
+  State<MonthlyChartWidget> createState() => _MonthlyChartWidgetState();
+}
+
+class _MonthlyChartWidgetState extends State<MonthlyChartWidget> {
+  // 각각 CVA, CRA 차트에서 현재 고정된 터치 인덱스를 관리 (null이면 고정 안 됨)
+  int? _selectedCvaIndex;
+  int? _selectedCraIndex;
+
+  @override
   Widget build(BuildContext context) {
     return _buildChartFrame("CVA / CRA 각도 변화 그래프");
   }
 
   Widget _buildChartFrame(String title) {
     int startIndex = 0;
-    if (currentMonth != null && currentMonth!.isNotEmpty) {
-      final targetIdx = months.indexOf(currentMonth!);
+    if (widget.currentMonth != null && widget.currentMonth!.isNotEmpty) {
+      final targetIdx = widget.months.indexOf(widget.currentMonth!);
       if (targetIdx != -1) {
         startIndex = targetIdx;
       }
     }
 
-    final slicedCva = cvaData.sublist(startIndex);
-    final slicedCra = craData.sublist(startIndex);
-    final slicedMonths = months.sublist(startIndex);
+    final slicedCva = widget.cvaData.sublist(startIndex);
+    final slicedCra = widget.craData.sublist(startIndex);
+    final slicedMonths = widget.months.sublist(startIndex);
 
     final count = slicedMonths.length > 6 ? 6 : slicedMonths.length;
     final limitedCva = slicedCva.sublist(0, count);
@@ -77,6 +86,16 @@ class MonthlyChartWidget extends StatelessWidget {
           48.7,
           TColor.buttonGreen,
           validIndices,
+          _selectedCvaIndex,
+          (index) {
+            setState(() {
+              if (_selectedCvaIndex == index) {
+                _selectedCvaIndex = null;
+              } else {
+                _selectedCvaIndex = index;
+              }
+            });
+          },
         ),
         const SizedBox(height: 16),
         _buildSingleChartBox(
@@ -87,6 +106,16 @@ class MonthlyChartWidget extends StatelessWidget {
           145.0,
           TColor.buttonGreen,
           validIndices,
+          _selectedCraIndex,
+          (index) {
+            setState(() {
+              if (_selectedCraIndex == index) {
+                _selectedCraIndex = null;
+              } else {
+                _selectedCraIndex = index;
+              }
+            });
+          },
         ),
       ],
     );
@@ -124,6 +153,8 @@ class MonthlyChartWidget extends StatelessWidget {
     double standardAngle,
     Color color,
     List<int> validIndices,
+    int? selectedIndex,
+    Function(int?) onSelectedIndexChanged,
   ) {
     final double minBound = chartCenter - 25;
     final double maxBound = chartCenter + 25;
@@ -142,6 +173,34 @@ class MonthlyChartWidget extends StatelessWidget {
 
     if (processedSpots.isEmpty) {
       return const SizedBox();
+    }
+
+    List<ShowingTooltipIndicators> showingTooltipSpots = [];
+    if (selectedIndex != null) {
+      Map<String, dynamic>? spotItem;
+      for (var item in processedSpots) {
+        if (item['x'] == selectedIndex.toDouble()) {
+          spotItem = item;
+          break;
+        }
+      }
+
+      if (spotItem != null &&
+          spotItem.containsKey('x') &&
+          spotItem.containsKey('y')) {
+        final double xVal = (spotItem['x'] as num).toDouble();
+        final double yVal = (spotItem['y'] as num).toDouble();
+
+        showingTooltipSpots.add(
+          ShowingTooltipIndicators([
+            LineBarSpot(
+              LineChartBarData(spots: [FlSpot(xVal, yVal)]),
+              0,
+              FlSpot(xVal, yVal),
+            ),
+          ]),
+        );
+      }
     }
 
     return Container(
@@ -184,6 +243,7 @@ class MonthlyChartWidget extends StatelessWidget {
                   maxY: maxBound,
                   minX: 0,
                   maxX: (data.length > 6 ? data.length - 1 : 5).toDouble(),
+                  showingTooltipIndicators: showingTooltipSpots,
                   gridData: FlGridData(
                     show: true,
                     drawVerticalLine: true,
@@ -321,8 +381,21 @@ class MonthlyChartWidget extends StatelessWidget {
                   lineTouchData: LineTouchData(
                     enabled: true,
                     touchSpotThreshold: 50,
-                    handleBuiltInTouches: true,
-
+                    handleBuiltInTouches: false,
+                    touchCallback:
+                        (FlTouchEvent event, LineTouchResponse? response) {
+                          if (event is FlTapUpEvent) {
+                            if (response != null &&
+                                response.lineBarSpots != null &&
+                                response.lineBarSpots!.isNotEmpty) {
+                              final spotIndex =
+                                  response.lineBarSpots!.first.spotIndex;
+                              onSelectedIndexChanged(spotIndex);
+                            } else {
+                              onSelectedIndexChanged(null);
+                            }
+                          }
+                        },
                     touchTooltipData: LineTouchTooltipData(
                       getTooltipColor: (_) => Colors.white,
                       tooltipBorder: const BorderSide(
@@ -353,149 +426,3 @@ class MonthlyChartWidget extends StatelessWidget {
     );
   }
 }
-
-// 거북목 개선 예측 차트 -> 스트레칭 스켈레톤 이후 추가
-// class PredictionChartWidget extends StatelessWidget {
-//   final List<double> predictionScores;
-//   final List<String> predictionMonths;
-
-//   const PredictionChartWidget({
-//     super.key,
-//     required this.predictionScores,
-//     required this.predictionMonths,
-//   });
-
-//   @override
-//   Widget build(BuildContext context) {
-//     print("🔍 예측 차트 데이터 확인");
-//     print("개월 데이터: $predictionMonths");
-//     print("점수 데이터: $predictionScores");
-//     return Container(
-//       padding: const EdgeInsets.all(20),
-//       decoration: BoxDecoration(
-//         color: Colors.white,
-//         borderRadius: BorderRadius.circular(16),
-//         border: Border.all(color: Colors.grey.shade200),
-//       ),
-//       child: Column(
-//         crossAxisAlignment: CrossAxisAlignment.start,
-//         children: [
-//           const Text(
-//             "거북목 개선 예측",
-//             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-//           ),
-//           const SizedBox(height: 16),
-//           SizedBox(
-//             height: 240,
-//             child: Padding(
-//               padding: const EdgeInsets.symmetric(horizontal: 20.0),
-//               child: LineChart(
-//                 LineChartData(
-//                   minY: 0,
-//                   maxY: 100,
-//                   minX: 0,
-//                   maxX: (predictionScores.length - 1).toDouble(),
-//                   gridData: FlGridData(
-//                     show: true,
-//                     drawVerticalLine: true,
-//                     drawHorizontalLine: true,
-//                     verticalInterval: 1,
-//                     horizontalInterval: 20,
-//                     getDrawingVerticalLine: (val) => FlLine(
-//                       color: Colors.grey.withOpacity(0.3),
-//                       strokeWidth: 1,
-//                     ),
-//                     getDrawingHorizontalLine: (val) => FlLine(
-//                       color: Colors.grey.withOpacity(0.3),
-//                       strokeWidth: 1,
-//                     ),
-//                   ),
-//                   titlesData: FlTitlesData(
-//                     bottomTitles: AxisTitles(
-//                       sideTitles: SideTitles(
-//                         showTitles: true,
-//                         interval: 1,
-//                         getTitlesWidget: (val, meta) {
-//                           final i = val.toInt();
-//                           if (i >= predictionMonths.length) {
-//                             return const SizedBox();
-//                           }
-
-//                           return Text(
-//                             predictionMonths[i],
-//                             style: const TextStyle(fontSize: 9, color: Colors.grey,),
-//                           );
-//                         },
-//                       ),
-//                     ),
-//                     rightTitles: AxisTitles(
-//                       sideTitles: SideTitles(
-//                         showTitles: true,
-//                         reservedSize: 40,
-//                         interval: 20,
-//                         getTitlesWidget: (val, meta) => Padding(
-//                           padding: const EdgeInsets.only(left: 8.0),
-//                           child: Text(
-//                             "${val.toInt()}점",
-//                             style: const TextStyle(
-//                               color: Colors.grey,
-//                               fontSize: 9,
-//                             ),
-//                           ),
-//                         ),
-//                       ),
-//                     ),
-//                     leftTitles: AxisTitles(
-//                       sideTitles: SideTitles(showTitles: false),
-//                     ),
-//                     topTitles: AxisTitles(
-//                       sideTitles: SideTitles(showTitles: false),
-//                     ),
-//                   ),
-//                   borderData: FlBorderData(
-//                     show: true,
-//                     border: Border.all(color: Colors.grey.withOpacity(0.3)),
-//                   ),
-//                   lineBarsData: [
-//                     LineChartBarData(
-//                       spots: predictionScores.asMap().entries.map((e) {
-//                         return FlSpot(e.key.toDouble(), e.value);
-//                       }).toList(),
-//                       isCurved: false,
-//                       color: TColor.buttonGreen,
-//                       barWidth: 3,
-//                       dotData: FlDotData(show: true),
-//                     ),
-//                   ],
-//                   lineTouchData: LineTouchData(
-//                     enabled: true,
-//                     touchSpotThreshold: 40,
-//                     handleBuiltInTouches: true,
-//                     touchTooltipData: LineTouchTooltipData(
-//                       getTooltipColor: (_) => Colors.white,
-//                       tooltipBorder: const BorderSide(
-//                         color: TColor.buttonGreen,
-//                         width: 1.5,
-//                       ),
-//                       getTooltipItems: (touchedSpots) {
-//                         return touchedSpots.map((spot) {
-//                           return LineTooltipItem(
-//                             "${(spot.y).toInt()}점",
-//                             const TextStyle(
-//                               color: TColor.buttonGreen,
-//                               fontWeight: FontWeight.bold,
-//                             ),
-//                           );
-//                         }).toList();
-//                       },
-//                     ),
-//                   ),
-//                 ),
-//               ),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }
