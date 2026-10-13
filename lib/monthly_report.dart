@@ -3,9 +3,12 @@ import 'style.dart';
 import 'services/report_service.dart';
 import 'monthly_alarm.dart';
 import 'monthly_chart.dart';
+import 'report.dart';
 
 class MonthlyReportView extends StatefulWidget {
-  const MonthlyReportView({super.key});
+  final bool isFromMeasurement;
+
+  const MonthlyReportView({super.key, this.isFromMeasurement = false});
 
   @override
   State<MonthlyReportView> createState() => _MonthlyReportViewState();
@@ -147,7 +150,17 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
         scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: TColor.black, size: 20),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            if (widget.isFromMeasurement) {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const ReportView()),
+                (route) => route.isFirst,
+              );
+            } else {
+              Navigator.pop(context);
+            }
+          },
         ),
         title: const Text("월간 리포트", style: TText.title),
         centerTitle: true,

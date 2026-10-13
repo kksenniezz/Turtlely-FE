@@ -1014,7 +1014,8 @@ void _showMeasurementSuccessDialog(BuildContext context) {
                   _dialogButton("확인", const Color(0x7F235E26), () {
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(
-                        builder: (context) => const MonthlyReportView(),
+                        builder: (context) =>
+                            const MonthlyReportView(isFromMeasurement: true),
                       ),
                       (route) => false,
                     );
