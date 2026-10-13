@@ -291,6 +291,7 @@ class MediaPipeService {
     debugPrint(
       "📤 [서버로 보내는 진짜 최종 JSON 바디 (길이: ${finalJsonString.length})]: $finalJsonString",
     );
+    debugPrint("🚨 [확인용] 실제 내용: $finalJsonString");
 
     try {
       final response = await _postRequest(
