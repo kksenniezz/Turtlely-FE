@@ -261,13 +261,12 @@ class MediaPipeService {
       return {"success": false, "message": "측정된 데이터가 없습니다."};
     }
 
-    // 🚨 백엔드가 요청한 그대로! 왼쪽 Key 값을 언더바(_) 형태로 정확히 매핑합니다.
     final List<Map<String, dynamic>> requestPayload = batchCopy.map((frame) {
       double parseSafely(dynamic val) {
-        if (val == null) return 0.0;
-        final parsed = double.tryParse(val.toString()) ?? 0.0;
-        // 백엔드가 준 예시처럼 소수점 아래 자리를 0.00~1.00 사이로 안전하게 clamp 고정
-        return double.parse(parsed.clamp(0.0, 1.0).toStringAsFixed(4));
+        if (val == null) return 0.5;
+        final parsed = double.tryParse(val.toString()) ?? 0.5;
+        final clamped = parsed.clamp(0.01, 0.99);
+        return double.parse(clamped.toStringAsFixed(4));
       }
 
       return {

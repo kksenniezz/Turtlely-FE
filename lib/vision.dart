@@ -315,7 +315,6 @@ class _VisionPageState extends State<VisionPage> {
                 monthlyId = result["monthly_id"];
                 step = 6;
               });
-              _showMeasurementSuccessDialog(context);
             }
           } else {
             print("측정 실패: ${response["code"]} / ${response["message"]}");
@@ -424,7 +423,7 @@ class _VisionPageState extends State<VisionPage> {
             GestureDetector(
               onTap: () async {
                 if (step == 8) {
-                  Navigator.pop(context, true); // 측정 완료 후 pop시 true 전달
+                  _showMeasurementSuccessDialog(context);
                 } else {
                   await _mediaPipeService.initializeCamera(); // 카메라 다시 초기화
                   setState(() => step = 2);
