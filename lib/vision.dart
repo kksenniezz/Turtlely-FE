@@ -975,7 +975,7 @@ void _showExitDialog(BuildContext context) {
 void _showMeasurementSuccessDialog(BuildContext context) {
   showDialog(
     context: context,
-    builder: (context) => Center(
+    builder: (dialogContext) => Center(
       child: Material(
         color: Colors.transparent,
         child: Container(
@@ -1004,6 +1004,7 @@ void _showMeasurementSuccessDialog(BuildContext context) {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _dialogButton("홈으로 가기", const Color(0xFFD9D9D9), () {
+                    Navigator.of(dialogContext).pop();
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(
                         builder: (context) => const TurtlelyMainPage(),
@@ -1012,12 +1013,12 @@ void _showMeasurementSuccessDialog(BuildContext context) {
                     );
                   }),
                   _dialogButton("확인", const Color(0x7F235E26), () {
-                    Navigator.of(context).pushAndRemoveUntil(
+                    Navigator.of(dialogContext).pop();
+                    Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (context) =>
                             const MonthlyReportView(isFromMeasurement: true),
                       ),
-                      (route) => false,
                     );
                   }),
                 ],

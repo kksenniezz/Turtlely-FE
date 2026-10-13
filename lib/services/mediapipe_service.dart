@@ -261,12 +261,45 @@ class MediaPipeService {
       return {"success": false, "message": "측정된 데이터가 없습니다."};
     }
 
+    double lastValidX = _hwAccelX;
+    double lastValidY = _hwAccelY;
+    double lastValidZ = _hwAccelZ;
+
+    for (var frame in batchCopy.reversed) {
+      double fx = double.tryParse(frame["hw_accel_x"]?.toString() ?? "0") ?? 0;
+      double fy = double.tryParse(frame["hw_accel_y"]?.toString() ?? "0") ?? 0;
+      double fz = double.tryParse(frame["hw_accel_z"]?.toString() ?? "0") ?? 0;
+      if (fx != 0.0 || fy != 0.0 || fz != 0.0) {
+        lastValidX = fx;
+        lastValidY = fy;
+        lastValidZ = fz;
+        break;
+      }
+    }
+
     final List<Map<String, dynamic>> requestPayload = batchCopy.map((frame) {
       double parseSafely(dynamic val) {
         if (val == null) return 0.5;
         final parsed = double.tryParse(val.toString()) ?? 0.5;
         final clamped = parsed.clamp(0.01, 0.99);
         return double.parse(clamped.toStringAsFixed(4));
+      }
+
+      double frameX =
+          double.tryParse(frame["hw_accel_x"]?.toString() ?? "0") ?? 0.0;
+      double frameY =
+          double.tryParse(frame["hw_accel_y"]?.toString() ?? "0") ?? 0.0;
+      double frameZ =
+          double.tryParse(frame["hw_accel_z"]?.toString() ?? "0") ?? 0.0;
+
+      if (frameX == 0.0 && frameY == 0.0 && frameZ == 0.0) {
+        frameX = lastValidX;
+        frameY = lastValidY;
+        frameZ = lastValidZ;
+      } else {
+        lastValidX = frameX;
+        lastValidY = frameY;
+        lastValidZ = frameZ;
       }
 
       return {
@@ -276,21 +309,17 @@ class MediaPipeService {
         "tragus_y": parseSafely(frame["tragus_y"]),
         "c7_x": parseSafely(frame["c7_x"]),
         "c7_y": parseSafely(frame["c7_y"]),
-        "hw_accel_x": double.parse((_hwAccelX).toStringAsFixed(4)),
-        "hw_accel_y": double.parse((_hwAccelY).toStringAsFixed(4)),
-        "hw_accel_z": double.parse((_hwAccelZ).toStringAsFixed(4)),
+        "hw_accel_x": double.parse(frameX.toStringAsFixed(4)),
+        "hw_accel_y": double.parse(frameY.toStringAsFixed(4)),
+        "hw_accel_z": double.parse(frameZ.toStringAsFixed(4)),
       };
     }).toList();
 
     // "frames" 라는 Key로 감싸서 JSON 객체 생성
     final Map<String, dynamic> wrappedPayload = {"frames": requestPayload};
 
-    // 🔍 여기서 서버로 날아가는 진짜 전체 JSON 바디를 콘솔에 찍습니다!
     final String finalJsonString = jsonEncode(wrappedPayload);
-    debugPrint(
-      "📤 [서버로 보내는 진짜 최종 JSON 바디 (길이: ${finalJsonString.length})]: $finalJsonString",
-    );
-    debugPrint("🚨 [확인용] 실제 내용: $finalJsonString");
+    debugPrint("📤 [서버로 보내는 최종 JSON 바디]: ${finalJsonString.length}");
 
     try {
       final response = await _postRequest(
