@@ -3,7 +3,7 @@ import 'style.dart';
 import 'services/report_service.dart';
 import 'monthly_alarm.dart';
 import 'monthly_chart.dart';
-import 'report.dart';
+import 'main.dart';
 
 class MonthlyReportView extends StatefulWidget {
   final bool isFromMeasurement;
@@ -154,8 +154,10 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
             if (widget.isFromMeasurement) {
               Navigator.pushAndRemoveUntil(
                 context,
-                MaterialPageRoute(builder: (context) => const ReportView()),
-                (route) => route.isFirst,
+                MaterialPageRoute(
+                  builder: (context) => const TurtlelyMainPage(initialIndex: 1),
+                ),
+                (route) => false,
               );
             } else {
               Navigator.pop(context);

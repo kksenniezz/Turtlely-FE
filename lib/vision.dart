@@ -1005,12 +1005,7 @@ void _showMeasurementSuccessDialog(BuildContext context) {
                 children: [
                   _dialogButton("홈으로 가기", const Color(0xFFD9D9D9), () {
                     Navigator.of(dialogContext).pop();
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(
-                        builder: (context) => const TurtlelyMainPage(),
-                      ),
-                      (route) => false,
-                    );
+                    Navigator.of(context).popUntil((route) => route.isFirst);
                   }),
                   _dialogButton("확인", const Color(0x7F235E26), () {
                     Navigator.of(dialogContext).pop();

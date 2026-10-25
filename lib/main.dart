@@ -110,8 +110,10 @@ Future<void> _setupNotification() async {
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     hasUnreadNotification.value = true;
 
-    String title = message.notification?.title ?? message.data['title'] ?? "Turtlely 알림";
-    String body = message.notification?.body ?? message.data['body'] ?? "월간 측정할 시간입니다!";
+    String title =
+        message.notification?.title ?? message.data['title'] ?? "Turtlely 알림";
+    String body =
+        message.notification?.body ?? message.data['body'] ?? "월간 측정할 시간입니다!";
 
     _showLocalNotification(title, body);
   });
@@ -192,19 +194,22 @@ class TurtlelyApp extends StatelessWidget {
 }
 
 class TurtlelyMainPage extends StatefulWidget {
-  const TurtlelyMainPage({super.key});
+  final int initialIndex;
+  const TurtlelyMainPage({super.key, this.initialIndex = 0});
 
   @override
   State<TurtlelyMainPage> createState() => _TurtlelyMainPageState();
 }
 
 class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialIndex;
+
     _pages = const [
       HomeViewContent(),
       ReportView(),
@@ -380,10 +385,7 @@ class _TurtlelyMainPageState extends State<TurtlelyMainPage> {
                   const SizedBox(width: 8),
                 ],
               ),
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: _pages,
-        ),
+        body: IndexedStack(index: _selectedIndex, children: _pages),
         bottomNavigationBar: Container(
           height: 80,
           decoration: const BoxDecoration(

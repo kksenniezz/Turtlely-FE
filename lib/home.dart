@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';                          // ★ 추가
-import 'dart:math' as math;                         // ★ 추가
+import 'dart:typed_data'; // ★ 추가
+import 'dart:math' as math; // ★ 추가
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:audioplayers/audioplayers.dart';    // ★ 추가
+import 'package:audioplayers/audioplayers.dart'; // ★ 추가
 
 import 'style.dart';
 import 'vision.dart';
@@ -29,6 +29,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
   bool isMonitoring = false;
   bool isCalibrating = false;
   bool isBadPosture = false;
+  static bool _hasInitializedBle = false;
 
   int calibrationTimer = 3;
   int monitoringSeconds = 0;
@@ -74,12 +75,12 @@ class _HomeViewContentState extends State<HomeViewContent> {
   final BleService _ble = BleService();
   final ApiService _api = ApiService();
   final _storage = const FlutterSecureStorage();
-  final AudioPlayer _audioPlayer = AudioPlayer();   // ★ 추가
+  final AudioPlayer _audioPlayer = AudioPlayer(); // ★ 추가
 
   bool isPreCalibrating = false;
   bool _isFirstPointOfSession = true;
   DateTime _lastFlushAt = DateTime.now();
-  Future<void> _flushChain = Future.value();    
+  Future<void> _flushChain = Future.value();
 
   Timer? monitorTimer;
   Timer? dailyApiTimer;
@@ -90,7 +91,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       ? 'hard'
       : 'normal';
 
-    @override
+  @override
   void initState() {
     super.initState();
     _registerBleCallbacks();
@@ -105,7 +106,10 @@ class _HomeViewContentState extends State<HomeViewContent> {
         userName: "사용자",
         onComplete: () {
           debugPrint("홈 온보딩 완료!");
-          _ble.init();
+          if (!_hasInitializedBle) {
+            _hasInitializedBle = true;
+            _ble.init();
+          }
         },
       );
     });
@@ -190,10 +194,15 @@ class _HomeViewContentState extends State<HomeViewContent> {
         );
 
         final latestReport = validReports.first;
-        final DateTime lastMeasuredAt = DateTime.parse(latestReport['measuredAt']);
+        final DateTime lastMeasuredAt = DateTime.parse(
+          latestReport['measuredAt'],
+        );
 
-        if (latestReport['monthlyId'] != null || latestReport['monthly_id'] != null) {
-          final latestId = (latestReport['monthlyId'] ?? latestReport['monthly_id']).toString();
+        if (latestReport['monthlyId'] != null ||
+            latestReport['monthly_id'] != null) {
+          final latestId =
+              (latestReport['monthlyId'] ?? latestReport['monthly_id'])
+                  .toString();
           await _storage.write(key: 'monthlyId', value: latestId);
           debugPrint("💾 최신 monthlyId 자동 동기화 완료: $latestId");
         }
@@ -639,7 +648,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       }
       return;
     }
-        if (!mounted || !isPreCalibrating) return;   // ★ 이 줄 추가
+    if (!mounted || !isPreCalibrating) return; // ★ 이 줄 추가
 
     calibAccXList.clear();
     calibAccYList.clear();
@@ -674,7 +683,9 @@ class _HomeViewContentState extends State<HomeViewContent> {
         ? calibAccZList.reduce((a, b) => a + b) / calibAccZList.length
         : lastAccZ;
 
-    debugPrint("📡 [캘리브레이션 API 전송 시작] X=$avgX, Y=$avgY, Z=$avgZ (수집 개수: ${calibAccXList.length})");
+    debugPrint(
+      "📡 [캘리브레이션 API 전송 시작] X=$avgX, Y=$avgY, Z=$avgZ (수집 개수: ${calibAccXList.length})",
+    );
 
     try {
       final res = await _api.sendCalibration(avgX, avgY, avgZ);
@@ -687,21 +698,22 @@ class _HomeViewContentState extends State<HomeViewContent> {
       startMonitoring();
     }
   }
+
   Future<void> cancelCalibration() async {
-  setState(() {
-    isPreCalibrating = false;
-    isCalibrating = false;
-    calibrationTimer = 3;
-  });
+    setState(() {
+      isPreCalibrating = false;
+      isCalibrating = false;
+      calibrationTimer = 3;
+    });
 
-  if (_ble.isDeviceReady) {
-    try {
-      await _ble.sendCommand("STOP");
-    } catch (_) {}
+    if (_ble.isDeviceReady) {
+      try {
+        await _ble.sendCommand("STOP");
+      } catch (_) {}
+    }
+
+    _showSnackBar("자세 교정이 취소되었습니다.");
   }
-
-  _showSnackBar("자세 교정이 취소되었습니다.");
-}
 
   Future<void> startMonitoring() async {
     setState(() {
@@ -830,7 +842,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
     });
   }
 
-    Future<void> stopMonitoring() async {
+  Future<void> stopMonitoring() async {
     monitorTimer?.cancel();
     dailyApiTimer?.cancel();
 
@@ -850,7 +862,7 @@ class _HomeViewContentState extends State<HomeViewContent> {
       } catch (_) {}
     }
 
-    await _flushDailyDataToStorage();   // ← 830~898번째 줄 큰 블록 대신 이 한 줄
+    await _flushDailyDataToStorage(); // ← 830~898번째 줄 큰 블록 대신 이 한 줄
 
     _showSnackBar("측정 결과가 저장되었어요");
 
@@ -864,103 +876,122 @@ class _HomeViewContentState extends State<HomeViewContent> {
       postureResult = 'normal';
     });
   }
-Future<void> _flushDailyDataToStorage() {
-  _flushChain = _flushChain
-      .then((_) => _doFlush())
-      .catchError((e) {
-    debugPrint("❌ 리포트 저장 오류: $e");
-  });
-  return _flushChain;
-}
 
-Future<void> _doFlush() async {
-  if (rawTimeHistory.isEmpty) return;
+  Future<void> _flushDailyDataToStorage() {
+    _flushChain = _flushChain.then((_) => _doFlush()).catchError((e) {
+      debugPrint("❌ 리포트 저장 오류: $e");
+    });
+    return _flushChain;
+  }
 
-  // 1) 지금까지 쌓인 데이터를 복사해두고 버퍼를 즉시 비움
-  final sCva = List<double>.from(cvaHistory);
-  final sTime = List<String>.from(timeHistory);
-  final sPosture = List<String>.from(postureHistory);
-  final sSession = List<bool>.from(sessionStartHistory);
-  final sAccX = List<double>.from(accXHistory);
-  final sAccY = List<double>.from(accYHistory);
-  final sAccZ = List<double>.from(accZHistory);
-  final sRawTime = List<String>.from(rawTimeHistory);
-  final sCvaRaw = List<double>.from(cvaRawHistory);
-  final sPostureRaw = List<String>.from(postureRawHistory);
-  final sCvaSum = cvaSum;
-  final sCvaCount = cvaCount;
-  final sWarning = warningCount;
-  final sCaution = cautionCount;
-  final sNormal = normalDuration;
-  final sTotal = totalDuration;
+  Future<void> _doFlush() async {
+    if (rawTimeHistory.isEmpty) return;
 
-  cvaHistory.clear();
-  timeHistory.clear();
-  postureHistory.clear();
-  sessionStartHistory.clear();
-  accXHistory.clear();
-  accYHistory.clear();
-  accZHistory.clear();
-  rawTimeHistory.clear();
-  cvaRawHistory.clear();
-  postureRawHistory.clear();
-  cvaSum = 0.0;
-  cvaCount = 0;
-  warningCount = 0;
-  cautionCount = 0;
-  normalDuration = 0;
-  totalDuration = 0;
+    // 1) 지금까지 쌓인 데이터를 복사해두고 버퍼를 즉시 비움
+    final sCva = List<double>.from(cvaHistory);
+    final sTime = List<String>.from(timeHistory);
+    final sPosture = List<String>.from(postureHistory);
+    final sSession = List<bool>.from(sessionStartHistory);
+    final sAccX = List<double>.from(accXHistory);
+    final sAccY = List<double>.from(accYHistory);
+    final sAccZ = List<double>.from(accZHistory);
+    final sRawTime = List<String>.from(rawTimeHistory);
+    final sCvaRaw = List<double>.from(cvaRawHistory);
+    final sPostureRaw = List<String>.from(postureRawHistory);
+    final sCvaSum = cvaSum;
+    final sCvaCount = cvaCount;
+    final sWarning = warningCount;
+    final sCaution = cautionCount;
+    final sNormal = normalDuration;
+    final sTotal = totalDuration;
 
-  // 2) 저장소에 합쳐서 저장
-  final today = DateTime.now();
-  final dateKey =
-      "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
-  final avgCva = sCvaCount > 0 ? sCvaSum / sCvaCount : 0.0;
+    cvaHistory.clear();
+    timeHistory.clear();
+    postureHistory.clear();
+    sessionStartHistory.clear();
+    accXHistory.clear();
+    accYHistory.clear();
+    accZHistory.clear();
+    rawTimeHistory.clear();
+    cvaRawHistory.clear();
+    postureRawHistory.clear();
+    cvaSum = 0.0;
+    cvaCount = 0;
+    warningCount = 0;
+    cautionCount = 0;
+    normalDuration = 0;
+    totalDuration = 0;
 
-  final existingData = await DailyReportStorage.loadHistory(dateKey);
+    // 2) 저장소에 합쳐서 저장
+    final today = DateTime.now();
+    final dateKey =
+        "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
+    final avgCva = sCvaCount > 0 ? sCvaSum / sCvaCount : 0.0;
 
-  final prevWarningCount = existingData?['warningCount'] ?? 0;
-  final prevCautionCount = existingData?['cautionCount'] ?? 0;
-  final prevNormalDuration = existingData?['normalDuration'] ?? 0;
-  final prevDuration = existingData?['duration'] ?? 0;
-  final prevAvgCva = (existingData?['avgCva'] ?? 0.0).toDouble();
+    final existingData = await DailyReportStorage.loadHistory(dateKey);
 
-  final prevCvaHistory = List<double>.from(existingData?['cvaHistory'] ?? []);
-  final prevTimeHistory = List<String>.from(existingData?['timeHistory'] ?? []);
-  final prevPostureHistory = List<String>.from(existingData?['postureHistory'] ?? []);
-  final prevSessionStartHistory = List<bool>.from(existingData?['sessionStartHistory'] ?? []);
-  final prevAccXHistory = List<double>.from(existingData?['accXHistory'] ?? []);
-  final prevAccYHistory = List<double>.from(existingData?['accYHistory'] ?? []);
-  final prevAccZHistory = List<double>.from(existingData?['accZHistory'] ?? []);
-  final prevRawTimeHistory = List<String>.from(existingData?['rawTimeHistory'] ?? []);
-  final prevCvaRawHistory = List<double>.from(existingData?['cvaRawHistory'] ?? []);
-  final prevPostureRawHistory = List<String>.from(existingData?['postureRawHistory'] ?? []);
+    final prevWarningCount = existingData?['warningCount'] ?? 0;
+    final prevCautionCount = existingData?['cautionCount'] ?? 0;
+    final prevNormalDuration = existingData?['normalDuration'] ?? 0;
+    final prevDuration = existingData?['duration'] ?? 0;
+    final prevAvgCva = (existingData?['avgCva'] ?? 0.0).toDouble();
 
-  final mergedAvgCva = (prevDuration + sTotal) > 0
-      ? (prevAvgCva * prevDuration + avgCva * sTotal) / (prevDuration + sTotal)
-      : avgCva;
+    final prevCvaHistory = List<double>.from(existingData?['cvaHistory'] ?? []);
+    final prevTimeHistory = List<String>.from(
+      existingData?['timeHistory'] ?? [],
+    );
+    final prevPostureHistory = List<String>.from(
+      existingData?['postureHistory'] ?? [],
+    );
+    final prevSessionStartHistory = List<bool>.from(
+      existingData?['sessionStartHistory'] ?? [],
+    );
+    final prevAccXHistory = List<double>.from(
+      existingData?['accXHistory'] ?? [],
+    );
+    final prevAccYHistory = List<double>.from(
+      existingData?['accYHistory'] ?? [],
+    );
+    final prevAccZHistory = List<double>.from(
+      existingData?['accZHistory'] ?? [],
+    );
+    final prevRawTimeHistory = List<String>.from(
+      existingData?['rawTimeHistory'] ?? [],
+    );
+    final prevCvaRawHistory = List<double>.from(
+      existingData?['cvaRawHistory'] ?? [],
+    );
+    final prevPostureRawHistory = List<String>.from(
+      existingData?['postureRawHistory'] ?? [],
+    );
 
-  await DailyReportStorage.saveHistory(
-    date: dateKey,
-    cvaHistory: [...prevCvaHistory, ...sCva],
-    timeHistory: [...prevTimeHistory, ...sTime],
-    postureHistory: [...prevPostureHistory, ...sPosture],
-    avgCva: mergedAvgCva,
-    warningCount: prevWarningCount + sWarning,
-    cautionCount: prevCautionCount + sCaution,
-    duration: prevDuration + sTotal,
-    normalDuration: prevNormalDuration + sNormal,
-    accXHistory: [...prevAccXHistory, ...sAccX],
-    accYHistory: [...prevAccYHistory, ...sAccY],
-    accZHistory: [...prevAccZHistory, ...sAccZ],
-    rawTimeHistory: [...prevRawTimeHistory, ...sRawTime],
-    cvaRawHistory: [...prevCvaRawHistory, ...sCvaRaw],
-    postureRawHistory: [...prevPostureRawHistory, ...sPostureRaw],
-    sessionStartHistory: [...prevSessionStartHistory, ...sSession],
-  );
+    final mergedAvgCva = (prevDuration + sTotal) > 0
+        ? (prevAvgCva * prevDuration + avgCva * sTotal) /
+              (prevDuration + sTotal)
+        : avgCva;
 
-  debugPrint("✅ Hive 중간 저장 완료: $dateKey");
-}
+    await DailyReportStorage.saveHistory(
+      date: dateKey,
+      cvaHistory: [...prevCvaHistory, ...sCva],
+      timeHistory: [...prevTimeHistory, ...sTime],
+      postureHistory: [...prevPostureHistory, ...sPosture],
+      avgCva: mergedAvgCva,
+      warningCount: prevWarningCount + sWarning,
+      cautionCount: prevCautionCount + sCaution,
+      duration: prevDuration + sTotal,
+      normalDuration: prevNormalDuration + sNormal,
+      accXHistory: [...prevAccXHistory, ...sAccX],
+      accYHistory: [...prevAccYHistory, ...sAccY],
+      accZHistory: [...prevAccZHistory, ...sAccZ],
+      rawTimeHistory: [...prevRawTimeHistory, ...sRawTime],
+      cvaRawHistory: [...prevCvaRawHistory, ...sCvaRaw],
+      postureRawHistory: [...prevPostureRawHistory, ...sPostureRaw],
+      sessionStartHistory: [...prevSessionStartHistory, ...sSession],
+    );
+
+    debugPrint("✅ Hive 중간 저장 완료: $dateKey");
+  }
+
   @override
   void dispose() {
     monitorTimer?.cancel();
@@ -1063,21 +1094,21 @@ Future<void> _doFlush() async {
                           _isCharging
                               ? Icons.battery_charging_full
                               : (_batteryPercent! >= 90)
-                                  ? Icons.battery_full
-                                  : (_batteryPercent! >= 75)
-                                      ? Icons.battery_6_bar
-                                      : (_batteryPercent! >= 50)
-                                          ? Icons.battery_5_bar
-                                          : (_batteryPercent! >= 25)
-                                              ? Icons.battery_3_bar
-                                              : (_batteryPercent! >= 10)
-                                                  ? Icons.battery_1_bar
-                                                  : Icons.battery_alert,
+                              ? Icons.battery_full
+                              : (_batteryPercent! >= 75)
+                              ? Icons.battery_6_bar
+                              : (_batteryPercent! >= 50)
+                              ? Icons.battery_5_bar
+                              : (_batteryPercent! >= 25)
+                              ? Icons.battery_3_bar
+                              : (_batteryPercent! >= 10)
+                              ? Icons.battery_1_bar
+                              : Icons.battery_alert,
                           color: _isCharging
                               ? TColor.buttonGreen
                               : (_batteryPercent! <= 20)
-                                  ? Colors.red
-                                  : TColor.gray,
+                              ? Colors.red
+                              : TColor.gray,
                           size: 20,
                         ),
                         const SizedBox(width: 4),
@@ -1085,7 +1116,9 @@ Future<void> _doFlush() async {
                           "$_batteryPercent%",
                           style: TText.caption.copyWith(
                             color: _isCharging ? TColor.darkGreen : null,
-                            fontWeight: _isCharging ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: _isCharging
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -1145,79 +1178,81 @@ Future<void> _doFlush() async {
             ],
           ),
           const SizedBox(height: 40),
-                    Expanded(
-                      child: Center(
-                        child: isPreCalibrating
-                            ? FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Image.asset('assets/normal_turtle.png', width: 200),
-                                    const SizedBox(height: 24),
-                                    Text(
-                                      "지금부터 3초간 캘리브레이션이\n진행됩니다. 앞을 봐주세요.",
-                                      textAlign: TextAlign.center,
-                                      style: TText.caption.copyWith(fontSize: 16, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              )
-
-                            : isCalibrating
-                                ? Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      SizedBox(
-                                        width: 200,
-                                        height: 200,
-                                        child: CircularProgressIndicator(
-                                          value: 1 - (calibrationTimer / 3),
-                                          color: TColor.buttonGreen,
-                                          strokeWidth: 8,
-                                        ),
-                                      ),
-                                      Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            "$calibrationTimer",
-                                            style: TText.logo.copyWith(fontSize: 48),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text("평소 자세 유지해주세요", style: TText.caption),
-                                        ],
-                                      ),
-                                    ],
-                                  )
-                                : Image.asset(
-                                    (!isMonitoring || postureResult == "normal")
-                                        ? 'assets/normal_turtle.png'
-                                        : postureResult == "warning"
-                                        ? 'assets/fire_turtle.png'
-                                        : 'assets/surprised_turtle.png',
-                                    width: 280,
-                                    errorBuilder: (_, __, ___) =>
-                                        Image.asset('assets/normal_turtle.png', width: 280),
-                                  ),
+          Expanded(
+            child: Center(
+              child: isPreCalibrating
+                  ? FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset('assets/normal_turtle.png', width: 200),
+                          const SizedBox(height: 24),
+                          Text(
+                            "지금부터 3초간 캘리브레이션이\n진행됩니다. 앞을 봐주세요.",
+                            textAlign: TextAlign.center,
+                            style: TText.caption.copyWith(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
+                    )
+                  : isCalibrating
+                  ? Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 200,
+                          height: 200,
+                          child: CircularProgressIndicator(
+                            value: 1 - (calibrationTimer / 3),
+                            color: TColor.buttonGreen,
+                            strokeWidth: 8,
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              "$calibrationTimer",
+                              style: TText.logo.copyWith(fontSize: 48),
+                            ),
+                            const SizedBox(height: 8),
+                            Text("평소 자세 유지해주세요", style: TText.caption),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Image.asset(
+                      (!isMonitoring || postureResult == "normal")
+                          ? 'assets/normal_turtle.png'
+                          : postureResult == "warning"
+                          ? 'assets/fire_turtle.png'
+                          : 'assets/surprised_turtle.png',
+                      width: 280,
+                      errorBuilder: (_, __, ___) =>
+                          Image.asset('assets/normal_turtle.png', width: 280),
                     ),
+            ),
+          ),
           if (!isPreCalibrating)
             Text("거북목 교정을 하는 동안 터틀훅을 꼭 착용해 주세요", style: TText.caption),
-            const SizedBox(height: 16),
+          const SizedBox(height: 16),
           ElevatedButton(
             style: T_MainButtonStyle,
             onPressed: isMonitoring
                 ? _showStopConfirmDialog
                 : (isPreCalibrating || isCalibrating)
-                    ? cancelCalibration
-                    : startCalibration,
+                ? cancelCalibration
+                : startCalibration,
             child: Text(
               isMonitoring
                   ? "자세 교정 종료하기"
                   : (isPreCalibrating || isCalibrating)
-                      ? "종료하기"
-                      : "자세 교정 시작하기",
+                  ? "종료하기"
+                  : "자세 교정 시작하기",
               style: TText.button,
             ),
           ),

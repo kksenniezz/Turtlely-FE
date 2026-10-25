@@ -18,10 +18,15 @@ class HomeOnboardingDialog extends StatefulWidget {
     required String userName,
     VoidCallback? onComplete,
   }) async {
+    debugPrint("🟡 [OnboardingDialog] checkAndShow 시작");
     final prefs = await SharedPreferences.getInstance();
     bool hasSeenOnboarding = prefs.getBool('has_seen_home_onboarding') ?? false;
+    debugPrint(
+      "🟡 [OnboardingDialog] hasSeenOnboarding 여부: $hasSeenOnboarding",
+    );
 
     if (!hasSeenOnboarding && context.mounted) {
+      debugPrint("🟡 [OnboardingDialog] 신규 회원 감지 -> 팝업 띄우기 실행");
       showGeneralDialog(
         context: context,
         barrierDismissible: false,
@@ -30,6 +35,7 @@ class HomeOnboardingDialog extends StatefulWidget {
           return HomeOnboardingDialog(
             userName: userName,
             onComplete: () async {
+              debugPrint("🟡 [OnboardingDialog] 신규 온보딩 완료 처리 시작");
               await prefs.setBool('has_seen_home_onboarding', true);
               if (onComplete != null) onComplete();
             },
@@ -37,6 +43,7 @@ class HomeOnboardingDialog extends StatefulWidget {
         },
       );
     } else {
+      debugPrint("🟡 [OnboardingDialog] 기존 회원(또는 팝업 스킵) -> onComplete 바로 호출");
       if (onComplete != null) onComplete();
     }
   }
@@ -91,6 +98,7 @@ class _HomeOnboardingDialogState extends State<HomeOnboardingDialog> {
   }
 
   void _finishOnboarding() {
+    debugPrint("🟡 [OnboardingDialog] _finishOnboarding (마지막 단계 완료) 호출됨");
     widget.onComplete();
     Navigator.of(context).pop();
   }
