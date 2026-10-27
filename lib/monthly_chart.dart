@@ -159,17 +159,17 @@ class _MonthlyChartWidgetState extends State<MonthlyChartWidget> {
     final double minBound = chartCenter - 25;
     final double maxBound = chartCenter + 25;
 
-    final List<Map<String, dynamic>> processedSpots = validIndices.map((
-      originalIdx,
-    ) {
+    final List<Map<String, dynamic>> processedSpots = [];
+    for (int i = 0; i < validIndices.length; i++) {
+      int originalIdx = validIndices[i];
       double rawValue = data[originalIdx];
-      return {
-        'x': originalIdx.toDouble(),
+      processedSpots.add({
+        'x': i.toDouble(),
         'y': rawValue.clamp(minBound, maxBound),
         'realY': rawValue,
         'isOutOfRange': rawValue < minBound || rawValue > maxBound,
-      };
-    }).toList();
+      });
+    }
 
     if (processedSpots.isEmpty) {
       return const SizedBox();
@@ -403,9 +403,11 @@ class _MonthlyChartWidgetState extends State<MonthlyChartWidget> {
                       ),
                       getTooltipItems: (touchedSpots) {
                         return touchedSpots.map((spot) {
-                          // 원본 realY를 사용하여 툴팁 표시
-                          final realValue =
-                              processedSpots[spot.spotIndex]['realY'];
+                          final matchedSpot = processedSpots.firstWhere(
+                            (e) => e['x'] == spot.x,
+                            orElse: () => processedSpots.first,
+                          );
+                          final realValue = matchedSpot['realY'];
                           return LineTooltipItem(
                             "${realValue.toStringAsFixed(1)}°",
                             const TextStyle(
