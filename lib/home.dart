@@ -1,0 +1,1264 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data'; // ★ 추가
+import 'dart:math' as math; // ★ 추가
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:audioplayers/audioplayers.dart'; // ★ 추가
+
+import 'style.dart';
+import 'vision.dart';
+import 'ble_service.dart';
+import 'posture_api_service.dart';
+import 'daily_report_storage.dart';
+import 'main.dart';
+import 'home_onboarding_dialog.dart';
+
+final GlobalKey monthlyBtnKey = GlobalKey();
+final GlobalKey difficultyBtnKey = GlobalKey();
+
+class HomeViewContent extends StatefulWidget {
+  const HomeViewContent({super.key});
+
+  @override
+  State<HomeViewContent> createState() => _HomeViewContentState();
+}
+
+class _HomeViewContentState extends State<HomeViewContent> {
+  bool isMonitoring = false;
+  bool isCalibrating = false;
+  bool isBadPosture = false;
+  static bool _hasInitializedBle = false;
+
+  int calibrationTimer = 3;
+  int monitoringSeconds = 0;
+  String selectedDifficulty = '보통';
+
+  double lastAccX = 0.0;
+  double lastAccY = 0.0;
+  double lastAccZ = 0.0;
+  double lastEstimatedCva = 0.0;
+  String postureResult = 'normal';
+
+  String _prevPostureResult = 'normal';
+  int? _batteryPercent;
+  bool _isCharging = false;
+  bool _hasSentBatteryNotification = false;
+
+  List<double> cvaHistory = [];
+  List<String> timeHistory = [];
+  List<String> postureHistory = [];
+
+  List<bool> sessionStartHistory = [];
+
+  List<double> accXHistory = [];
+  List<double> accYHistory = [];
+  List<double> accZHistory = [];
+  List<String> rawTimeHistory = [];
+  List<double> cvaRawHistory = [];
+  List<String> postureRawHistory = [];
+
+  double cvaSum = 0.0;
+  int cvaCount = 0;
+  int warningCount = 0;
+  int cautionCount = 0;
+  int normalDuration = 0;
+  int totalDuration = 0;
+
+  List<double> calibAccXList = [];
+  List<double> calibAccYList = [];
+  List<double> calibAccZList = [];
+
+  String _worstPostureInMinute = 'normal';
+
+  final BleService _ble = BleService();
+  final ApiService _api = ApiService();
+  final _storage = const FlutterSecureStorage();
+  final AudioPlayer _audioPlayer = AudioPlayer(); // ★ 추가
+
+  bool isPreCalibrating = false;
+  bool _isFirstPointOfSession = true;
+  DateTime _lastFlushAt = DateTime.now();
+  Future<void> _flushChain = Future.value();
+
+  Timer? monitorTimer;
+  Timer? dailyApiTimer;
+
+  String get _level => selectedDifficulty == '낮음'
+      ? 'easy'
+      : selectedDifficulty == '높음'
+      ? 'hard'
+      : 'normal';
+
+  @override
+  void initState() {
+    super.initState();
+    _registerBleCallbacks();
+
+    _storage.read(key: 'accessToken').then((token) {
+      debugPrint("🔑 accessToken: $token");
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      HomeOnboardingDialog.checkAndShow(
+        context,
+        userName: "사용자",
+        onComplete: () {
+          debugPrint("홈 온보딩 완료!");
+          if (!_hasInitializedBle) {
+            _hasInitializedBle = true;
+            _ble.init();
+          }
+        },
+      );
+    });
+  }
+
+  void _registerBleCallbacks() {
+    _ble.onDeviceReadyChanged = (ready) async {
+      if (!mounted) return;
+      setState(() {});
+
+      if (!ready) {
+        if (isMonitoring) {
+          _showDisconnectDialog();
+        }
+
+        await Future.delayed(const Duration(seconds: 3));
+        if (mounted && !_ble.isDeviceReady) {
+          debugPrint("🔄 BLE 기기 자동 재연결 시도...");
+          _ble.init();
+        }
+      }
+    };
+
+    _ble.onBatteryChanged = (batt) {
+      if (!mounted) return;
+      setState(() {
+        if (batt > 100) {
+          _isCharging = true;
+          _batteryPercent = batt - 100;
+        } else {
+          _isCharging = false;
+          _batteryPercent = batt;
+        }
+      });
+      if (!_isCharging) {
+        _checkBatteryLevelAndNotify(_batteryPercent!);
+      }
+    };
+  }
+
+  void _onReturnFromVision() {
+    if (!mounted) return;
+    _registerBleCallbacks();
+    if (_ble.isDeviceReady) {
+      _ble.startNotify(parseSensorData);
+    } else {
+      _ble.init();
+    }
+  }
+
+  Future<Map<String, dynamic>> _checkMonthlyMeasurementValid() async {
+    try {
+      final token = await _storage.read(key: 'accessToken');
+      if (token == null || token.isEmpty) {
+        return {'isValid': false, 'reason': 'NO_TOKEN'};
+      }
+
+      final response = await http.get(
+        Uri.parse("http://54.144.66.35.nip.io:8080/api/monthly/list"),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        final List<dynamic> list = jsonResponse['result'] ?? [];
+
+        final validReports = list
+            .where((item) => item['measuredAt'] != null)
+            .toList();
+
+        if (validReports.isEmpty) {
+          return {'isValid': false, 'reason': 'NO_MEASUREMENT'};
+        }
+
+        validReports.sort(
+          (a, b) => DateTime.parse(
+            b['measuredAt'],
+          ).compareTo(DateTime.parse(a['measuredAt'])),
+        );
+
+        final latestReport = validReports.first;
+        final DateTime lastMeasuredAt = DateTime.parse(
+          latestReport['measuredAt'],
+        );
+
+        if (latestReport['monthlyId'] != null ||
+            latestReport['monthly_id'] != null) {
+          final latestId =
+              (latestReport['monthlyId'] ?? latestReport['monthly_id'])
+                  .toString();
+          await _storage.write(key: 'monthlyId', value: latestId);
+          debugPrint("💾 최신 monthlyId 자동 동기화 완료: $latestId");
+        }
+        final DateTime expireDate = lastMeasuredAt.add(
+          const Duration(days: 30),
+        );
+        final DateTime now = DateTime.now();
+
+        if (now.isAfter(expireDate)) {
+          int passedDays = now.difference(lastMeasuredAt).inDays;
+          return {
+            'isValid': false,
+            'reason': 'EXPIRED',
+            'passedDays': passedDays,
+          };
+        }
+
+        return {'isValid': true, 'lastMeasuredAt': lastMeasuredAt};
+      }
+    } catch (e) {
+      debugPrint("월간 측정 검증 오류: $e");
+    }
+
+    return {'isValid': false, 'reason': 'ERROR'};
+  }
+
+  void _showMonthlyRequiredDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  size: 52,
+                  color: Color(0xFFFF9800),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "월간 측정 필요",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.black54,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE0E0E0),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          child: const Text(
+                            "취소",
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: TColor.buttonGreen,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () async {
+                            Navigator.of(dialogContext).pop();
+
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const VisionPage(),
+                              ),
+                            ).then((_) => _onReturnFromVision());
+                          },
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              "측정하기",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _checkBatteryLevelAndNotify(int battery) {
+    if (battery <= 20) {
+      if (!_hasSentBatteryNotification) {
+        _hasSentBatteryNotification = true;
+
+        final now = DateTime.now();
+        final timeStr =
+            "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+
+        localNotifications.insert(0, {
+          "notification_id": DateTime.now().millisecondsSinceEpoch,
+          "type": "BATTERY",
+          "content": "터틀훅 배터리가 $battery% 남았습니다. 충전해 주세요!",
+          "is_read": false,
+          "created_at": timeStr,
+        });
+
+        hasUnreadNotification.value = true;
+      }
+    } else {
+      _hasSentBatteryNotification = false;
+    }
+  }
+
+  void _showStopConfirmDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "자세 교정을 종료하시겠습니까?",
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 28),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFE0E0E0),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          child: const Text(
+                            "취소",
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF91A88C),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.of(dialogContext).pop();
+                            stopMonitoring();
+                          },
+                          child: const Text(
+                            "확인",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDisconnectDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                const Text(
+                  "터틀훅 연결이 끊겼어요!",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  "블루투스 연결 상태를 확인한 후\n다시 시도해 주세요",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.black54,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF91A88C),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      forceStopMonitoring();
+                    },
+                    child: const Text(
+                      "확인",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void forceStopMonitoring() {
+    monitorTimer?.cancel();
+    dailyApiTimer?.cancel();
+
+    try {
+      _ble.stopNotify();
+    } catch (_) {}
+
+    setState(() {
+      isMonitoring = false;
+      isCalibrating = false;
+      isBadPosture = false;
+      monitoringSeconds = 0;
+      calibrationTimer = 3;
+      postureResult = 'normal';
+      _worstPostureInMinute = 'normal';
+      _prevPostureResult = 'normal';
+      lastAccX = 0.0;
+      lastAccY = 0.0;
+      lastAccZ = 0.0;
+      lastEstimatedCva = 0.0;
+      cvaHistory.clear();
+      timeHistory.clear();
+      postureHistory.clear();
+      sessionStartHistory.clear();
+      accXHistory.clear();
+      accYHistory.clear();
+      accZHistory.clear();
+      rawTimeHistory.clear();
+      cvaRawHistory.clear();
+      postureRawHistory.clear();
+      cvaSum = 0.0;
+      cvaCount = 0;
+      warningCount = 0;
+      cautionCount = 0;
+      normalDuration = 0;
+      totalDuration = 0;
+    });
+
+    _showSnackBar("연결이 끊겨 측정이 종료되었습니다.");
+  }
+
+  Future<void> startCalibration() async {
+    final checkResult = await _checkMonthlyMeasurementValid();
+    Uint8List _generateBeepSound({int freq = 440, int durationMs = 150}) {
+      int sampleRate = 22050;
+      int numSamples = (sampleRate * durationMs / 1000).toInt();
+      int dataSize = numSamples * 2;
+      Uint8List bytes = Uint8List(44 + dataSize);
+      ByteData bd = ByteData.sublistView(bytes);
+
+      bd.setUint32(0, 0x52494646, Endian.big);
+      bd.setUint32(4, 36 + dataSize, Endian.little);
+      bd.setUint32(8, 0x57415645, Endian.big);
+      bd.setUint32(12, 0x666d7420, Endian.big);
+      bd.setUint32(16, 16, Endian.little);
+      bd.setUint16(20, 1, Endian.little);
+      bd.setUint16(22, 1, Endian.little);
+      bd.setUint32(24, sampleRate, Endian.little);
+      bd.setUint32(28, sampleRate * 2, Endian.little);
+      bd.setUint16(32, 2, Endian.little);
+      bd.setUint16(34, 16, Endian.little);
+      bd.setUint32(36, 0x64617461, Endian.big);
+      bd.setUint32(40, dataSize, Endian.little);
+
+      for (int i = 0; i < numSamples; i++) {
+        double t = i / sampleRate;
+        double sample = math.sin(2 * math.pi * freq * t);
+        int sampleInt = (sample * 32767).toInt();
+        bd.setInt16(44 + i * 2, sampleInt, Endian.little);
+      }
+      return bytes;
+    }
+
+    Future<void> _playBeepSound() async {
+      try {
+        final bytes = _generateBeepSound(freq: 440, durationMs: 150);
+        await _audioPlayer.stop();
+        await _audioPlayer.play(BytesSource(bytes), volume: 1.0);
+      } catch (e) {
+        debugPrint("사운드 재생 에러: $e");
+      }
+    }
+
+    if (!checkResult['isValid']) {
+      if (mounted) {
+        String reason = checkResult['reason'];
+        if (reason == 'NO_MEASUREMENT') {
+          _showMonthlyRequiredDialog("월간 측정 기록이 없습니다.");
+        } else if (reason == 'EXPIRED') {
+          int passedDays = checkResult['passedDays'] ?? 30;
+          _showMonthlyRequiredDialog(
+            "마지막 월간 측정 후 $passedDays일이 지났습니다.\n정확한 자세 교정을 위해 월간 측정을 다시 진행해 주세요.",
+          );
+        } else {
+          _showSnackBar("월간 측정 상태를 확인하지 못했습니다.");
+        }
+      }
+      return;
+    }
+
+    setState(() {
+      isPreCalibrating = true;
+    });
+
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted || !isPreCalibrating) return;
+
+    try {
+      await _ble.sendCommand("CALIB_START");
+    } catch (e) {
+      if (mounted) {
+        setState(() => isPreCalibrating = false);
+        _showSnackBar("기기와 연결할 수 없어요. 전원이 켜져 있는지 확인해 주세요.");
+      }
+      return;
+    }
+    if (!mounted || !isPreCalibrating) return; // ★ 이 줄 추가
+
+    calibAccXList.clear();
+    calibAccYList.clear();
+    calibAccZList.clear();
+
+    setState(() {
+      isPreCalibrating = false;
+      isCalibrating = true;
+      calibrationTimer = 3;
+      isBadPosture = false;
+      postureResult = 'normal';
+    });
+
+    await _ble.startNotify(parseSensorData);
+
+    for (int i = 3; i > 0; i--) {
+      if (!mounted || !isCalibrating) return;
+      setState(() => calibrationTimer = i);
+      _playBeepSound();
+      await Future.delayed(const Duration(seconds: 1));
+    }
+
+    if (!mounted || !isCalibrating) return;
+
+    double avgX = calibAccXList.isNotEmpty
+        ? calibAccXList.reduce((a, b) => a + b) / calibAccXList.length
+        : lastAccX;
+    double avgY = calibAccYList.isNotEmpty
+        ? calibAccYList.reduce((a, b) => a + b) / calibAccYList.length
+        : lastAccY;
+    double avgZ = calibAccZList.isNotEmpty
+        ? calibAccZList.reduce((a, b) => a + b) / calibAccZList.length
+        : lastAccZ;
+
+    debugPrint(
+      "📡 [캘리브레이션 API 전송 시작] X=$avgX, Y=$avgY, Z=$avgZ (수집 개수: ${calibAccXList.length})",
+    );
+
+    try {
+      final res = await _api.sendCalibration(avgX, avgY, avgZ);
+      debugPrint("📡 [캘리브레이션 API 완료 결과]: $res");
+    } catch (e) {
+      debugPrint("❌ 캘리브레이션 호출 에러: $e");
+    }
+
+    if (mounted) {
+      startMonitoring();
+    }
+  }
+
+  Future<void> cancelCalibration() async {
+    setState(() {
+      isPreCalibrating = false;
+      isCalibrating = false;
+      calibrationTimer = 3;
+    });
+
+    if (_ble.isDeviceReady) {
+      try {
+        await _ble.sendCommand("STOP");
+      } catch (_) {}
+    }
+
+    _showSnackBar("자세 교정이 취소되었습니다.");
+  }
+
+  Future<void> startMonitoring() async {
+    setState(() {
+      isCalibrating = false;
+      isMonitoring = true;
+      monitoringSeconds = 0;
+      postureResult = 'normal';
+      _prevPostureResult = 'normal';
+      _isFirstPointOfSession = true;
+      _lastFlushAt = DateTime.now();
+    });
+
+    monitorTimer?.cancel();
+    monitorTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      setState(() => monitoringSeconds++);
+    });
+
+    dailyApiTimer?.cancel();
+    dailyApiTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      final result = await _api.sendDaily(
+        accX: lastAccX,
+        accY: lastAccY,
+        accZ: lastAccZ,
+        level: _level,
+      );
+
+      if (!isMonitoring || !mounted) return;
+
+      final newPostureResult = result["postureResult"] as String;
+      final estimatedCva = result["estimatedCva"] as double;
+      final isBad = result["isWarning"] as bool;
+
+      if (newPostureResult == "warning") {
+        await _ble.sendCommand("VIBRATE");
+        await Future.delayed(const Duration(milliseconds: 150));
+        await _ble.sendCommand("VIBRATE");
+        await Future.delayed(const Duration(milliseconds: 150));
+        await _ble.sendCommand("VIBRATE");
+      } else if (newPostureResult == "caution") {
+        await _ble.sendCommand("VIBRATE");
+      } else {
+        debugPrint("✅ 자세 정상 | CVA: $estimatedCva");
+      }
+
+      if (newPostureResult == 'warning') {
+        _worstPostureInMinute = 'warning';
+      } else if (newPostureResult == 'caution' &&
+          _worstPostureInMinute != 'warning') {
+        _worstPostureInMinute = 'caution';
+      }
+
+      final now = DateTime.now();
+      final timeStr =
+          "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+      final rawTimeStr =
+          "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
+
+      setState(() {
+        postureResult = newPostureResult;
+        isBadPosture =
+            isBad ||
+            newPostureResult == "caution" ||
+            newPostureResult == "warning";
+        lastEstimatedCva = estimatedCva;
+
+        cvaSum += estimatedCva;
+        cvaCount++;
+        totalDuration++;
+
+        if (newPostureResult == "warning" && _prevPostureResult != "warning") {
+          warningCount++;
+        } else if (newPostureResult == "caution" &&
+            _prevPostureResult != "caution") {
+          cautionCount++;
+        } else if (newPostureResult == "normal") {
+          normalDuration++;
+        }
+        _prevPostureResult = newPostureResult;
+
+        rawTimeHistory.add(rawTimeStr);
+        accXHistory.add(lastAccX);
+        accYHistory.add(lastAccY);
+        accZHistory.add(lastAccZ);
+        cvaRawHistory.add(estimatedCva);
+        postureRawHistory.add(newPostureResult);
+
+        if (now.second == 0 || _isFirstPointOfSession) {
+          sessionStartHistory.add(_isFirstPointOfSession);
+          _isFirstPointOfSession = false;
+          cvaHistory.add(estimatedCva);
+          timeHistory.add(timeStr);
+          postureHistory.add(_worstPostureInMinute);
+          _worstPostureInMinute = 'normal';
+        }
+      });
+      // 5초마다 리포트 저장소에 반영 (시연용 실시간 갱신)
+      if (now.difference(_lastFlushAt).inSeconds >= 5) {
+        _lastFlushAt = now;
+        _flushDailyDataToStorage();
+      }
+    });
+  }
+
+  void parseSensorData(String data) {
+    final cleanData = data.trim();
+    if (cleanData.isEmpty || cleanData == "WAIT") return;
+
+    final parts = cleanData.split(',');
+    if (parts.length < 3) return;
+
+    final accX = double.tryParse(parts[0]);
+    final accY = double.tryParse(parts[1]);
+    final accZ = double.tryParse(parts[2]);
+    if (accX == null) return;
+
+    if (isCalibrating) {
+      calibAccXList.add(accX);
+      calibAccYList.add(accY ?? 0.0);
+      calibAccZList.add(accZ ?? 0.0);
+    }
+
+    setState(() {
+      lastAccX = accX;
+      lastAccY = accY ?? 0.0;
+      lastAccZ = accZ ?? 0.0;
+    });
+  }
+
+  Future<void> stopMonitoring() async {
+    monitorTimer?.cancel();
+    dailyApiTimer?.cancel();
+
+    setState(() {
+      isMonitoring = false;
+      isCalibrating = false;
+      isBadPosture = false;
+      postureResult = 'normal';
+      _worstPostureInMinute = 'normal';
+      _prevPostureResult = 'normal';
+    });
+
+    if (_ble.isDeviceReady) {
+      try {
+        await _ble.sendCommand("STOP");
+        await _ble.stopNotify();
+      } catch (_) {}
+    }
+
+    await _flushDailyDataToStorage(); // ← 830~898번째 줄 큰 블록 대신 이 한 줄
+
+    _showSnackBar("측정 결과가 저장되었어요");
+
+    setState(() {
+      monitoringSeconds = 0;
+      calibrationTimer = 3;
+      lastAccX = 0.0;
+      lastAccY = 0.0;
+      lastAccZ = 0.0;
+      lastEstimatedCva = 0.0;
+      postureResult = 'normal';
+    });
+  }
+
+  Future<void> _flushDailyDataToStorage() {
+    _flushChain = _flushChain.then((_) => _doFlush()).catchError((e) {
+      debugPrint("❌ 리포트 저장 오류: $e");
+    });
+    return _flushChain;
+  }
+
+  Future<void> _doFlush() async {
+    if (rawTimeHistory.isEmpty) return;
+
+    // 1) 지금까지 쌓인 데이터를 복사해두고 버퍼를 즉시 비움
+    final sCva = List<double>.from(cvaHistory);
+    final sTime = List<String>.from(timeHistory);
+    final sPosture = List<String>.from(postureHistory);
+    final sSession = List<bool>.from(sessionStartHistory);
+    final sAccX = List<double>.from(accXHistory);
+    final sAccY = List<double>.from(accYHistory);
+    final sAccZ = List<double>.from(accZHistory);
+    final sRawTime = List<String>.from(rawTimeHistory);
+    final sCvaRaw = List<double>.from(cvaRawHistory);
+    final sPostureRaw = List<String>.from(postureRawHistory);
+    final sCvaSum = cvaSum;
+    final sCvaCount = cvaCount;
+    final sWarning = warningCount;
+    final sCaution = cautionCount;
+    final sNormal = normalDuration;
+    final sTotal = totalDuration;
+
+    cvaHistory.clear();
+    timeHistory.clear();
+    postureHistory.clear();
+    sessionStartHistory.clear();
+    accXHistory.clear();
+    accYHistory.clear();
+    accZHistory.clear();
+    rawTimeHistory.clear();
+    cvaRawHistory.clear();
+    postureRawHistory.clear();
+    cvaSum = 0.0;
+    cvaCount = 0;
+    warningCount = 0;
+    cautionCount = 0;
+    normalDuration = 0;
+    totalDuration = 0;
+
+    // 2) 저장소에 합쳐서 저장
+    final today = DateTime.now();
+    final dateKey =
+        "${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
+    final avgCva = sCvaCount > 0 ? sCvaSum / sCvaCount : 0.0;
+
+    final existingData = await DailyReportStorage.loadHistory(dateKey);
+
+    final prevWarningCount = existingData?['warningCount'] ?? 0;
+    final prevCautionCount = existingData?['cautionCount'] ?? 0;
+    final prevNormalDuration = existingData?['normalDuration'] ?? 0;
+    final prevDuration = existingData?['duration'] ?? 0;
+    final prevAvgCva = (existingData?['avgCva'] ?? 0.0).toDouble();
+
+    final prevCvaHistory = List<double>.from(existingData?['cvaHistory'] ?? []);
+    final prevTimeHistory = List<String>.from(
+      existingData?['timeHistory'] ?? [],
+    );
+    final prevPostureHistory = List<String>.from(
+      existingData?['postureHistory'] ?? [],
+    );
+    final prevSessionStartHistory = List<bool>.from(
+      existingData?['sessionStartHistory'] ?? [],
+    );
+    final prevAccXHistory = List<double>.from(
+      existingData?['accXHistory'] ?? [],
+    );
+    final prevAccYHistory = List<double>.from(
+      existingData?['accYHistory'] ?? [],
+    );
+    final prevAccZHistory = List<double>.from(
+      existingData?['accZHistory'] ?? [],
+    );
+    final prevRawTimeHistory = List<String>.from(
+      existingData?['rawTimeHistory'] ?? [],
+    );
+    final prevCvaRawHistory = List<double>.from(
+      existingData?['cvaRawHistory'] ?? [],
+    );
+    final prevPostureRawHistory = List<String>.from(
+      existingData?['postureRawHistory'] ?? [],
+    );
+
+    final mergedAvgCva = (prevDuration + sTotal) > 0
+        ? (prevAvgCva * prevDuration + avgCva * sTotal) /
+              (prevDuration + sTotal)
+        : avgCva;
+
+    await DailyReportStorage.saveHistory(
+      date: dateKey,
+      cvaHistory: [...prevCvaHistory, ...sCva],
+      timeHistory: [...prevTimeHistory, ...sTime],
+      postureHistory: [...prevPostureHistory, ...sPosture],
+      avgCva: mergedAvgCva,
+      warningCount: prevWarningCount + sWarning,
+      cautionCount: prevCautionCount + sCaution,
+      duration: prevDuration + sTotal,
+      normalDuration: prevNormalDuration + sNormal,
+      accXHistory: [...prevAccXHistory, ...sAccX],
+      accYHistory: [...prevAccYHistory, ...sAccY],
+      accZHistory: [...prevAccZHistory, ...sAccZ],
+      rawTimeHistory: [...prevRawTimeHistory, ...sRawTime],
+      cvaRawHistory: [...prevCvaRawHistory, ...sCvaRaw],
+      postureRawHistory: [...prevPostureRawHistory, ...sPostureRaw],
+      sessionStartHistory: [...prevSessionStartHistory, ...sSession],
+    );
+
+    debugPrint("✅ Hive 중간 저장 완료: $dateKey");
+  }
+
+  @override
+  void dispose() {
+    monitorTimer?.cancel();
+    dailyApiTimer?.cancel();
+
+    _ble.onDeviceReadyChanged = null;
+    _ble.onBatteryChanged = null;
+    _audioPlayer.dispose();
+
+    super.dispose();
+  }
+
+  String getTodayDate() {
+    final now = DateTime.now();
+    return "${now.month}월 ${now.day}일";
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                getTodayDate(),
+                style: TText.title.copyWith(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  if (isMonitoring || isPreCalibrating || isCalibrating) {
+                    _showSnackBar("일일 측정 중에는 월간 측정을 할 수 없어요. 먼저 종료해 주세요.");
+                    return;
+                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const VisionPage()),
+                  ).then((_) => _onReturnFromVision());
+                },
+                child: Container(
+                  key: monthlyBtnKey,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    "월간 측정하러 가기 >",
+                    style: TText.caption.copyWith(
+                      color: TColor.darkGreen,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "${(monitoringSeconds ~/ 60).toString().padLeft(2, '0')}:${(monitoringSeconds % 60).toString().padLeft(2, '0')}",
+                    style: TText.title.copyWith(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      // ── [수정] 충전 시 번개가 박힌 단일 아이콘 + 간격 축소로 오버플로우 방지
+                      if (_ble.isDeviceReady && _batteryPercent != null) ...[
+                        Icon(
+                          _isCharging
+                              ? Icons.battery_charging_full
+                              : (_batteryPercent! >= 90)
+                              ? Icons.battery_full
+                              : (_batteryPercent! >= 75)
+                              ? Icons.battery_6_bar
+                              : (_batteryPercent! >= 50)
+                              ? Icons.battery_5_bar
+                              : (_batteryPercent! >= 25)
+                              ? Icons.battery_3_bar
+                              : (_batteryPercent! >= 10)
+                              ? Icons.battery_1_bar
+                              : Icons.battery_alert,
+                          color: _isCharging
+                              ? TColor.buttonGreen
+                              : (_batteryPercent! <= 20)
+                              ? Colors.red
+                              : TColor.gray,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          "$_batteryPercent%",
+                          style: TText.caption.copyWith(
+                            color: _isCharging ? TColor.darkGreen : null,
+                            fontWeight: _isCharging
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Icon(
+                        _ble.isDeviceReady
+                            ? Icons.bluetooth_connected
+                            : Icons.bluetooth_searching,
+                        color: _ble.isDeviceReady
+                            ? TColor.buttonGreen
+                            : TColor.gray,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        _ble.isDeviceReady ? "기기 연결됨" : "기기 탐색 중",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _ble.isDeviceReady
+                              ? TColor.buttonGreen
+                              : TColor.gray,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Row(
+                key: difficultyBtnKey,
+                children: ['낮음', '보통', '높음'].map((level) {
+                  final isSelected = selectedDifficulty == level;
+                  return GestureDetector(
+                    onTap: () => setState(() => selectedDifficulty = level),
+                    child: Container(
+                      margin: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? TColor.buttonGreen
+                            : TColor.lightGreen,
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: Text(
+                        level,
+                        style: TextStyle(
+                          color: isSelected ? TColor.white : TColor.gray,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 40),
+          Expanded(
+            child: Center(
+              child: isPreCalibrating
+                  ? FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset('assets/normal_turtle.png', width: 200),
+                          const SizedBox(height: 24),
+                          Text(
+                            "지금부터 3초간 캘리브레이션이\n진행됩니다. 앞을 봐주세요.",
+                            textAlign: TextAlign.center,
+                            style: TText.caption.copyWith(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : isCalibrating
+                  ? Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 200,
+                          height: 200,
+                          child: CircularProgressIndicator(
+                            value: 1 - (calibrationTimer / 3),
+                            color: TColor.buttonGreen,
+                            strokeWidth: 8,
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              "$calibrationTimer",
+                              style: TText.logo.copyWith(fontSize: 48),
+                            ),
+                            const SizedBox(height: 8),
+                            Text("평소 자세 유지해주세요", style: TText.caption),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Image.asset(
+                      (!isMonitoring || postureResult == "normal")
+                          ? 'assets/normal_turtle.png'
+                          : postureResult == "warning"
+                          ? 'assets/fire_turtle.png'
+                          : 'assets/surprised_turtle.png',
+                      width: 280,
+                      errorBuilder: (_, __, ___) =>
+                          Image.asset('assets/normal_turtle.png', width: 280),
+                    ),
+            ),
+          ),
+          if (!isPreCalibrating)
+            Text("거북목 교정을 하는 동안 터틀훅을 꼭 착용해 주세요", style: TText.caption),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            style: T_MainButtonStyle,
+            onPressed: isMonitoring
+                ? _showStopConfirmDialog
+                : (isPreCalibrating || isCalibrating)
+                ? cancelCalibration
+                : startCalibration,
+            child: Text(
+              isMonitoring
+                  ? "자세 교정 종료하기"
+                  : (isPreCalibrating || isCalibrating)
+                  ? "종료하기"
+                  : "자세 교정 시작하기",
+              style: TText.button,
+            ),
+          ),
+          const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+}

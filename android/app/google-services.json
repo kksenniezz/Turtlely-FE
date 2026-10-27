@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "485049902555",
+    "project_id": "turtlely-b39e0",
+    "storage_bucket": "turtlely-b39e0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:485049902555:android:a47a81e5ed8441d82b33fe",
+        "android_client_info": {
+          "package_name": "com.project.turtlely"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "485049902555-tcdrsjkchrrt7catj03dr8kbodcv14o7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4P8wk9oKwN8QZTDWR-Pcg0Z6GoNGdbiE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "485049902555-tcdrsjkchrrt7catj03dr8kbodcv14o7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "485049902555-5l7ifiu6un59pqjg5fs9bd6uoplcomkg.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.project.turtlely"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
