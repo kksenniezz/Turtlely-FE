@@ -3,7 +3,6 @@ import 'style.dart';
 import 'services/report_service.dart';
 import 'monthly_alarm.dart';
 import 'monthly_chart.dart';
-import 'main.dart';
 
 class MonthlyReportView extends StatefulWidget {
   final bool isFromMeasurement;
@@ -152,13 +151,7 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
           icon: const Icon(Icons.arrow_back_ios, color: TColor.black, size: 20),
           onPressed: () {
             if (widget.isFromMeasurement) {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const TurtlelyMainPage(initialIndex: 1),
-                ),
-                (route) => false,
-              );
+              Navigator.popUntil(context, (route) => route.isFirst);
             } else {
               Navigator.pop(context);
             }
@@ -538,15 +531,6 @@ class _MonthlyReportViewState extends State<MonthlyReportView> {
 
     // 2. 예측 데이터 가공
     final diseases = report?.predictedDiseases ?? [];
-
-    // 개선 예측
-    // final List<double> predScores =
-    //     (report?.predictionData?['prediction_scores'] as List?)
-    //         ?.map((e) => (e as num).toDouble())
-    //         .toList() ??
-    //     [];
-    // final List<String> predMonths =
-    //     report?.predictionData?['prediction_months']?.cast<String>() ?? [];
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 24),

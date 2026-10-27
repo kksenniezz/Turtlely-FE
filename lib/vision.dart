@@ -195,22 +195,17 @@ class _VisionPageState extends State<VisionPage> {
     _ble.onDeviceReadyChanged = (ready) {
       if (!mounted) return;
       setState(() => _bleReady = ready);
+
+      if (ready) {
+        _startBleNotify();
+      }
     };
 
-    _ble.startNotify((data) {
-      // _monthlyBle.onAccelUpdated 대신
-      if (!mounted) return;
-      final parts = data.trim().split(',');
-      if (parts.length < 3) return;
-      final x = double.tryParse(parts[0]);
-      final y = double.tryParse(parts[1]);
-      final z = double.tryParse(parts[2]);
-      if (x == null) return;
-      _mediaPipeService.updateHwAccel(x, y ?? 0.0, z ?? 0.0);
-      debugPrint("📡 accel 전달: $x, $y, $z");
-    });
+    if (_ble.isDeviceReady) {
+      _startBleNotify();
+    }
 
-    // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기 (기존 코드 그대로)
+    // 📡 서비스가 보내주는 실시간 좌표 신호 캐치하기
     _mediaPipeService.poseStream.listen((poses) {
       if (!mounted) return;
       setState(() {
@@ -224,6 +219,20 @@ class _VisionPageState extends State<VisionPage> {
     await _mediaPipeService.initializeCamera();
     if (!mounted) return;
     setState(() {});
+  }
+
+  void _startBleNotify() {
+    _ble.startNotify((data) {
+      if (!mounted) return;
+      final parts = data.trim().split(',');
+      if (parts.length < 3) return;
+      final x = double.tryParse(parts[0]);
+      final y = double.tryParse(parts[1]);
+      final z = double.tryParse(parts[2]);
+      if (x == null) return;
+      _mediaPipeService.updateHwAccel(x, y ?? 0.0, z ?? 0.0);
+      debugPrint("📡 accel 전달: $x, $y, $z");
+    });
   }
 
   @override
